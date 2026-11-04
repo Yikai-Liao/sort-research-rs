@@ -92,7 +92,11 @@ where
     if arr.len() < 2 || record_bytes == 0 {
         return;
     }
-    sort_with_block_size(arr, radix, default_block_size(arr.len(), record_bytes, radix));
+    sort_with_block_size(
+        arr,
+        radix,
+        default_block_size(arr.len(), record_bytes, radix),
+    );
 }
 
 /// Sorts with an explicit block size. `sort` derives one from the input; the
@@ -183,8 +187,7 @@ pub(crate) fn partition_digit<T: Key>(arr: &mut [T], radix: usize, shift: usize)
     let bits = T::Value::BITS;
     assert!(shift < bits, "digit shift outside the key");
     let width = radix.min(bits - shift);
-    let mask = (T::Value::from_usize((1usize << width) - 1))
-        << T::Value::from_usize(shift);
+    let mask = (T::Value::from_usize((1usize << width) - 1)) << T::Value::from_usize(shift);
     let block_size = default_block_size(arr.len(), record_bytes, radix);
     let mut sorter = Sorter::new(arr, 1usize << radix, block_size);
     if let Some(payload) = sorter.step(mask, shift) {

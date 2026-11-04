@@ -147,7 +147,11 @@ mod tests {
         for &len in &[0usize, 1, 2, 3, 25, 100, 4097] {
             check::<u32>((0..len).map(|_| next() as u32).collect());
             check::<u64>((0..len).map(|_| next()).collect());
-            check::<u128>((0..len).map(|_| ((next() as u128) << 64) | next() as u128).collect());
+            check::<u128>(
+                (0..len)
+                    .map(|_| ((next() as u128) << 64) | next() as u128)
+                    .collect(),
+            );
         }
     }
 

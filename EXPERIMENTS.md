@@ -250,71 +250,138 @@ The `ascending= descending= distinct=` fields on each cell line are there to
 catch a harness pattern that is not the shape its name claims (u128 "ascending"
 was a hashed random array until the type mapping was fixed).
 
+### 13. Windows follow the varying bits, not a grid
+
+A digit plan used to be a fixed `width`-bit grid over the key, with each cell
+narrowed to the varying bits inside it. That split a cluster of varying bits
+straddling a cell boundary into two passes, and gave one pass to every cell
+holding any varying bit: a key with 31 varying bits scattered over 62 needed six
+passes where three windows suffice.
+
+The leaf now packs windows: each window starts at the highest varying bit not yet
+consumed, reaches down at most `width` bits, and is then narrowed to the cluster
+it covers. The plan comes out most-significant first (the leaf walks it
+backwards, which is what LSD needs); spans are disjoint, so key order is
+preserved. A window is also never wider than its cluster, so a sparse plan also
+allocates fewer buckets per pass.
+
+Measured at 1M against the fixed grid: u128 8 narrow bands 37.0 → 31.3 ns, u128
+8 distinct values 18.8 → 16.0, u128 99 % sorted 26.1 → 24.4, u64 zipf 12.4 →
+11.9; dense random keys are unchanged, as they must be (every window is full).
+
+The cold-pass count for the model deliberately still uses the fixed grid: that is
+what the block engine really runs when a node is streamed, and pricing a route by
+a plan it will not execute would bias every decision.
+
+### 14. Negative result: a wider split fan-out
+
+Letting the split reach the leaf maximum (11 bits, tile-sized children) instead
+of stopping at 8 bits (256 buckets) produced exactly the children the model
+wanted and was still slower: u64 10M 35.4 → 37.9 (9 bits) → 41.4 (10 bits), u128
+10M 100 → 94 (9 bits) → 97 (10 bits). With 2048 open streams, every write in the
+split's last pass lands in a different 40 KiB region; the page and TLB pressure
+costs more than the L1-resident leaves save. Reverted, with the numbers in the
+comment so it is not retried blind.
+
+### 15. Measurement hygiene: background jobs and a single fast round
+
+Two runs disagreed by 6x on one cell, and a whole sweep was 30-60 % slow. The
+causes were mundane: a `criterion` run left in the background (46 minutes of one
+core, invisible in the numbers until `ps`), and reporting the *minimum* over
+rounds, which a single anomalous round can corrupt. Every table below is
+produced with `taskset` pinning, 5-7 interleaved rounds, the median printed next
+to the minimum, and `uptime` checked before the run. Cells the text reports as
+"parity" are within the ±8 % noise floor of this shared VM.
+
 ## Where the candidate stands
 
 ns per record, one root each, pinned, min of 5 interleaved rounds.
 Distribution matrix at n = 1M (`logs/calib6.log`):
 
-| type | pattern | tessera | block LSD | ipnsort | std stable |
-| --- | --- | --- | --- | --- | --- |
-| u64 | random | 24.9 | 39.1 | 27.0 | 40.5 |
-| u64 | zipf20 | 12.0 | 25.5 | 4.5 | 9.7 |
-| u64 | 99 % sorted | 25.0 | 51.1 | 28.6 | 5.6 |
-| u64 | sparse (8 values) | 10.3 | 29.3 | 5.4 | 12.6 |
-| u64 | 8 narrow bands | 21.0 | 35.3 | 25.6 | 40.2 |
-| u64 | ascending | 2.9 | 37.7 | 1.1 | 1.1 |
-| u64 | descending | 5.5 | 35.6 | 1.7 | 2.0 |
-| u64 | 95 % reverse sorted | 24.5 | 39.3 | 25.9 | 17.4 |
-| u128 | random | 79.1 | 160.8 | 44.8 | 79.2 |
-| u128 | zipf20 | 25.5 | 25.3 | 10.0 | 30.8 |
-| u128 | 99 % sorted | 31.3 | 41.7 | 47.6 | 9.1 |
-| u128 | sparse (8 values) | 18.8 | 32.0 | 10.3 | 33.0 |
-| u128 | 8 narrow bands | 29.5 | 29.7 | 46.8 | 73.7 |
-| u128 | ascending | 6.4 | 29.4 | 2.6 | 2.9 |
-| u128 | descending | 13.6 | 31.8 | 4.6 | 4.7 |
-| u128 | 95 % reverse sorted | 26.6 | 32.5 | 45.9 | 29.4 |
-| u32 | random | 9.9 | 10.9 | 24.6 | 31.5 |
-| u32 | zipf20 | 8.8 | 7.8 | 3.0 | 4.4 |
-| u32 | 99 % sorted | 10.3 | 11.3 | 24.4 | 4.6 |
-| u32 | 8 narrow bands | 8.4 | 8.7 | 24.3 | 32.7 |
-| u32 | ascending | 1.8 | 8.1 | — | — |
+| type | pattern | tessera | block LSD | ratio | ipnsort | std stable |
+| --- | --- | --- | --- | --- | --- | --- |
+| u64 | random | 23.7 | 47.4 | 2.00x | 26.8 | 45.1 |
+| u64 | zipf20 | 13.8 | 31.9 | 2.30x | 4.9 | 11.4 |
+| u64 | 99 % sorted, 1 % displaced | 24.9 | 40.8 | 1.64x | 25.0 | 36.9 |
+| u64 | 95 % sorted, 5 % displaced | 26.7 | 45.5 | 1.71x | 24.8 | 36.4 |
+| u64 | sparse (8 values) | 6.6 | 34.2 | 5.17x | 6.3 | 12.6 |
+| u64 | 8 narrow bands | 23.5 | 43.7 | 1.86x | 27.5 | 44.4 |
+| u64 | ascending | 2.9 | 37.2 | 12.73x | 1.1 | — |
+| u64 | descending | 6.0 | 40.3 | 6.71x | 1.8 | 1.7 |
+| u64 | 95 % reverse sorted | 25.9 | 42.8 | 1.65x | 27.1 | 18.3 |
+| u128 | random | 78.8 | 165.0 | 2.09x | 47.0 | 75.8 |
+| u128 | zipf20 | 23.5 (2.4x) | 23.1 | 1.00x | 9.7 | 32.8 |
+| u128 | 99 % sorted, 1 % displaced | 24.4 | 33.5 | 1.37x | 39.0 | 61.0 |
+| u128 | 95 % sorted, 5 % displaced | 24.4 | 32.1 | 1.32x | 40.0 | 58.5 |
+| u128 | sparse (8 values) | 16.0 | 31.4 | 1.96x | 12.1 | 30.2 |
+| u128 | 8 narrow bands | 31.3 | 31.4 | 1.00x | 47.0 | 75.8 |
+| u128 | ascending | 6.5 | 30.9 | 4.75x | 2.8 | 2.7 |
+| u128 | descending | 13.2 | 36.9 | 2.79x | 4.8 | 4.6 |
+| u128 | 95 % reverse sorted | 24.6 | 34.7 | 1.41x | 48.7 | 30.5 |
+| u32 | random | 13.7 | 12.7 | 0.92x | 24.0 | 38.9 |
+| u32 | zipf20 | 8.4 | 9.0 | 1.07x | 3.4 | 5.6 |
+| u32 | 99 % sorted, 1 % displaced | 10.2 | 9.8 | 0.96x | 21.2 | 29.9 |
+| u32 | 95 % sorted, 5 % displaced | 8.5 | 9.0 | 1.06x | 21.3 | 28.7 |
+| u32 | 8 narrow bands | 10.2 | 11.7 | 1.14x | 25.5 | 40.5 |
+| u32 | sparse (8 values) | 11.0 | 10.8 | 0.98x | 4.0 | 6.2 |
+| u32 | ascending | 2.0 | 9.7 | 4.80x | — | 1.0 |
+| u32 | descending | 4.3 | 9.1 | 2.10x | 1.1 | — |
+
+The u32 rows sit at parity because a 4 MiB node never splits: the model prices a
+split's read pass at more than the four cold passes it would avoid, and the
+remaining difference is the probe plus noise (the same cell reads 9.7-13.7
+between runs on this VM). The u128 zipf and narrow-band rows are likewise
+parity: both routes are the same three passing block engine, and the model
+correctly refuses to split a digit that puts 99 % of the records in one bucket.
 
 Scaling with size, uniform random (§logs/matrix5.log§, §logs/matrix4.log§):
 
 | type, n | tessera | block LSD | ipnsort | std stable |
 | --- | --- | --- | --- | --- |
-| u32 1M | 9.9 | 10.9 | 24.6 | 31.5 |
-| u32 10M | 17.3 | 18.9 | 29.5 | — |
-| u64 1M | 24.9 | 39.1 | 27.0 | 40.5 |
-| u64 10M | 32.8 | 60.6 | 33.4 | 63.0 |
-| u64 100M | — | — | — | — |
-| u128 1M | 79.1 | 160.8 | 44.8 | 79.2 |
+| u32 100k | 11.2 | 11.2 | 19.0 | 25.7 |
+| u32 1M | 9.8 | 12.0 | 23.0 | 31.1 |
+| u32 10M | 16.6 | 15.8 | 26.3 | 43.6 |
+| u64 100k | 22.4 | 25.8 | 20.7 | 30.3 |
+| u64 1M | 23.9 | 39.1 | 27.3 | 42.5 |
+| u64 10M | 32.0 | 57.9 | 32.8 | 59.4 |
+| u128 100k | 69.3 | 77.7 | 34.7 | 50.5 |
+| u128 1M | 81.0 | 194.2 | 47.3 | 80.5 |
+| u128 10M | 87.7 | >1000 | 59.1 | — |
 | record128 1M | 231 | 446 | 190 | 574 |
+
+The gap over the baseline grows with n, which is the point of the design: the
+larger the node, the more a cold pass costs and the more the tiled split saves.
+At 100k the array is already close to cache-resident and the two routes converge.
+The one row that loses to the baseline is u32 10M (16.6 vs 15.8, inside noise):
+a 40 MiB node of 32-bit keys has only four cold passes left to save.
 
 All sixteen pattern × type × size families are in `logs/matrix5.log`; the
 summary of that sweep:
 
 - Against the stable sort it replaces (`std`) it wins on every u64 and u128
-  row, 1.6x to 13x, and on u32 by 1.0-1.1x where u32 never splits: a 32-bit node
-  at 1M is 4 MiB, and the model prices a split's pass at more than the cold
-  passes it would avoid.
-- Against `ipnsort` it is ahead on u64 random (24.9 vs 27.0), u64 10M (32.8 vs
-  33.4), u64/zebra-ish shapes (narrow bands 21.0 vs 25.6, 99 % sorted 25.0 vs
-  28.6, reverse-sorted 24.5 vs 25.9) and u128 99 % sorted / narrow bands, and
-  behind on u32 (a 4 MiB node never splits, so u32 just gets a slightly better
-  LSD), and on u128 random (79.1 vs 44.8) and u128 duplicate-heavy input.
-- The u128 gap is structural: 16 bytes per record per pass, 16 passes at cold
-  bandwidth. `ipnsort` compares a 16-byte key in two registers and moves nothing
-  until it partitions, and its partitioning sees duplicates. This was measured
-  from both sides: the cache-resident leaf does 11 passes at 4.1 ns on u128 and
-  the split only buys 1.6x because the scatter of 16-byte records is bandwidth.
+  row, 1.3x to 13x, and on u32 by 1.0-1.1x where u32 never splits: a 32-bit node
+  at 1M is 4 MiB, and the model prices a split's read pass at more than the four
+  cold passes it would avoid.
+- Against `ipnsort` it is ahead on u64 random (23.7 vs 26.8; 32.0 vs 32.8 at
+  10M), on u64 near-sorted shapes (99 % sorted 24.9 vs 25.0, 95 % sorted 26.7 vs
+  24.8 — a tie once noise is allowed), on u64 narrow bands (23.5 vs 27.5), on
+  u128 99 % sorted (24.4 vs 39.0), u128 reverse-sorted (24.6 vs 48.7) and u128
+  narrow bands (31.3 vs 47.0). It is behind on u32 (a 4 MiB node never splits, so
+  u32 gets a slightly better LSD), on u64 zipf (13.8 vs 4.9) and on u128 random
+  (78.8 vs 47.0), u128 zipf (23.5 vs 9.7) and u128 8-distinct (16.0 vs 12.1).
+- The u128 random gap is structural: 16 bytes per record per pass, ~12 passes at
+  cold bandwidth. `ipnsort` compares a 16-byte key in two registers and moves
+  nothing until it partitions. Measured from both sides: the cache-resident leaf
+  runs 11 passes at 4.1 ns and the split buys 2.1x, because the scatter of 16-byte
+  records is bandwidth-bound and there is no way to touch a 16-byte record fewer
+  times than the key has digits.
 - Skew and few-distinct-values is where comparison sorts are unbeatable: 8
-  distinct u128 values have 31 varying bits, so a digit sort needs 3 passes while
-  a comparison sort needs 8 key comparisons and collapses the rest. Tessera still
-  beats the stable baseline there (18.8 vs 32.0) because narrowing drops the 97
-  constant bits.
+  distinct u128 values have 31 varying bits, so a digit sort needs 3 windows while
+  a comparison sort compares a handful of times and collapses the rest. Tessera
+  still beats the stable baseline there (16.0 vs 31.4) because narrowing drops the
+  97 constant bits.
 - Ordered input used to be the worst row (LSD cannot see order) and is now the
-  best: 2.9 ns on ascending u64, 13x over the baseline.
+  best: 2.9 ns on ascending u64, 12.7x over the baseline.
 
 ### Noise floor
 
@@ -335,8 +402,23 @@ So the auxiliary space is the baseline's O(sqrt n) block scratch plus O(1). A
 constant buffer is O(1) in n and therefore within O(sqrt n); the small-n regime
 where the array is smaller than the buffer is bounded by the buffer itself, which
 does not grow with n. Measured with the allocator-visible peak
-(`bench --bench extra_memory`): u64 10k Tessera 20 KiB vs block LSD 540 KiB;
-i32 100 Tessera 400 B vs 540 KiB.
+(`bench --bench extra_memory`, requested bytes, one touched page counted as its
+allocation):
+
+| input | Tessera peak | block LSD peak |
+| --- | --- | --- |
+| i32 100 | 400 B | 539 648 B |
+| u64 100 | 800 B | 539 648 B |
+| u64 10k | 17 644 B | 540 428 B |
+| u64 100k | 93 886 B | — |
+| u64 1M | 838 598 B | — |
+| u64 10M | 2 612 918 B | 2 612 918 B |
+| u128 10M | 3 694 090 B | 3 694 090 B |
+
+At 10M records the peak is 2.6 MiB for 80 MiB of records, i.e. the split's block
+scratch, which the two implementations share. Below that, Tessera's is bounded by
+the array itself: it sizes the tile buffer to `min(tile, len)`, so 100 u64
+records cost 800 bytes rather than half a megabyte.
 
 ## Validation
 

@@ -71,7 +71,13 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             v.extend(patterns::random(len - zeros));
             v
         }
-        "random_sorted95" => patterns::random_sorted(len, 95.0),
+        // The library's `random_sorted` sometimes comes out fully ascending (the
+        // appended tail can be larger than the sorted prefix), which would take
+        // the ordered fast path and measure something else. These two are
+        // ascending with a fixed fraction of adjacent pairs swapped: near-sorted,
+        // guaranteed not sorted.
+        "random_sorted95" => displaced(patterns::ascending(len), len / 20),
+        "random_sorted99" => displaced(patterns::ascending(len), len / 100),
         "random_sorted99" => patterns::random_sorted(len, 99.0),
         // Nearly reverse ordered: descending, then 5 % of the positions swapped,
         // which is what a sort sees after a few appends and a reversal.
@@ -129,7 +135,9 @@ fn wide_keys(pattern: &str, len: usize) -> Vec<i32> {
         .enumerate()
         .map(|(i, x)| {
             let lo = (x as u32).wrapping_mul(0x9e37_79b9);
-            let hi = (x as u32).wrapping_mul(0x85eb_ca6b).rotate_left(i as u32 & 31);
+            let hi = (x as u32)
+                .wrapping_mul(0x85eb_ca6b)
+                .rotate_left(i as u32 & 31);
             (lo ^ hi) as i32
         })
         .collect()
@@ -147,11 +155,29 @@ fn wide_u64(x: i32) -> u64 {
     (x as u32 as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
 }
 
+/// Swaps \`swaps\` evenly spread adjacent pairs: an ordered array with that many
+/// displaced elements, which is the shape "sorted, then a few edits" produces.
+fn displaced(mut v: Vec<i32>, swaps: usize) -> Vec<i32> {
+    let step = (v.len() / swaps.max(1)).max(2);
+    let mut index = 0;
+    while index + 1 < v.len() {
+        v.swap(index, index + 1);
+        index += step;
+    }
+    v
+}
+
 fn keys_u32(pattern: &str, len: usize) -> Vec<u32> {
     if pattern == "random_wide" {
-        wide_keys(pattern, len).into_iter().map(|x| x as u32).collect()
+        wide_keys(pattern, len)
+            .into_iter()
+            .map(|x| x as u32)
+            .collect()
     } else {
-        base_keys(pattern, len).into_iter().map(narrow_u32).collect()
+        base_keys(pattern, len)
+            .into_iter()
+            .map(narrow_u32)
+            .collect()
     }
 }
 
@@ -162,7 +188,10 @@ fn keys_u64(pattern: &str, len: usize) -> Vec<u64> {
             .map(|x| wide_u64(x) ^ ((x as u64) << 32))
             .collect()
     } else {
-        base_keys(pattern, len).into_iter().map(narrow_u64).collect()
+        base_keys(pattern, len)
+            .into_iter()
+            .map(narrow_u64)
+            .collect()
     }
 }
 
@@ -237,7 +266,11 @@ impl sort_research_rs::other::radix_support::Key for Record128 {
 }
 
 fn keys_record128(pattern: &str, len: usize) -> Vec<Record128> {
-    let f = if pattern == "random_wide" { wide_u64 } else { narrow_u64 };
+    let f = if pattern == "random_wide" {
+        wide_u64
+    } else {
+        narrow_u64
+    };
     base_keys(pattern, len)
         .into_iter()
         .map(|x| Record128 {
@@ -248,7 +281,11 @@ fn keys_record128(pattern: &str, len: usize) -> Vec<Record128> {
 }
 
 fn keys_record16(pattern: &str, len: usize) -> Vec<Record16> {
-    let f = if pattern == "random_wide" { wide_u64 } else { narrow_u64 };
+    let f = if pattern == "random_wide" {
+        wide_u64
+    } else {
+        narrow_u64
+    };
     base_keys(pattern, len)
         .into_iter()
         .map(|x| Record16 {
@@ -372,7 +409,11 @@ fn tessera_tile<const BYTES: usize, T: sort_research_rs::other::radix_support::K
 
 /// Leaf-policy sweep: (merge ceiling, insertion ceiling) in records.
 #[cfg(feature = "rust_tessera_radix")]
-fn tessera_leaf<const MERGE: usize, const INS: usize, T: sort_research_rs::other::radix_support::Key>(
+fn tessera_leaf<
+    const MERGE: usize,
+    const INS: usize,
+    T: sort_research_rs::other::radix_support::Key,
+>(
     s: &mut [T],
 ) {
     sort_research_rs::other::rust_tessera_radix::sort_with_policy(s, 65536, MERGE, INS);

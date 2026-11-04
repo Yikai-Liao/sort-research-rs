@@ -73,9 +73,10 @@ impl Digit {
     }
 }
 
-/// Slots needed for the pass list: the narrowest leaf digit over the widest key
-/// is 128 bits at six bits per pass.
-const PLAN_DIGITS: usize = 24;
+/// Slots in a pass list. Packed windows are never narrower than the gap
+/// between two varying clusters, so in practice a plan is shorter than the fixed
+/// grid's; the bound is one window per varying bit.
+const PLAN_DIGITS: usize = 128;
 
 /// The bits that can still differ inside one node: every bit set in some key,
 /// and every bit set in all of them. Constant bits cannot change the order, so
@@ -114,6 +115,44 @@ impl<T: Key> Variation<T> {
 ///
 /// The plan stays a slice of a caller-owned array: this toolchain's layout query
 /// ICEs when a function passes an array whose length is a path constant.
+/// The passes a leaf runs, packing windows instead of using a fixed grid.
+///
+/// The fixed grid splits a cluster of varying bits that straddles a cell
+/// boundary into two passes and gives one pass to every other cell, which is
+/// why a key with 31 varying bits scattered over 62 used to take six passes
+/// where three windows suffice. Here each window covers the span from the lowest
+/// varying bit not yet consumed up to the highest one within `width` bits, and
+/// only that span, so a window is never wider than its cluster needs.
+///
+/// Passes come out most significant window first, the order the leaf consumes
+/// them in (it walks the plan backwards, so the last entry runs first). Disjoint
+/// spans cannot interleave two keys' digits differently from the key order.
+fn plan_digits_packed(varying: u128, width: usize, digits: &mut [Digit]) -> usize {
+    let mut remaining = varying;
+    let mut len = 0;
+    while remaining != 0 {
+        let high = (u128::BITS - 1 - remaining.leading_zeros()) as usize;
+        let window_low = (high + 1).saturating_sub(width);
+        let window = if window_low == 0 {
+            u128::MAX
+        } else {
+            u128::MAX << window_low
+        };
+        let inside = remaining & window;
+        let low = inside.trailing_zeros() as usize;
+        debug_assert!(len < digits.len());
+        digits[len] = Digit {
+            shift: low,
+            width: high - low + 1,
+        };
+        len += 1;
+        remaining &= !window;
+    }
+    len
+}
+
+/// The passes the block engine would run: a fixed `width`-bit grid, which is what
+/// the streaming route really costs.
 fn plan_digits<T: Key>(width: usize, variation: Variation<T>, digits: &mut [Digit]) -> usize {
     let varying_bits = variation.varying();
     let mut len = 0;
@@ -188,7 +227,10 @@ pub fn sort_with_policy<T: Key>(
         .max(record_bytes)
         .min(MAX_TILE_RECORDS * record_bytes);
     let (union, intersection) = block::varying_key_bits(arr);
-    let variation = Variation { union, intersection };
+    let variation = Variation {
+        union,
+        intersection,
+    };
     if variation.varying() == 0 {
         return;
     }
@@ -200,8 +242,8 @@ pub fn sort_with_policy<T: Key>(
         Order::Descending => {
             reverse_stably(arr);
             return;
-        },
-        Order::Unsorted => {},
+        }
+        Order::Unsorted => {}
     }
     let mut context = Context {
         scratch: Vec::new(),
@@ -564,6 +606,10 @@ fn split_radix(node_len: usize, record_bytes: usize, tile_bytes: usize) -> usize
     let target = (tile_records / 2).max(1);
     let children = (node_len / target).max(2);
     let bits = usize::BITS - (children - 1).leading_zeros();
+    // Capped at `RADIX`, not at the leaf maximum: a 2048-way fan-out makes every
+    // write in the split's last pass land in a different 40 KiB region, and the
+    // measured cost of that (u64 10M 35.4 -> 41.4 ns, u128 10M 100 -> 97) is
+    // larger than the L1-resident leaves it buys.
     (bits as usize).clamp(3, RADIX)
 }
 
@@ -588,7 +634,7 @@ impl<T: Key> Context<T> {
         // cache. The pass counts are the ones each route would really run.
         let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
         let cold_passes = plan_digits::<T>(RADIX, variation, &mut scratch_digits);
-        let hot_passes = plan_digits::<T>(leaf_radix(records), variation, &mut scratch_digits);
+        let hot_passes = plan_digits_packed(varying, leaf_radix(records), &mut scratch_digits);
         let (distinct, largest_child) = sample_split_shape(arr, varying);
         if trace() {
             eprintln!(
@@ -614,7 +660,13 @@ impl<T: Key> Context<T> {
             // node with the block engine's LSD pass, which needs no buffer the
             // size of the node. It gets the variation scan already done here.
             let block_size = block::default_block_size(arr.len(), std::mem::size_of::<T>(), RADIX);
-            block::sort_with_variation(arr, RADIX, block_size, variation.union, variation.intersection);
+            block::sort_with_variation(
+                arr,
+                RADIX,
+                block_size,
+                variation.union,
+                variation.intersection,
+            );
             return;
         }
         // MSD split: one stable block-permutation pass over the whole node.
@@ -668,7 +720,13 @@ impl<T: Key> Context<T> {
             }
             // Within a bucket every key shares the digits above the split, so
             // they fall out of the child's variation on their own.
-            self.sort_node(&mut arr[start..end], Variation { union, intersection });
+            self.sort_node(
+                &mut arr[start..end],
+                Variation {
+                    union,
+                    intersection,
+                },
+            );
             start = end;
         }
     }
@@ -747,7 +805,7 @@ impl<T: Key> Context<T> {
         // scales with it is the bucket table, so a wider digit buys fewer passes
         // while the table still fits in L1 next to the records.
         let mut digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
-        let passes = plan_digits::<T>(leaf_radix(len), variation, &mut digits);
+        let passes = plan_digits_packed(variation.varying(), leaf_radix(len), &mut digits);
         self.set_scratch_len(len);
         let scratch_ptr = self.scratch.as_mut_ptr().cast::<T>();
         // A tile is at most `MAX_TILE_RECORDS` records, so 16-bit cursors are
@@ -848,7 +906,9 @@ mod tests {
     #[test]
     fn every_width_and_tile_rounds_to_zero() {
         let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
-        for &len in &[0usize, 1, 2, 3, 7, 8, 9, 100, 255, 256, 257, 1000, 4097, 20_000] {
+        for &len in &[
+            0usize, 1, 2, 3, 7, 8, 9, 100, 255, 256, 257, 1000, 4097, 20_000,
+        ] {
             let u32s: Vec<u32> = (0..len).map(|_| rng.next() as u32).collect();
             check(u32s, TILE_BYTES);
             let u64s: Vec<u64> = (0..len).map(|_| rng.next()).collect();
