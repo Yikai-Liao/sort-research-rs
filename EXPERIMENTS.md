@@ -518,6 +518,22 @@ Run-to-run variation on this shared VM is large (the same cell can move 20 %
 between runs); every table uses the minimum over rounds, and ratios are more
 trustworthy than absolute milliseconds.
 
+The criterion bench is for comparability with the repository's published
+baselines, not with the tables above, and the difference is the key shape: its
+`u128` rows are built by `extend_i32_to_u128`, i.e. an `i32` pattern scaled into
+128 bits, while this file's `random_wide` rows are full-width random keys. Same
+sort, different amount of variation — measured at 1M, criterion's median against
+the tournament's minimum:
+
+| bench | tessera | block LSD | ipnsort | std |
+| --- | --- | --- | --- | --- |
+| u64 random | 21.4 | 31.5 | 27.3 | 51.6 |
+| u128 random (i32-derived) | 45.9 | 83.5 | 44.8 | 82.8 |
+
+The u128 row is the interesting one: on the repository's narrower key the radix
+sorts are twice as fast as on full-width keys, which is exactly what narrowing
+buys, and tessera lands at ipnsort's level instead of 1.6x behind it.
+
 ## Open items
 
 1. u32 10M: the model predicts "do not split" where splitting is 12 % faster.
