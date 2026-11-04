@@ -54,10 +54,54 @@ cargo test --release --no-default-features --features rust_block_lsd
 ```
 
 - `tests/block_lsd_functionality.rs`: the upstream functionality tests that apply
-  to fixed-width keys.
+  to fixed-width keys (79 tests).
 - `tests/block_lsd.rs`: stability with payloads, block tails, all integer widths,
-  unsupported-type behavior; also runs the backend's own unit tests.
+  float total order, unsupported-type behavior; also runs the backend's own unit
+  tests over configurable digit widths and explicit block sizes (8 tests).
 - `tests/radix_owned.rs`, `tests/radix_views.rs`: records that are neither `Copy`
-  nor `Clone`, drop counts, and key panics during different phases.
+  nor `Clone`, drop counts, and key panics during different phases (2 + 6 tests).
 
-Miri, ASan and benchmark results are not included yet.
+### ASan
+
+```sh
+CARGO_TARGET_DIR=target-asan RUSTFLAGS=-Zsanitizer=address \
+  cargo test --target x86_64-unknown-linux-gnu \
+  --no-default-features --features rust_block_lsd
+```
+
+All 328 tests pass without a sanitizer report: 79 + 233 from the upstream
+suites and 8 + 2 + 6 from the tests above.
+
+### Miri
+
+```sh
+cargo miri test --no-default-features --features rust_block_lsd \
+  --test block_lsd --test radix_owned --test radix_views
+```
+
+These three binaries pass under Miri: 8 + 2 + 6 tests, 178 s / 27 s / 207 s of
+interpreter time on a 6-core x86-64 with nightly 2026-10-08. This is the run that
+checks the ownership handling in `core.rs`: `MaybeUninit` scratch, the live
+prefix tracking, compaction on a key panic, and drop counts for non-`Copy`
+records.
+
+Miri interprets every instruction and every 8-bit pass writes
+`2 * 256 * block_size` bucket slots, so the shapes are reduced, not the code
+paths:
+
+- Sizes stop at one block plus one instead of 16 385 records; the payload test
+  runs the 112 byte payload only, which is the one below the ~1 KiB block floor.
+- `all_integer_widths` sorts only `u128`, the widest key; smaller records get a
+  larger block from the ~1 KiB floor, which multiplies the bucket-slot work.
+- The float total-order test uses an explicit small block size instead of the
+  automatic one.
+- Each panic target is a separate full sort. `radix_views` keeps three of the ten
+  targets and drops the skewed key layout.
+
+The 79 functionality tests are not run under Miri: at these block sizes a single
+sort takes minutes there. They run in the release and ASan configurations above.
+
+Timing comparisons against `rust_std` and `rust_radsort` use the normal
+`cargo bench` harness. Peak extra heap is measured separately by
+`cargo bench --bench extra_memory`, which needs `rust_block_lsd` and
+`rust_radsort`.

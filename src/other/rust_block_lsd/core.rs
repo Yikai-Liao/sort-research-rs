@@ -581,14 +581,29 @@ mod tests {
 
     #[test]
     fn all_digit_widths_and_explicit_block_boundaries() {
-        for radix in 1..=8 {
-            for block_size in [1, 3, 17, 64, 128] {
+        // Miri interprets every instruction and every 8-bit pass fills
+        // 2*256*block_size bucket slots, so it runs a reduced shape: a partial
+        // final digit (3), a full byte digit (8), one small block, and inputs
+        // up to one block plus one.
+        let radixes: &[usize] = if cfg!(miri) {
+            &[3, 8]
+        } else {
+            &[1, 2, 3, 4, 5, 6, 7, 8]
+        };
+        let block_sizes: &[usize] = if cfg!(miri) {
+            &[3]
+        } else {
+            &[1, 3, 17, 64, 128]
+        };
+        let max_len = if cfg!(miri) { 129 } else { 1025 };
+        for &radix in radixes {
+            for &block_size in block_sizes {
                 for len in [
                     2,
                     block_size * 2 - 1,
                     block_size * 2,
                     block_size * 2 + 1,
-                    1025,
+                    max_len,
                 ] {
                     let mut input: Vec<u128> = (0..len)
                         .map(|i| {
@@ -659,7 +674,14 @@ mod tests {
     fn float_total_order_preserves_every_bit() {
         macro_rules! check {
             ($float:ty, $bits:ty, $nan:expr, $negative_nan:expr) => {{
-                for radix in 1..=8 {
+                let radixes: &[usize] = if cfg!(miri) {
+                    &[8]
+                } else {
+                    &[1, 2, 3, 4, 5, 6, 7, 8]
+                };
+                let cyclic_len = if cfg!(miri) { 129 } else { 1025 };
+                let random_len = if cfg!(miri) { 64 } else { 4096 };
+                for &radix in radixes {
                     let special: [$bits; 8] = [
                         <$float>::NEG_INFINITY.to_bits(),
                         (-1.0 as $float).to_bits(),
@@ -673,13 +695,21 @@ mod tests {
                     let mut input: Vec<_> = special
                         .into_iter()
                         .cycle()
-                        .take(1025)
-                        .chain((0..4096).map(|i| (i as $bits).wrapping_mul(0x9e3779b9)))
+                        .take(cyclic_len)
+                        .chain((0..random_len).map(|i| (i as $bits).wrapping_mul(0x9e3779b9)))
                         .map(<$float>::from_bits)
                         .collect();
                     let mut expected = input.clone();
                     expected.sort_by(<$float>::total_cmp);
-                    sort(&mut input, radix);
+                    // The automatic block size has a ~1 KiB floor, which costs
+                    // 2*256*block_size slot writes per pass. Miri uses an
+                    // explicit small block instead; the floor is covered by the
+                    // release and ASan runs.
+                    if cfg!(miri) {
+                        sort_with_block_size(&mut input, radix, 3);
+                    } else {
+                        sort(&mut input, radix);
+                    }
                     assert_eq!(
                         input.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
                         expected.iter().map(|x| x.to_bits()).collect::<Vec<_>>()

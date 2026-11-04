@@ -147,7 +147,7 @@ fn trial<S: Sort>(n: usize, target: usize) -> usize {
     calls
 }
 fn owners<S: Sort>() {
-    let sizes: &[usize] = if std::env::var_os("RADIX_OWNED_QUICK").is_some() {
+    let sizes: &[usize] = if cfg!(miri) || std::env::var_os("RADIX_OWNED_QUICK").is_some() {
         &[129]
     } else {
         &[2, 129, 1025]

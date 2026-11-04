@@ -55,9 +55,17 @@ impl<const N: usize> Key for Item<N> {
 }
 
 fn panic_retention<S: Sort, const PAD: usize>() {
-    for skew in [false, true] {
+    // Every target is a full sort that panics partway, and Miri interprets each
+    // one. Narrow it to one skew and a few sizes and targets there.
+    let skews: &[bool] = if cfg!(miri) { &[false] } else { &[false, true] };
+    for &skew in skews {
         SKEW.with(|v| v.set(skew));
-        for n in [2, 3, 17, 127, 128, 129, 257, 1025, 8193] {
+        let sizes: &[usize] = if cfg!(miri) {
+            &[2, 17]
+        } else {
+            &[2, 3, 17, 127, 128, 129, 257, 1025, 8193]
+        };
+        for &n in sizes {
             let original: Vec<_> = (0..n)
                 .map(|identity| Item {
                     identity,
@@ -69,18 +77,22 @@ fn panic_retention<S: Sort, const PAD: usize>() {
             let mut normal = original.clone();
             S::sort(&mut normal);
             let total = CALLS.with(|v| v.get());
-            let mut targets = vec![
-                0,
-                n - 1,
-                n,
-                n + 1,
-                2 * n - 1,
-                2 * n,
-                3 * n,
-                3 * n + n / 2,
-                4 * n - 1,
-                total - 1,
-            ];
+            let mut targets = if cfg!(miri) {
+                vec![0, 3 * n, total - 1]
+            } else {
+                vec![
+                    0,
+                    n - 1,
+                    n,
+                    n + 1,
+                    2 * n - 1,
+                    2 * n,
+                    3 * n,
+                    3 * n + n / 2,
+                    4 * n - 1,
+                    total - 1,
+                ]
+            };
             targets.sort_unstable();
             targets.dedup();
             for target in targets.into_iter().filter(|&v| v < total) {

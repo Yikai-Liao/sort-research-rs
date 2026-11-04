@@ -3,8 +3,6 @@
 use sort_research_rs::other::rust_block_lsd::{self, Key};
 use std::cmp::Ordering;
 
-type TestSort = rust_block_lsd::SortImpl;
-
 // The library disables unit tests. Include the same backend source here to
 // exercise configurable digits and explicit block sizes through its own tests.
 #[path = "../src/other/rust_block_lsd/core.rs"]
@@ -16,11 +14,12 @@ mod key {
 #[test]
 fn f128_preserves_quotient_order_and_full_records() {
     use sort_test_tools::ffi_types::F128;
+    let len = if cfg!(miri) { 129 } else { 8193 };
     let mut input: Vec<_> = [i32::MIN, -1, 0, 1, i32::MAX]
         .into_iter()
         .chain((0..4096).rev().map(|i| i32::MAX - i))
         .cycle()
-        .take(8193)
+        .take(len)
         .map(F128::new)
         .collect();
     let mut expected = input.clone();
@@ -63,11 +62,25 @@ impl<const N: usize> Ord for Record<N> {
     }
 }
 
-fn check_payloads<const N: usize>() {
-    for len in [
+// Miri interprets every instruction; the full shapes below would take hours
+// there. The reduced shapes still cross block boundaries and include a partial
+// final digit, an equal-key run and a single misplaced maximum.
+const PAYLOAD_LENS: &[usize] = if cfg!(miri) {
+    &[0, 2, 127]
+} else {
+    &[
         0, 1, 2, 127, 128, 129, 255, 256, 257, 1023, 1024, 1025, 4095, 4096, 4097, 16385,
-    ] {
-        for pattern in 0..6 {
+    ]
+};
+const PAYLOAD_PATTERNS: &[u32] = if cfg!(miri) {
+    &[0, 4]
+} else {
+    &[0, 1, 2, 3, 4, 5]
+};
+
+fn check_payloads<const N: usize>() {
+    for &len in PAYLOAD_LENS {
+        for &pattern in PAYLOAD_PATTERNS {
             let mut actual: Vec<_> = (0..len)
                 .map(|ordinal| {
                     let mixed = (ordinal as u64).wrapping_mul(0x9e3779b97f4a7c15);
@@ -109,9 +122,13 @@ fn check_payloads<const N: usize>() {
 
 #[test]
 fn stable_payloads_and_block_tails() {
-    check_payloads::<0>();
-    check_payloads::<16>();
+    // 112 bytes is the largest payload and the only one below the ~1 KiB block
+    // floor, so it takes the group-scatter path. Miri runs just that one.
     check_payloads::<112>();
+    if !cfg!(miri) {
+        check_payloads::<0>();
+        check_payloads::<16>();
+    }
 }
 
 #[test]
@@ -119,14 +136,22 @@ fn all_integer_widths() {
     macro_rules! check {
         ($($ty:ty),*) => {$({
             let input = [<$ty>::MIN, <$ty>::MAX, 0, 1, 0, 2];
-            let mut actual: Vec<$ty> = input.into_iter().cycle().take(1025).collect();
+            let len = if cfg!(miri) { 129 } else { 1025 };
+            let mut actual: Vec<$ty> = input.into_iter().cycle().take(len).collect();
             let mut expected = actual.clone();
             expected.sort();
             rust_block_lsd::sort(&mut actual);
             assert_eq!(actual, expected);
         })*};
     }
-    check!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
+    // Miri interprets every instruction, and a smaller record also means a
+    // larger block: the ~1 KiB floor gives u128 a block of 64 records and u8 a
+    // block of 1024, so an 8-bit pass fills 256x more bucket slots for u8.
+    // Miri therefore sorts only the widest key. Release and ASan cover all types.
+    check!(u128);
+    if !cfg!(miri) {
+        check!(u8, u16, u32, u64, usize, i8, i16, i32, i64, i128, isize);
+    }
 }
 
 #[test]
@@ -154,8 +179,3 @@ fn unsupported_sort_by_preserves_input_and_does_not_call_comparator() {
     );
     assert_eq!(input, [2, 1]);
 }
-
-#[path = "support/radix_tests.rs"]
-#[macro_use]
-mod radix_tests;
-radix_functionality!(TestSort);
