@@ -221,6 +221,13 @@ pub fn bench<T: Ord + std::fmt::Debug>(
     #[cfg(feature = "rust_radsort")]
     bench_inst!(other::rust_radsort);
 
+    // LSD baseline for wrapper records, which the adapter above rejects. Kept
+    // next to it so the full-buffer comparison is visible wherever it applies.
+    #[cfg(feature = "rust_radsort")]
+    if super::radsort_keyed::supports_type::<T>() {
+        bench_inst!(crate::modules::radsort_keyed);
+    }
+
     #[cfg(feature = "rust_afsort")]
     bench_inst!(other::rust_afsort);
 

@@ -4,6 +4,9 @@ use criterion::Criterion;
 
 pub mod sort;
 
+#[cfg(feature = "rust_radsort")]
+pub mod radsort_keyed;
+
 #[cfg(feature = "partition_point")]
 pub mod partition_point;
 

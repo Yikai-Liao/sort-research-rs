@@ -1,3 +1,6 @@
+#![allow(incomplete_features)]
+#![feature(specialization)]
+
 use std::cmp;
 use std::env;
 

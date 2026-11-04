@@ -18,6 +18,11 @@
 
 macro_rules! sort_impl {
     ($name:expr) => {
+        sort_impl!($name,);
+    };
+    // The optional items declare capabilities narrower than "sorts any T". Sorts
+    // that take a fixed key add `supports_type` and `supports_sort_by` here.
+    ($name:expr, $($capability:item),* $(,)?) => {
         pub struct SortImpl;
 
         impl sort_test_tools::Sort for SortImpl {
@@ -40,6 +45,8 @@ macro_rules! sort_impl {
             {
                 sort_by(arr, compare);
             }
+
+            $($capability)*
         }
     };
 }

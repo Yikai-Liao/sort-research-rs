@@ -165,7 +165,18 @@ impl<A: Key, B: Key> Key for (A, B) {
 // operations remain explicit; benchmark registration can omit unsupported types.
 macro_rules! radix_adapter {
     ($name:expr, $algorithm:expr) => {
-        sort_impl!($name);
+        sort_impl!(
+            $name,
+            fn supports_type<T>() -> bool
+            where
+                T: Ord,
+            {
+                <T as RadixDispatch>::supported()
+            },
+            fn supports_sort_by() -> bool {
+                false
+            }
+        );
         trait RadixDispatch: Sized {
             fn supported() -> bool;
             fn sort(data: &mut [Self]);

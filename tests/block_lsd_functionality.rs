@@ -1,9 +1,10 @@
 #![cfg(feature = "rust_block_lsd")]
 
-// Upstream functionality tests that apply to fixed-width radix keys. Comparator
-// based tests and variable-length keys (String) are out of scope for this sort.
-#[path = "support/radix_tests.rs"]
-#[macro_use]
-mod radix_tests;
+use sort_test_tools::instantiate_sort_tests;
 
-radix_functionality!(sort_research_rs::other::rust_block_lsd::SortImpl);
+type TestSort = sort_research_rs::other::rust_block_lsd::SortImpl;
+
+// The standard suite for every type the adapter has a key conversion for. Types
+// without a key, and `sort_by`, are declared unsupported by the adapter, so the
+// harness skips them rather than failing on the deliberate rejection.
+instantiate_sort_tests!(TestSort);

@@ -53,13 +53,28 @@ resumes; the resulting order is unspecified.
 cargo test --release --no-default-features --features rust_block_lsd
 ```
 
-- `tests/block_lsd_functionality.rs`: the upstream functionality tests that apply
-  to fixed-width keys (79 tests).
+- `tests/block_lsd_functionality.rs`: the standard `instantiate_sort_tests!`
+  suite, the same 233 tests `tests/main.rs` runs for ipnsort.
 - `tests/block_lsd.rs`: stability with payloads, block tails, all integer widths,
   float total order, unsupported-type behavior; also runs the backend's own unit
   tests over configurable digit widths and explicit block sizes (8 tests).
 - `tests/radix_owned.rs`, `tests/radix_views.rs`: records that are neither `Copy`
   nor `Clone`, drop counts, and key panics during different phases (2 + 6 tests).
+
+The standard suite assumes a sort accepts every `Ord` type and implements
+`sort_by`. This one takes a fixed key and rejects everything else, so
+`sort_test_tools::Sort` gained two declarations:
+
+```rust
+fn supports_type<T>() -> bool where T: Ord { true }
+fn supports_sort_by() -> bool { true }
+```
+
+`radix_adapter!` reports `<T as Key>::SUPPORTED` and `false` respectively, and the
+affected tests return early instead of failing on the deliberate rejection. The
+types without a key conversion, and the comparison based tests, are therefore
+skipped rather than unchecked-by-accident; the explicit rejection itself is
+tested in `tests/block_lsd.rs`.
 
 ### ASan
 

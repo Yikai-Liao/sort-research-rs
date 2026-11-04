@@ -100,6 +100,10 @@ fn test_is_sorted<T: Ord + Clone + Debug, S: Sort>(
     map_fn: impl Fn(i32) -> T,
     pattern_fn: impl Fn(usize) -> Vec<i32>,
 ) {
+    if !<S as Sort>::supports_type::<T>() {
+        return;
+    }
+
     let mut test_data: Vec<T> = pattern_fn(test_len).into_iter().map(map_fn).collect();
     check_is_sorted::<T, S>(test_data.as_mut_slice());
 }
@@ -396,6 +400,10 @@ fn int_edge_impl<S: Sort>() {
 }
 
 fn sort_vs_sort_by_impl<S: Sort>() {
+    if !<S as Sort>::supports_sort_by() || !<S as Sort>::supports_type::<i32>() {
+        return;
+    }
+
     write_info_to_stdout::<S>();
 
     // Ensure that sort and sort_by produce the same result.
@@ -505,6 +513,10 @@ fn stability_legacy_impl<S: Sort>() {
     // This non pattern variant has proven to catch some bugs the pattern version of this function
     // doesn't catch, so it remains in conjunction with the other one.
 
+    if !<S as Sort>::supports_sort_by() {
+        return;
+    }
+
     write_info_to_stdout::<S>();
 
     if <S as Sort>::name().contains("unstable") {
@@ -585,6 +597,10 @@ fn stability_with_patterns<T: Ord + Clone, S: Sort>(
     _type_from_fn: impl Fn(&T) -> i32,
     pattern_fn: fn(usize) -> Vec<i32>,
 ) {
+    if !<S as Sort>::supports_type::<T>() {
+        return;
+    }
+
     if <S as Sort>::name().contains("unstable") {
         // It would be great to mark the test as skipped, but that isn't possible as of now.
         return;
@@ -712,6 +728,10 @@ gen_sort_test_fns_with_default_patterns!(
 );
 
 fn observable_is_less<S: Sort>(len: usize, pattern_fn: fn(usize) -> Vec<i32>) {
+    if !<S as Sort>::supports_sort_by() {
+        return;
+    }
+
     // This test, tests that every is_less is actually observable. Ie. this can go wrong if a hole
     // is created using temporary memory and, the whole is used as comparison but not copied back.
     //
@@ -753,6 +773,10 @@ fn panic_retain_orig_set<T: Ord + Clone, S: Sort>(
     type_from_fn: impl Fn(&T) -> i32,
     pattern_fn: fn(usize) -> Vec<i32>,
 ) {
+    if !<S as Sort>::supports_type::<T>() || !<S as Sort>::supports_sort_by() {
+        return;
+    }
+
     let mut test_data: Vec<T> = pattern_fn(len).into_iter().map(type_into_fn).collect();
 
     let sum_before: i64 = test_data.iter().map(|x| type_from_fn(x) as i64).sum();
@@ -793,6 +817,10 @@ fn panic_retain_orig_set<T: Ord + Clone, S: Sort>(
 gen_sort_test_fns_with_default_patterns_3_ty!(panic_retain_orig_set, panic_retain_orig_set, []);
 
 fn panic_observable_is_less<S: Sort>(len: usize, pattern_fn: fn(usize) -> Vec<i32>) {
+    if !<S as Sort>::supports_sort_by() {
+        return;
+    }
+
     // This test, tests that every is_less is actually observable. Ie. this can go wrong if a hole
     // is created using temporary memory and, the whole is used as comparison but not copied back.
     // This property must also hold if the user provided comparison panics.
@@ -859,6 +887,10 @@ fn deterministic<T: Ord + Clone + Debug, S: Sort>(
     type_from_fn: impl Fn(&T) -> i32,
     pattern_fn: fn(usize) -> Vec<i32>,
 ) {
+    if !<S as Sort>::supports_type::<T>() || !<S as Sort>::supports_sort_by() {
+        return;
+    }
+
     // A property similar to stability is deterministic output order. If the entire value is used as
     // the comparison key a lack of determinism has no effect. But if only a part of the value is
     // used as comparison key, a lack of determinism can manifest itself in the order of values
@@ -898,6 +930,10 @@ fn self_cmp<T: Ord + Clone + Debug, S: Sort>(
     _type_from_fn: impl Fn(&T) -> i32,
     pattern_fn: fn(usize) -> Vec<i32>,
 ) {
+    if !<S as Sort>::supports_type::<T>() || !<S as Sort>::supports_sort_by() {
+        return;
+    }
+
     // It's possible for comparisons to run into problems if the values of `a` and `b` passed into
     // the comparison function are the same reference. So this tests that they never are.
 
@@ -927,6 +963,10 @@ fn violate_ord_retain_orig_set<T: Ord, S: Sort>(
     type_from_fn: impl Fn(&T) -> i32,
     pattern_fn: fn(usize) -> Vec<i32>,
 ) {
+    if !<S as Sort>::supports_type::<T>() || !<S as Sort>::supports_sort_by() {
+        return;
+    }
+
     // A user may implement Ord incorrectly for a type or violate it by calling sort_by with a
     // comparison function that violates Ord with the orderings it returns. Even under such
     // circumstances the input must retain its original set of elements.

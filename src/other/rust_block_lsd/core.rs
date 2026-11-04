@@ -96,6 +96,14 @@ where
     // permutation tables and u8 bucket IDs cost about 9*n/b bytes. Their sum
     // is minimized at b = sqrt(9*n / (2*R*s)). Convert before multiplying to
     // avoid overflowing usize on large slices.
+    // Tuning of the block size policy below. Both are deviations from the
+    // reference implementation, which uses a fixed 512 records because it only
+    // ever sorts one record type. Ablation over the benchmark types found this
+    // policy faster than the fixed size at every length below ~4M records and
+    // equal above it, while the auxiliary space now follows sqrt(n).
+    const SQRT_SCALE: f64 = 4.0;
+    const BLOCK_BYTES_FLOOR: usize = 1024;
+
     let descriptor_bytes = 9.0 * arr.len() as f64;
     let scratch_bytes_per_element = 2.0 * range as f64 * record_bytes as f64;
     let balanced = (descriptor_bytes / scratch_bytes_per_element).sqrt();
@@ -103,12 +111,15 @@ where
     // of more scratch. The factor 4 is tuned for radix 8. A roughly 1 KiB floor
     // limits bookkeeping when the square-root optimum gives tiny blocks;
     // records larger than that still need at least one element per block.
-    let scaled = (4.0 * balanced).ceil() as usize;
-    let block_size = scaled.max(1024 / record_bytes).max(1);
+    let scaled = (SQRT_SCALE * balanced).ceil() as usize;
+    let block_size = scaled.max(BLOCK_BYTES_FLOOR / record_bytes).max(1);
     sort_with_block_size(arr, radix, block_size);
 }
 
-fn sort_with_block_size<T>(arr: &mut [T], radix: usize, block_size: usize)
+/// Sorts with an explicit block size. `sort` derives one from the input; the
+/// reference implementation uses a fixed 512. Exposed so tests and benchmarks can
+/// pin the configuration instead of guessing it from `n`.
+pub fn sort_with_block_size<T>(arr: &mut [T], radix: usize, block_size: usize)
 where
     T: Key,
 {
@@ -156,7 +167,10 @@ fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
     }
     // A full pre-scan adds work to wide random inputs. Stop after this prefix
     // if every key bit already varies; otherwise use one uninterrupted,
-    // vectorizable scan for sparse or skewed keys.
+    // vectorizable scan for sparse or skewed keys. The reference implementation
+    // has no such scan and always scatters every digit; this pass turns whole
+    // passes into no-ops on constant digits, and costs one early-exiting read
+    // of the first 1025 records otherwise.
     let boundary = arr.len().min(1025);
     for item in &arr[1..boundary] {
         let key = item.key();
@@ -348,34 +362,22 @@ impl<'a, T> Sorter<'a, T> {
         assert_eq!(total, self.blocks.input_len);
     }
 
+    /// One digit pass: scatter every record into its bucket, then rebuild the
+    /// block order from the order the buckets filled.
     fn step(&mut self, mask: SortKey<T>, shift: usize) -> Option<PanicPayload>
     where
         T: Key,
     {
-        let mut buckets: Vec<_> = (0..self.bucket_count)
-            .map(|_| BucketWriter::<T> {
-                next: ptr::null_mut(),
-                end: ptr::null_mut(),
-            })
-            .collect();
-        let mut counts = vec![1_usize; self.bucket_count];
-        for (i, bucket) in buckets.iter_mut().enumerate() {
-            let out = self.blocks.block_ptr(self.block_order[i] as usize);
-            // SAFETY: block_ptr() returns storage for block_size elements.
-            *bucket = BucketWriter {
-                next: out,
-                end: unsafe { out.add(self.blocks.block_size) },
-            };
-            self.bucket_ids[i] = i as u8;
-        }
+        let (mut buckets, mut counts) = self.begin_pass();
         let mut position = ScatterPosition {
             input: self.bucket_count,
             offset: 0,
             output: self.bucket_count,
         };
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let shift_bits = T::Value::from_usize(shift);
             self.scatter(&mut buckets, &mut counts, &mut position, |value| {
-                ((value.key() & mask) >> T::Value::from_usize(shift)).to_usize()
+                ((value.key() & mask) >> shift_bits).to_usize()
             });
         }))
         .err();
@@ -386,6 +388,32 @@ impl<'a, T> Sorter<'a, T> {
             self.scatter(&mut buckets, &mut counts, &mut position, |_| 0);
         }
         self.active_blocks_end = position.output;
+        self.finish_pass(&buckets, counts);
+        #[cfg(debug_assertions)]
+        self.validate();
+        panic
+    }
+
+    /// Reserve the first `bucket_count` free blocks, one per bucket, and give
+    /// every bucket an empty write cursor. Counts start at one because that
+    /// block is already assigned to the bucket.
+    fn begin_pass(&mut self) -> (Vec<BucketWriter<T>>, Vec<usize>) {
+        let mut buckets = Vec::with_capacity(self.bucket_count);
+        for i in 0..self.bucket_count {
+            let out = self.blocks.block_ptr(self.block_order[i] as usize);
+            // SAFETY: block_ptr() returns storage for block_size elements.
+            buckets.push(BucketWriter {
+                next: out,
+                end: unsafe { out.add(self.blocks.block_size) },
+            });
+            self.bucket_ids[i] = i as u8;
+        }
+        (buckets, vec![1; self.bucket_count])
+    }
+
+    /// Rebuild the logical block order from the order the buckets filled, and
+    /// record where each bucket's partially filled last block sits.
+    fn finish_pass(&mut self, buckets: &[BucketWriter<T>], counts: Vec<usize>) {
         // A separate starts Vec would allocate once per digit. Counts are dead
         // after scatter, so reuse their allocation for prefix offsets and then
         // advance those offsets while rebuilding the block order.
@@ -418,9 +446,6 @@ impl<'a, T> Sorter<'a, T> {
             .copy_from_slice(&self.block_order[self.active_blocks_end + self.bucket_count..]);
         self.active_blocks_end += self.bucket_count;
         std::mem::swap(&mut self.block_order, &mut self.next_block_order);
-        #[cfg(debug_assertions)]
-        self.validate();
-        panic
     }
 
     // Pass setup and block reordering need state that scatter does not.
@@ -449,7 +474,10 @@ impl<'a, T> Sorter<'a, T> {
                 // it may own a String, Box, Rc, or other non-Copy payload.
                 // This borrow ends before the bitwise move below.
                 let b = classify(unsafe { &*source.add(offset) });
-                let bucket = &mut buckets[b];
+                // SAFETY: bucket_count is 1 << radix and mask keeps the width
+                // bits below radix, so the index is in bounds; the check would
+                // otherwise run once per record in the hot loop.
+                let bucket = unsafe { buckets.get_unchecked_mut(b) };
                 let next = bucket.next;
                 let end = bucket.end;
                 // SAFETY: next is an unused cell of a reserved output block;
@@ -459,6 +487,11 @@ impl<'a, T> Sorter<'a, T> {
                     next.add(1)
                 };
                 bucket.next = next;
+                // Exact recovery offset. A panic can only come from the key
+                // extractor above, so the next unread record must be recorded
+                // before the move. That is one store per record the reference
+                // does not need; measured 3-4% on 8 byte records and kept
+                // because recovery must not duplicate or lose a record.
                 position.offset = offset + 1;
                 if next == end {
                     debug_assert!(position.output <= input);
@@ -474,6 +507,9 @@ impl<'a, T> Sorter<'a, T> {
                     position.output += 1;
                 }
             };
+            // Four records per bucket-cursor reload. Measured cheaper than one
+            // record at a time on 8 byte records; the size scaling keeps the
+            // reload amortization for wider records without spilling cursors.
             let group =
                 (4 * std::mem::size_of::<usize>() / std::mem::size_of::<T>().max(1)).clamp(1, 4);
             let complete = begin + (length - begin) / group * group;
