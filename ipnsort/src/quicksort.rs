@@ -123,7 +123,7 @@ where
 
     // Allows for panic-free code-gen by proving this property to the compiler.
     if pivot >= len {
-        intrinsics::abort();
+        std::process::abort();
     }
 
     // Place the pivot at the beginning of slice.

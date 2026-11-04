@@ -134,7 +134,7 @@ fn small_sort_general_with_scratch<T: Freeze, F: FnMut(&T, &T) -> bool>(
     }
 
     if scratch.len() < len + 16 {
-        intrinsics::abort();
+        std::process::abort();
     }
 
     let v_base = v.as_mut_ptr();
@@ -235,7 +235,7 @@ where
     }
 
     if len > SMALL_SORT_NETWORK_SCRATCH_LEN {
-        intrinsics::abort();
+        std::process::abort();
     }
 
     let mut stack_array = MaybeUninit::<[T; SMALL_SORT_NETWORK_SCRATCH_LEN]>::uninit();
@@ -332,7 +332,7 @@ where
 {
     // SAFETY: caller must ensure v.len() >= 9.
     if v.len() < 9 {
-        intrinsics::abort();
+        std::process::abort();
     }
 
     let v_base = v.as_mut_ptr();
@@ -378,7 +378,7 @@ where
 {
     // SAFETY: caller must ensure v.len() >= 13.
     if v.len() < 13 {
-        intrinsics::abort();
+        std::process::abort();
     }
 
     let v_base = v.as_mut_ptr();
@@ -489,7 +489,7 @@ pub fn insertion_sort_shift_left<T, F: FnMut(&T, &T) -> bool>(
 ) {
     let len = v.len();
     if offset == 0 || offset > len {
-        intrinsics::abort();
+        std::process::abort();
     }
 
     // SAFETY: see individual comments.

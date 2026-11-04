@@ -1,4 +1,3 @@
-use core::intrinsics;
 
 // Recursively select a pseudomedian if above this threshold.
 const PSEUDO_MEDIAN_REC_THRESHOLD: usize = 64;
@@ -14,7 +13,7 @@ pub fn choose_pivot<T, F: FnMut(&T, &T) -> bool>(v: &[T], is_less: &mut F) -> us
 
     let len = v.len();
     if len < 8 {
-        intrinsics::abort();
+        std::process::abort();
     }
 
     // SAFETY: a, b, c point to initialized regions of len_div_8 elements,
