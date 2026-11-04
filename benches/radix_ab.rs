@@ -348,6 +348,11 @@ macro_rules! radix_variants {
             // The tile budget and the leaf crossovers are swept from here while
             // tuning; they cost a build matrix, so they stay opt-in.
             if std::env::var_os("RADIX_AB_LEAVES").is_some() {
+                v.push(("tile_16k", tessera_tile::<16384, $ty>));
+                v.push(("tile_24k", tessera_tile::<24576, $ty>));
+                v.push(("tile_32k", tessera_tile::<32768, $ty>));
+                v.push(("tile_48k", tessera_tile::<49152, $ty>));
+                v.push(("tile_96k", tessera_tile::<98304, $ty>));
                 v.push(("tessera_256k", tessera_tile::<262144, $ty>));
                 v.push(("leaf_count_only", tessera_leaf::<0, 0, $ty>));
                 v.push(("leaf_ins48", tessera_leaf::<0, 48, $ty>));

@@ -1,18 +1,31 @@
 //! Tessera: a stable radix sort that tiles the input.
 //!
 //! Successor of the "PA" experiments. The top of the recursion partitions by the
-//! most significant varying digit with the block-permutation engine from
-//! [`rust_block_lsd`](crate::other::rust_block_lsd); every child that fits the tile
-//! budget is finished with an ordinary LSD counting pass over a private buffer.
-//! The block engine keeps the auxiliary space at the same O(sqrt(n)) as block
-//! LSD, and the LSD leaves run entirely inside a cache tile.
+//! most significant bits that still differ, using the block-permutation engine
+//! from [`rust_block_lsd`](crate::other::rust_block_lsd); every child that fits
+//! the tile budget is finished with stable counting passes over a private
+//! buffer. The block engine keeps the auxiliary space at the same O(sqrt(n)) as
+//! block LSD, and the leaves run inside a cache tile whose size is a constant.
 //!
-//! Why this shape: at n = 1M, an 8-bit LSD pass costs about 5.5 ns per record
-//! because every pass streams the whole array through memory. After one MSD
-//! split at 256 buckets the children are ~31 KiB, so their remaining seven
-//! passes stay in L1/L2 and cost roughly a quarter as much together as one cold
-//! pass. Skewed inputs are handled by the per-node variation filter: a child in
-//! which a digit is constant does not pay for that digit at all.
+//! Why this shape: an LSD pass streams the whole array once per digit, so at
+//! n = 1M a u64 pays eight cold passes of ~5 ns per record. After one split the
+//! children are ~31 KiB; the remaining passes over a child stay in L1/L2 and
+//! cost a third as much each, which is why this sort improves with n where
+//! block LSD degrades.
+//!
+//! Three decisions use measured costs instead of thresholds:
+//!
+//! - **Split or stream**: compare streaming the node cold against the split plus
+//!   its cache-resident passes (`split_pays`).
+//! - **Leaf digit width**: wider digits mean fewer passes but a bigger bucket
+//!   table, so the width follows the tile size (`leaf_radix`).
+//! - **How a leaf finishes**: counting passes, a merge sort or an insertion
+//!   sort, whichever is cheapest at that size.
+//!
+//! Constant bits are dropped everywhere (`plan_digits`), including in the
+//! split's fan-out: a digit that cannot divide the data would otherwise buy 256
+//! empty buckets, and a node whose keys differ only in their low byte pays one
+//! pass instead of `key width / digit width`.
 
 use std::mem::MaybeUninit;
 
@@ -26,7 +39,9 @@ type SortKey<T> = <T as Key>::Value;
 const RADIX: usize = 8;
 /// Widest digit a cache-resident leaf may use. Wider digits mean fewer passes
 /// over the tile, which is the whole cost there; the price is a bucket table of
-/// `8 << LEAF_RADIX_MAX` bytes that has to fit next to the tile in L1.
+/// `4 << LEAF_RADIX_MAX` bytes (8 KiB here) that has to fit next to the tile in
+/// L1. Past this width the table costs more than the pass it removes: 12 bits
+/// measured 1-2 % worse than 11 on 128-bit keys and made no difference on 64.
 const LEAF_RADIX_MAX: usize = 11;
 /// Largest tile finished with LSD passes, in bytes of record data.
 const TILE_BYTES: usize = 64 * 1024;
@@ -41,8 +56,8 @@ const MERGE_MAX: usize = 384;
 /// through an inner associated constant here.
 const MAX_BUCKETS: usize = 1 << LEAF_RADIX_MAX;
 
-/// One digit of the converted key, highest digit first in a [`Plan`].
-#[derive(Clone, Copy, Debug)]
+/// One pass worth of key bits: `width` bits starting at `shift`.
+#[derive(Clone, Copy)]
 struct Digit {
     shift: usize,
     width: usize,
@@ -53,14 +68,10 @@ impl Digit {
     fn mask<T: Key>(self) -> SortKey<T> {
         (T::Value::from_usize((1usize << self.width) - 1)) << T::Value::from_usize(self.shift)
     }
-
 }
 
-/// The passes one node will actually run, highest digit first.
-///
-/// A fixed inline array keeps recursion free of per-node allocation. The slot
-/// count must cover the narrowest leaf digit over the widest key: 128 bits at
-/// six bits per digit.
+/// Slots needed for the pass list: the narrowest leaf digit over the widest key
+/// is 128 bits at six bits per pass.
 const PLAN_DIGITS: usize = 24;
 
 /// The bits that can still differ inside one node: every bit set in some key,
@@ -196,6 +207,10 @@ pub fn sort_with_policy<T: Key>(
 /// term takes over: the per-record work (key, bucket, cursor, store) has a floor
 /// of 2.5 ns, and wide records add their traffic at the L1 write rate. Measured
 /// on cache-resident tiles: 2.3 ns per 4-byte record, 2.6 ns per 8-byte record.
+/// `llvm-mca` on the scatter loop puts its ideal throughput at 2.0 cycles per
+/// record, so a tile pass running at ~6 cycles per record is memory bound rather
+/// than store bound; the floor is what the model needs, not what the hardware
+/// can achieve.
 const HOT_NS_PER_RECORD: f64 = 2.5;
 const HOT_BYTES_PER_NS: f64 = 3.0;
 
