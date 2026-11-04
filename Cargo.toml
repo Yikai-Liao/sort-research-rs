@@ -219,7 +219,12 @@ rust_wpwoodjr = []
 # Enable the vendored single-threaded stable block LSD radix sort, see
 # src/other/rust_block_lsd/README.md.
 rust_block_lsd = []
-rust_tessera_radix = []
+# Stable tiled radix sort. It shares the key contract and the block-distribution
+# engine with block LSD, so that feature comes with it.
+rust_tessera_radix = ["rust_block_lsd"]
+# Ordinary unstable MSD radix sort: the speed reference of the radix family,
+# not a candidate for the stable lineup.
+rust_msd_radix = ["rust_block_lsd"]
 
 # Enable radsort. Radix sort used by bevy.
 # No additional requirements, but disabled by default to keep things lean.

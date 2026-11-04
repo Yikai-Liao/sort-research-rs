@@ -239,6 +239,7 @@ def build_implementation_meta_info():
         "cpp_vqsort": (palette[6], "square", "solid"),
 
         "rust_block_lsd_stable_radix": (palette[2], "hex", "solid"),
+        "rust_tessera_stable_radix": (palette[3], "hex", "solid"),
         "rust_crumsort_rs_unstable": (palette[6], "square", "solid"),
         "rust_driftsort_stable": (palette[7], "square", "solid"),
         "rust_glidesort_stable": (palette[3], "triangle", "solid"),

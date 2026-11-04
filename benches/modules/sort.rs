@@ -218,6 +218,11 @@ pub fn bench<T: Ord + std::fmt::Debug>(
         bench_inst!(other::rust_block_lsd);
     }
 
+    #[cfg(feature = "rust_tessera_radix")]
+    if other::rust_tessera_radix::supports_type::<T>() {
+        bench_inst!(other::rust_tessera_radix);
+    }
+
     #[cfg(feature = "rust_radsort")]
     bench_inst!(other::rust_radsort);
 

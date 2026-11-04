@@ -82,7 +82,13 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
 
 /// Full-range keys: mixes both 32-bit halves so every bit position varies.
 fn wide_keys(pattern: &str, len: usize) -> Vec<i32> {
-    let v = base_keys(pattern, len);
+    // "random_wide" is the full-width flavour of the plain random pattern; the
+    // named distributions keep their shape and are widened by the type mapping.
+    let v = if pattern == "random_wide" {
+        patterns::random(len)
+    } else {
+        base_keys(pattern, len)
+    };
     v.into_iter()
         .enumerate()
         .map(|(i, x)| {
@@ -159,6 +165,44 @@ impl sort_research_rs::other::radix_support::Key for Record16 {
     fn key(&self) -> u64 {
         self.key
     }
+}
+
+/// A 128-byte record that sorts by its leading u64, like the repository's
+/// u64_128b benchmark type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
+struct Record128 {
+    key: u64,
+    _padding: [u8; 120],
+}
+
+impl Ord for Record128 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key.cmp(&other.key)
+    }
+}
+impl PartialOrd for Record128 {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl sort_research_rs::other::radix_support::Key for Record128 {
+    type Value = u64;
+    fn key(&self) -> u64 {
+        self.key
+    }
+}
+
+fn keys_record128(pattern: &str, len: usize) -> Vec<Record128> {
+    let f = if pattern == "random_wide" { wide_u64 } else { narrow_u64 };
+    base_keys(pattern, len)
+        .into_iter()
+        .map(|x| Record128 {
+            key: f(x),
+            _padding: [0; 120],
+        })
+        .collect()
 }
 
 fn keys_record16(pattern: &str, len: usize) -> Vec<Record16> {
@@ -274,6 +318,11 @@ fn tessera_tile<const BYTES: usize, T: sort_research_rs::other::radix_support::K
     sort_research_rs::other::rust_tessera_radix::sort_with_tile_bytes(s, BYTES);
 }
 
+#[cfg(feature = "rust_msd_radix")]
+fn msd_radix<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
+    sort_research_rs::other::rust_msd_radix::sort(s);
+}
+
 macro_rules! radix_variants {
     ($ty:ty) => {{
         #[allow(unused_mut)]
@@ -288,9 +337,11 @@ macro_rules! radix_variants {
             v.push(("tessera", |s: &mut [$ty]| {
                 sort_research_rs::other::rust_tessera_radix::sort(s)
             }));
-            v.push(("tessera_32k", tessera_tile::<32768, $ty>));
             v.push(("tessera_256k", tessera_tile::<262144, $ty>));
-            v.push(("tessera_1m", tessera_tile::<1048576, $ty>));
+        }
+        #[cfg(feature = "rust_msd_radix")]
+        {
+            v.push(("msd_radix", msd_radix::<$ty>));
         }
         v
     }};
@@ -312,6 +363,7 @@ fn main() {
                     "u64" => dispatch!(u64, keys_u64, "u64"),
                     "u128" => dispatch!(u128, keys_u128, "u128"),
                     "record16" => dispatch!(Record16, keys_record16, "record16"),
+                    "record128" => dispatch!(Record128, keys_record128, "record128"),
                     other => panic!("unknown type {other}"),
                 }
             }

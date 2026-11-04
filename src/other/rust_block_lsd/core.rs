@@ -221,6 +221,22 @@ pub(crate) fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
     (union, intersection)
 }
 
+/// Branch hint for a condition that is almost never true, without a nightly
+/// feature. The cold marker tells the optimiser to keep this path out of line,
+/// so the hot loop falls through on the common case instead of taking a jump
+/// over the rare one. Same shape as the `branches` crate.
+#[cold]
+#[inline(never)]
+fn cold_path() {}
+
+#[inline]
+fn unlikely(condition: bool) -> bool {
+    if condition {
+        cold_path();
+    }
+    condition
+}
+
 #[derive(Clone, Copy)]
 struct PartialBlock {
     order_index: usize,
@@ -532,7 +548,7 @@ impl<'a, T> Sorter<'a, T> {
                 if const { core::mem::needs_drop::<T>() } {
                     position.offset = offset + 1;
                 }
-                if next == end {
+                if unlikely(next == end) {
                     debug_assert!(position.output <= input);
                     let out = self
                         .blocks
