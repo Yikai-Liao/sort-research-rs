@@ -327,39 +327,40 @@ Distribution matrix at n = 1M (`logs/calib6.log`):
 
 | type | pattern | tessera | block LSD | ratio | ipnsort | std stable |
 | --- | --- | --- | --- | --- | --- | --- |
-| u64 | random | 23.7 | 47.4 | 2.00x | 26.8 | 45.1 |
-| u64 | zipf20 | 13.8 | 31.9 | 2.30x | 4.9 | 11.4 |
-| u64 | 99 % sorted, 1 % displaced | 24.9 | 40.8 | 1.64x | 25.0 | 36.9 |
-| u64 | 95 % sorted, 5 % displaced | 26.7 | 45.5 | 1.71x | 24.8 | 36.4 |
-| u64 | sparse (8 values) | 6.6 | 34.2 | 5.17x | 6.3 | 12.6 |
-| u64 | 8 narrow bands | 23.5 | 43.7 | 1.86x | 27.5 | 44.4 |
-| u64 | ascending | 2.9 | 37.2 | 12.73x | 1.1 | — |
-| u64 | descending | 6.0 | 40.3 | 6.71x | 1.8 | 1.7 |
-| u64 | 95 % reverse sorted | 25.9 | 42.8 | 1.65x | 27.1 | 18.3 |
-| u128 | random | 78.8 | 165.0 | 2.09x | 47.0 | 75.8 |
-| u128 | zipf20 | 23.5 (2.4x) | 23.1 | 1.00x | 9.7 | 32.8 |
-| u128 | 99 % sorted, 1 % displaced | 24.4 | 33.5 | 1.37x | 39.0 | 61.0 |
-| u128 | 95 % sorted, 5 % displaced | 24.4 | 32.1 | 1.32x | 40.0 | 58.5 |
-| u128 | sparse (8 values) | 16.0 | 31.4 | 1.96x | 12.1 | 30.2 |
-| u128 | 8 narrow bands | 31.3 | 31.4 | 1.00x | 47.0 | 75.8 |
-| u128 | ascending | 6.5 | 30.9 | 4.75x | 2.8 | 2.7 |
-| u128 | descending | 13.2 | 36.9 | 2.79x | 4.8 | 4.6 |
-| u128 | 95 % reverse sorted | 24.6 | 34.7 | 1.41x | 48.7 | 30.5 |
-| u32 | random | 13.7 | 12.7 | 0.92x | 24.0 | 38.9 |
-| u32 | zipf20 | 8.4 | 9.0 | 1.07x | 3.4 | 5.6 |
-| u32 | 99 % sorted, 1 % displaced | 10.2 | 9.8 | 0.96x | 21.2 | 29.9 |
-| u32 | 95 % sorted, 5 % displaced | 8.5 | 9.0 | 1.06x | 21.3 | 28.7 |
-| u32 | 8 narrow bands | 10.2 | 11.7 | 1.14x | 25.5 | 40.5 |
-| u32 | sparse (8 values) | 11.0 | 10.8 | 0.98x | 4.0 | 6.2 |
-| u32 | ascending | 2.0 | 9.7 | 4.80x | — | 1.0 |
-| u32 | descending | 4.3 | 9.1 | 2.10x | 1.1 | — |
+| u64 | random | 23.3 | 33.4 | 1.43x | 24.1 | 42.0 |
+| u64 | zipf20 | 12.1 | 26.9 | 2.22x | 4.9 | 11.4 |
+| u64 | 99 % sorted, 1 % displaced | 23.9 | 37.3 | 1.56x | 23.2 | 32.5 |
+| u64 | 95 % sorted, 5 % displaced | 23.2 | 39.9 | 1.72x | 24.4 | 33.2 |
+| u64 | sparse (8 values) | 5.5 | 27.2 | 4.93x | 4.7 | 13.6 |
+| u64 | 8 narrow bands | 20.2 | 35.7 | 1.77x | 25.4 | 39.2 |
+| u64 | ascending | 2.8 | 36.1 | 12.84x | 1.2 | 1.3 |
+| u64 | descending | 5.5 | 32.3 | 5.91x | 1.7 | 1.9 |
+| u64 | 95 % reverse sorted | 22.1 | 35.2 | 1.59x | 25.8 | 17.9 |
+| u128 | random | 76.7 | 147.5 | 1.92x | 46.8 | 75.3 |
+| u128 | zipf20 | 21.6 | 23.1 | 1.07x | 9.1 | 27.0 |
+| u128 | 99 % sorted, 1 % displaced | 24.1 | 31.7 | 1.32x | 37.1 | 59.1 |
+| u128 | 95 % sorted, 5 % displaced | 23.2 | 28.9 | 1.25x | 39.3 | 57.7 |
+| u128 | sparse (8 values) | 15.7 | 30.4 | 1.94x | 10.9 | 31.6 |
+| u128 | 8 narrow bands | 29.3 | 28.2 | 0.96x | 43.8 | 72.4 |
+| u128 | ascending | 7.0 | 35.5 | 5.06x | 3.1 | 3.1 |
+| u128 | descending | 11.6 | 33.2 | 2.86x | 4.5 | 4.6 |
+| u128 | 95 % reverse sorted | 23.8 | 30.1 | 1.27x | 43.1 | 29.3 |
+| u32 | random | 10.0 | 10.1 | 1.01x | 23.9 | 32.5 |
+| u32 | zipf20 | 8.7 | 7.8 | 0.90x | 3.1 | 5.2 |
+| u32 | 99 % sorted, 1 % displaced | 8.0 | 7.6 | 0.96x | 20.4 | 22.7 |
+| u32 | 95 % sorted, 5 % displaced | 7.6 | 8.0 | 1.05x | 21.1 | 23.0 |
+| u32 | 8 narrow bands | 7.7 | 7.4 | 0.96x | 23.6 | 30.8 |
+| u32 | sparse (8 values) | 10.1 | 9.7 | 0.95x | 3.9 | 5.1 |
+| u32 | ascending | 2.4 | 8.7 | 3.72x | — | — |
+| u32 | descending | 4.4 | 7.7 | 1.73x | — | — |
 
 The u32 rows sit at parity because a 4 MiB node never splits: the model prices a
 split's read pass at more than the four cold passes it would avoid, and the
-remaining difference is the probe plus noise (the same cell reads 9.7-13.7
-between runs on this VM). The u128 zipf and narrow-band rows are likewise
-parity: both routes are the same three passing block engine, and the model
-correctly refuses to split a digit that puts 99 % of the records in one bucket.
+remaining difference is the probe plus noise — the same u32 cell reads anywhere
+from 0.90x to 1.12x between runs on this VM, so only the ordered rows there are
+outside the noise floor. The u128 narrow-band row is the same story: both routes
+are the same three-passing block engine and the model correctly refuses to split
+a digit that puts 99 % of the records in one bucket.
 
 Scaling with size, uniform random (§logs/matrix5.log§, §logs/matrix4.log§):
 
