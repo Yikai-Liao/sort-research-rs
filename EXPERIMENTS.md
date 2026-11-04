@@ -283,6 +283,17 @@ split's last pass lands in a different 40 KiB region; the page and TLB pressure
 costs more than the L1-resident leaves save. Reverted, with the numbers in the
 comment so it is not retried blind.
 
+### 16. Negative result: a leaf buffer bigger than the tile
+
+The split target and the buffer limit are different questions, so the leaf buffer
+was allowed to grow to 512 KiB while the split still targeted 64 KiB. The only
+nodes it changes are 64-512 KiB ones — the 312 KiB children of a 10M split. There
+the gain is 33.1 → 32.7 ns (u64 10M, and the unchanged baseline moved 62.6 → 67.7
+between the two halves of the same A/B), i.e. inside noise; a claimed 4 % at u128
+1M turned out to be cells the change cannot reach. Against that, the buffer would
+be O(array) for every array between 64 KiB and 512 KiB, which contradicts the
+space story for exactly the sizes a caller is most likely to have. Reverted.
+
 ### 15. Measurement hygiene: background jobs and a single fast round
 
 Two runs disagreed by 6x on one cell, and a whole sweep was 30-60 % slow. The
@@ -336,24 +347,33 @@ correctly refuses to split a digit that puts 99 % of the records in one bucket.
 
 Scaling with size, uniform random (§logs/matrix5.log§, §logs/matrix4.log§):
 
-| type, n | tessera | block LSD | ipnsort | std stable |
-| --- | --- | --- | --- | --- |
-| u32 100k | 11.2 | 11.2 | 19.0 | 25.7 |
-| u32 1M | 9.8 | 12.0 | 23.0 | 31.1 |
-| u32 10M | 16.6 | 15.8 | 26.3 | 43.6 |
-| u64 100k | 22.4 | 25.8 | 20.7 | 30.3 |
-| u64 1M | 23.9 | 39.1 | 27.3 | 42.5 |
-| u64 10M | 32.0 | 57.9 | 32.8 | 59.4 |
-| u128 100k | 69.3 | 77.7 | 34.7 | 50.5 |
-| u128 1M | 81.0 | 194.2 | 47.3 | 80.5 |
-| u128 10M | 87.7 | >1000 | 59.1 | — |
-| record128 1M | 231 | 446 | 190 | 574 |
+| type, pattern, n | tessera | block LSD | ratio | ipnsort | std stable |
+| --- | --- | --- | --- | --- | --- |
+| u32 random 100k | 9.5 | 10.8 | 1.13x | 18.8 | 29.3 |
+| u32 random 1M | 11.1 | 10.2 | 0.92x | 22.4 | 35.7 |
+| u32 random 10M | 20.3 | 21.7 | 1.07x | 27.7 | 47.7 |
+| u64 random 100k | 20.7 | 24.8 | 1.19x | 20.6 | 31.5 |
+| u64 random 1M | 23.6 | 42.1 | 1.79x | 24.4 | 41.2 |
+| u64 random 10M | 32.7 | 63.7 | 1.95x | 32.8 | 64.4 |
+| u128 random 100k | 65.5 | 73.3 | 1.12x | 32.8 | 49.3 |
+| u128 random 1M | 77.5 | 178.9 | 2.31x | 45.1 | 72.2 |
+| u128 random 10M | 92.4 | 192.9 | 2.09x | 59.7 | 112.2 |
+| u64 zipf20 100k | 17.9 | 17.8 | 0.99x | 3.1 | 5.3 |
+| u64 zipf20 1M | 11.2 | 25.7 | 2.30x | 4.4 | 9.7 |
+| u64 zipf20 10M | 17.6 | 30.0 | 1.71x | 6.4 | 22.2 |
+| u128 zipf20 100k | 11.1 | 9.3 | 0.84x | 5.1 | 13.4 |
+| u128 zipf20 1M | 20.3 | 23.8 | 1.17x | 8.2 | 29.4 |
+| u128 zipf20 10M | 22.9 | 22.8 | 1.00x | 12.0 | 43.9 |
+| record128 1M | 231 | 446 | 1.93x | 190 | 574 |
 
 The gap over the baseline grows with n, which is the point of the design: the
-larger the node, the more a cold pass costs and the more the tiled split saves.
-At 100k the array is already close to cache-resident and the two routes converge.
-The one row that loses to the baseline is u32 10M (16.6 vs 15.8, inside noise):
-a 40 MiB node of 32-bit keys has only four cold passes left to save.
+larger the node, the more a cold pass costs and the more the tiled split saves —
+1.1-1.2x at 100k, where both routes are already close to cache resident, up to
+2.3x at 1M and 2.1x at 10M for 16-byte keys. The rows that do not win are the
+cells where the model declines to split (u32 at 1M, u128 zipf, u128 100k) and the
+work is the same block-engine pass the baseline runs, so the difference is the
+probe plus noise (u128 zipf 100k reads 0.84x here and 1.14x on the 1M cell of the
+same shape, i.e. it is the noise floor of a 1.5 ms cell, not a cost).
 
 All sixteen pattern × type × size families are in `logs/matrix5.log`; the
 summary of that sweep:
