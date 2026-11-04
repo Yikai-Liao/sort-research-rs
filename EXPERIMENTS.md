@@ -283,6 +283,22 @@ split's last pass lands in a different 40 KiB region; the page and TLB pressure
 costs more than the L1-resident leaves save. Reverted, with the numbers in the
 comment so it is not retried blind.
 
+### 17. The streamed fallback, out of line
+
+The routing model's "do not split" branch runs the block engine, which is a large
+function. Marking it `#[cold] #[inline(never)]` keeps the split path's code
+together and moves the rare branch out of the instruction cache. Measured at 1M:
+u32 random 0.92x → 1.12x against the same baseline, u128 zipf 0.98x → 1.04x, and
+no change at 10M where every child of a split also goes through it.
+
+A side observation from the same table: for u32 zipf the *baseline itself* is 24 %
+faster at radix 11 than at radix 8 (5.74 vs 7.52 ms), because a digit with only a
+few occupied buckets needs three passes instead of four and its per-block prefix
+sums stay small. On dense keys the same change is 2x worse (23.2 vs 11.6 ms).
+Choosing the streamed radix from the variation is therefore possible, but the
+crossover is sharp and the gain is confined to sparse-digit cells; recorded in
+the backlog rather than guessed at.
+
 ### 16. Negative result: a leaf buffer bigger than the tile
 
 The split target and the buffer limit are different questions, so the leaf buffer

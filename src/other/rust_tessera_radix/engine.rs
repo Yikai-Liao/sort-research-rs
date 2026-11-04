@@ -517,6 +517,24 @@ fn reverse_stably<T: Key>(arr: &mut [T]) {
     }
 }
 
+/// Streams one node through the block engine's cold passes.
+///
+/// Out of line and marked cold: this is the branch the routing model expects to
+/// take least often on large inputs, and keeping it out of line leaves the split
+/// path's code in one piece for the instruction cache.
+#[cold]
+#[inline(never)]
+fn stream_node<T: Key>(arr: &mut [T], variation: Variation<T>) {
+    let block_size = block::default_block_size(arr.len(), std::mem::size_of::<T>(), RADIX);
+    block::sort_with_variation(
+        arr,
+        RADIX,
+        block_size,
+        variation.union,
+        variation.intersection,
+    );
+}
+
 /// Stable insertion sort on converted keys.
 fn insertion_leaf<T: Key>(arr: &mut [T]) {
     for i in 1..arr.len() {
@@ -659,14 +677,7 @@ impl<T: Key> Context<T> {
             // Splitting would cost more than the passes it replaces. Finish the
             // node with the block engine's LSD pass, which needs no buffer the
             // size of the node. It gets the variation scan already done here.
-            let block_size = block::default_block_size(arr.len(), std::mem::size_of::<T>(), RADIX);
-            block::sort_with_variation(
-                arr,
-                RADIX,
-                block_size,
-                variation.union,
-                variation.intersection,
-            );
+            stream_node(arr, variation);
             return;
         }
         // MSD split: one stable block-permutation pass over the whole node.

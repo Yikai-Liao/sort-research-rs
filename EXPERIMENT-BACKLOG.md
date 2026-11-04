@@ -19,7 +19,8 @@ Status legend: **open** (not tried), **running** (code exists, measuring),
 | 8 | Second-level split for the 300 KiB children at 10M | ~1 ns/record | The model streams them; measured both routes are within 1 ns. Revisit with idea 1, which changes the split's cost. |
 | 9 | Natural-run detection in the merge leaf (galloping / skip already-ordered pairs) | helps 95 %-sorted tiles | `merge_runs` already skips a pair whose runs meet in order; a full run stack would be a different algorithm inside the leaf. Only matters for tiles ≤ 384 records. |
 | 10 | Sorting-network leaf below the insertion crossover | tiny | The repository has `sort4_stable_orson`; insertion at ≤ 48 records is 0.5-1 % of a 1M sort. |
-| 11 | `#[cold]` on the block-LSD fallback call | tiny | Free; do it if touching that code. |
+| 11 | ~~`#[cold]` on the block-LSD fallback call~~ | **done** | Out of line: u32 random 1M 0.92x → 1.12x, u128 zipf 0.98x → 1.04x, nothing at 10M. (EXPERIMENTS.md 17) |
+| 13 | Choose the *streamed* radix from the variation: 11 bits when a digit's buckets are sparse (a few occupied buckets, one pass less), 8 bits when they are dense | +24 % on u32 zipf, 0 elsewhere | Measured baseline: radix 11 is 24 % faster on u32 zipf (5.74 vs 7.52 ms) and 2x slower on u32 random (23.2 vs 11.6). The gate would be "varying bits ≤ radix", but the block engine's wide-radix cost also depends on its block size, so this needs its own sweep. |
 | 12 | Detect "few distinct values" and sort their *equivalence classes* instead of their bits | large on 8-distinct rows | 8 distinct u128 values need 3 windows because they have 31 varying bits; a comparison sort needs 8 comparisons. Detecting the class count in one pass costs a table; the payoff is real only when the count is tiny, and the detection is exactly the hard part. |
 
 ## Done
