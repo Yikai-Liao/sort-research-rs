@@ -320,6 +320,17 @@ produced with `taskset` pinning, 5-7 interleaved rounds, the median printed next
 to the minimum, and `uptime` checked before the run. Cells the text reports as
 "parity" are within the ±8 % noise floor of this shared VM.
 
+### 18. Negative result: prefetching the scatter's store target
+
+The scatter's store address is known four records early, so the natural next step
+was `prefetch_write_data` on that line (architecture-generic, LLVM lowers it, and
+the crate already has the intrinsic enabled). It cost 25-36 %: u64 1M 24.1 → 29.6,
+u128 1M 76.7 → 103.3, u128 10M 89.3 → 121.5, u32 1M 11.4 → 12.7. The look-ahead
+needs a second key read and a second cursor read-modify-write per record, in a
+loop that is already store-port bound — the same reason fusing the next pass's
+histogram failed (entry 4). Reverted. The slack is in the store port, not in
+address latency, so the lever is fewer passes, not a better pass.
+
 ## Where the candidate stands
 
 ns per record, one root each, pinned, min of 5 interleaved rounds.
@@ -381,7 +392,12 @@ Scaling with size, uniform random (§logs/matrix5.log§, §logs/matrix4.log§):
 | u128 zipf20 100k | 11.1 | 9.3 | 0.84x | 5.1 | 13.4 |
 | u128 zipf20 1M | 20.3 | 23.8 | 1.17x | 8.2 | 29.4 |
 | u128 zipf20 10M | 22.9 | 22.8 | 1.00x | 12.0 | 43.9 |
-| record128 1M | 231 | 446 | 1.93x | 190 | 574 |
+| record16 random 1M | 33.2 | 67.0 | 2.02x | 42.1 | 72.1 |
+| record16 zipf20 1M | 18.6 | 37.7 | 2.03x | 7.5 | 23.0 |
+| record16 ascending 1M | 5.3 | 58.4 | 11.1x | 2.4 | 2.4 |
+| record128 random 1M | 232 | 438 | 1.89x | 181 | 566 |
+| record128 zipf20 1M | 161 | 291 | 1.81x | 50 | 288 |
+| record128 ascending 1M | 35.3 | 417 | 11.8x | 12.6 | 14.2 |
 
 The gap over the baseline grows with n, which is the point of the design: the
 larger the node, the more a cold pass costs and the more the tiled split saves —
@@ -418,7 +434,14 @@ summary of that sweep:
   still beats the stable baseline there (16.0 vs 31.4) because narrowing drops the
   97 constant bits.
 - Ordered input used to be the worst row (LSD cannot see order) and is now the
-  best: 2.9 ns on ascending u64, 12.7x over the baseline.
+  best: 2.8 ns on ascending u64, 12.8x over the baseline.
+- Wide records are the other side of the same coin. A 16-byte record with a
+  u64 key is ahead of `ipnsort` (33.2 vs 42.1, and 2x over the stable baseline),
+  because 16 bytes per pass is still cheap. At 128 bytes a pass moves eight times
+  more data than the key needs, and `ipnsort` wins (232 vs 181): it compares keys
+  and partitions by index, moving the payload only in the final permutation. The
+  stable baseline is 1.9x behind us there, so the loss is to the unstable
+  in-place sort, not to the previous implementation.
 
 ### Noise floor
 
@@ -464,7 +487,10 @@ records cost 800 bytes rather than half a megabyte.
   duplicates, skew, all-equal, empty/single).
 - `cargo test --release --features rust_tessera_radix --test tessera_functionality`
   — the repository's standard 233-case suite, same one block LSD runs.
-- `cargo miri test ... --lib engine::tests::duplicates` — no UB reported.
+- `cargo +nightly miri test --features rust_tessera_radix --lib -- duplicates_stay_stable`
+  — no UB reported (the test drives the raw-pointer kernel, the `u16` cursors and
+  the packed windows over a four-value key space, so it covers every unsafe block
+  in the leaf).
 - `RUSTFLAGS=-Zsanitizer=address cargo test -Zbuild-std ...` — see logs/asan.log.
 
 ## Reproduce
