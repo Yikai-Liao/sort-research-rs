@@ -108,6 +108,7 @@ default = [
     # "rust_std_vendored",
     # "rust_wpwoodjr",
     # "rust_radsort",
+    # "rust_block_lsd",
     # "rust_dmsort",
     # "rust_glidesort",
     # "rust_driftsort",
@@ -209,6 +210,10 @@ rust_std_vendored = []
 # Enable rust_wpwoodjr sort.
 # No additional requirements, but disabled by default to keep things lean.
 rust_wpwoodjr = []
+
+# Enable the vendored single-threaded stable block LSD radix sort, see
+# src/other/rust_block_lsd/README.md.
+rust_block_lsd = []
 
 # Enable radsort. Radix sort used by bevy.
 # No additional requirements, but disabled by default to keep things lean.

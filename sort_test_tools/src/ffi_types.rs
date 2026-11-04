@@ -118,6 +118,12 @@ impl FFIOneKibiByte {
     }
 
     fn as_i64(&self) -> i64 {
+        self.sort_key()
+    }
+
+    /// The value `Ord` compares; lets radix adapters reuse the same ordering.
+    #[inline]
+    pub fn sort_key(&self) -> i64 {
         self.values[11] + self.values[55] + self.values[77]
     }
 }
@@ -143,6 +149,12 @@ pub struct F128 {
 }
 
 impl F128 {
+    /// The quotient `Ord` compares; radix adapters must preserve this ordering.
+    #[inline]
+    pub fn sort_key(&self) -> f64 {
+        self.x / self.y
+    }
+
     pub fn new(val: i32) -> Self {
         let val_f = (val as f64) + (i32::MAX as f64) + 10.0;
 
@@ -171,8 +183,8 @@ impl PartialOrd for F128 {
 impl Ord for F128 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // Simulate expensive comparison function.
-        let this_div = self.x / self.y;
-        let other_div = other.x / other.y;
+        let this_div = self.sort_key();
+        let other_div = other.sort_key();
 
         // SAFETY: We checked in the ctor that both are normal.
         unsafe { this_div.partial_cmp(&other_div).unwrap_unchecked() }

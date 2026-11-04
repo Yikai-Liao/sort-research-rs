@@ -1,4 +1,3 @@
-
 // Recursively select a pseudomedian if above this threshold.
 const PSEUDO_MEDIAN_REC_THRESHOLD: usize = 64;
 

@@ -18,6 +18,21 @@ mod modules;
 
 use crate::modules::bench_len_type_pattern_combo;
 
+// These wrappers retain their original non-Copy properties for every sort.
+// Radix adapters borrow the authoritative key and move the complete record.
+#[allow(unused_macros)]
+macro_rules! radix_key {
+    ($source:ty, $value:ty, $get:expr) => {
+        #[cfg(feature = "rust_block_lsd")]
+        impl sort_research_rs::other::radix_support::Key for $source {
+            type Value = $value;
+            fn key(&self) -> Self::Value {
+                ($get)(self)
+            }
+        }
+    };
+}
+
 fn shuffle_vec<T: Ord>(mut v: Vec<T>) -> Vec<T> {
     use rand::seq::SliceRandom;
     use rand::thread_rng;
@@ -411,6 +426,9 @@ fn criterion_benchmark(c: &mut Criterion) {
             #[derive(Debug)]
             #[repr(transparent)]
             struct F32NonNanCmp(f32);
+            radix_key!(F32NonNanCmp, u32, |v: &F32NonNanCmp| {
+                sort_research_rs::other::radix_support::partial_f32_key(v.0)
+            });
 
             impl F32NonNanCmp {
                 fn new(val: i32) -> Self {
@@ -452,6 +470,9 @@ fn criterion_benchmark(c: &mut Criterion) {
             #[derive(Debug)]
             #[repr(transparent)]
             struct F64NonNanCmp(f64);
+            radix_key!(F64NonNanCmp, u64, |v: &F64NonNanCmp| {
+                sort_research_rs::other::radix_support::partial_f64_key(v.0)
+            });
 
             impl F64NonNanCmp {
                 fn new(val: i32) -> Self {
@@ -493,6 +514,9 @@ fn criterion_benchmark(c: &mut Criterion) {
             #[derive(Debug)]
             #[repr(transparent)]
             struct F32TotalCmp(f32);
+            radix_key!(F32TotalCmp, u32, |v: &F32TotalCmp| {
+                sort_research_rs::other::radix_support::Key::key(&v.0)
+            });
 
             impl F32TotalCmp {
                 fn new(val: i32) -> Self {
@@ -530,6 +554,9 @@ fn criterion_benchmark(c: &mut Criterion) {
             #[derive(Debug)]
             #[repr(transparent)]
             struct F64TotalCmp(f64);
+            radix_key!(F64TotalCmp, u64, |v: &F64TotalCmp| {
+                sort_research_rs::other::radix_support::Key::key(&v.0)
+            });
 
             impl F64TotalCmp {
                 fn new(val: i32) -> Self {
@@ -620,6 +647,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     val: u64,
                     _padding: [u8; ($bytes - 8)],
                 }
+                radix_key!(U64XBytes, u64, |v: &U64XBytes| v.val);
 
                 impl U64XBytes {
                     fn new(val: i32) -> Self {

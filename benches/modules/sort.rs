@@ -213,6 +213,10 @@ pub fn bench<T: Ord + std::fmt::Debug>(
     bench_inst!(unstable::golang_std);
 
     // --- Other sorts ---
+    #[cfg(feature = "rust_block_lsd")]
+    if other::rust_block_lsd::supports_type::<T>() {
+        bench_inst!(other::rust_block_lsd);
+    }
 
     #[cfg(feature = "rust_radsort")]
     bench_inst!(other::rust_radsort);
