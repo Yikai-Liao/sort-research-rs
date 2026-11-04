@@ -78,7 +78,6 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
         // guaranteed not sorted.
         "random_sorted95" => displaced(patterns::ascending(len), len / 20),
         "random_sorted99" => displaced(patterns::ascending(len), len / 100),
-        "random_sorted99" => patterns::random_sorted(len, 99.0),
         // Nearly reverse ordered: descending, then 5 % of the positions swapped,
         // which is what a sort sees after a few appends and a reversal.
         "random_reverse95" => {
@@ -94,7 +93,7 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
         // Few distinct values spread over the whole type range: the digits are
         // sparse, which is the case a fixed digit grid handles worst.
         "sparse8" => {
-            let mut rng = patterns::random(8);
+            let rng = patterns::random(8);
             let mut v = Vec::with_capacity(len);
             for index in 0..len {
                 v.push(rng[index % 8]);
