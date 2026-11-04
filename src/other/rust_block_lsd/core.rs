@@ -96,11 +96,9 @@ where
     // permutation tables and u8 bucket IDs cost about 9*n/b bytes. Their sum
     // is minimized at b = sqrt(9*n / (2*R*s)). Convert before multiplying to
     // avoid overflowing usize on large slices.
-    // Tuning of the block size policy below. Both are deviations from the
-    // reference implementation, which uses a fixed 512 records because it only
-    // ever sorts one record type. Ablation over the benchmark types found this
-    // policy faster than the fixed size at every length below ~4M records and
-    // equal above it, while the auxiliary space now follows sqrt(n).
+    // The scale and floor below are local tuning choices, unlike the reference's
+    // fixed 512 records. A fixed block bounds scratch but leaves the block
+    // directory proportional to n; growing blocks bounds both by O(sqrt(n)).
     const SQRT_SCALE: f64 = 4.0;
     const BLOCK_BYTES_FLOOR: usize = 1024;
 
@@ -169,8 +167,8 @@ fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
     // if every key bit already varies; otherwise use one uninterrupted,
     // vectorizable scan for sparse or skewed keys. The reference implementation
     // has no such scan and always scatters every digit; this pass turns whole
-    // passes into no-ops on constant digits, and costs one early-exiting read
-    // of the first 1025 records otherwise.
+    // passes into no-ops on constant digits. It stops at 1025 records only when
+    // every key bit varies in that prefix; constant bits require a full scan.
     let boundary = arr.len().min(1025);
     for item in &arr[1..boundary] {
         let key = item.key();
@@ -487,16 +485,10 @@ impl<'a, T> Sorter<'a, T> {
                     next.add(1)
                 };
                 bucket.next = next;
-                // Exact recovery offset. A panic can only come from the key
-                // extractor above, so the next unread record must be recorded
-                // before the move, otherwise recovery duplicates or loses a
-                // record. Only types with destructors can observe that: a
-                // duplicated Copy record is inert bits. The store is therefore
-                // skipped for them, which LLVM folds away per concrete type and
-                // which measured 3% of the hot loop on 8 byte records.
-                if const { core::mem::needs_drop::<T>() } {
-                    position.offset = offset + 1;
-                }
+                // Commit this move before the next key extraction can panic.
+                // Every T needs an exact offset: even without a destructor it
+                // can contain an exclusive reference that must not be duplicated.
+                position.offset = offset + 1;
                 if next == end {
                     debug_assert!(position.output <= input);
                     let out = self
@@ -609,9 +601,8 @@ impl<T> Drop for Sorter<'_, T> {
         // At pass boundaries the directory is a complete owning sequence.
         // Restore it even if unwinding starts outside key extraction (for
         // example an allocation failure with an unwinding error handler).
-        // Types without destructors do not maintain the recovery offset and
-        // cannot observe a duplicated record, so there is nothing to restore.
-        if !self.input_materialized && const { core::mem::needs_drop::<T>() } {
+        // Records without destructors can also own exclusive references.
+        if !self.input_materialized {
             self.compact();
         }
     }

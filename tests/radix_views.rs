@@ -1,18 +1,16 @@
 #![cfg(feature = "rust_block_lsd")]
 use sort_research_rs::other::radix_support::Key;
 use sort_test_tools::Sort;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 
 thread_local! {
     static SKEW: Cell<bool> = const { Cell::new(false) };
     static CALLS: Cell<usize> = const { Cell::new(0) };
     static PANIC_AT: Cell<usize> = const { Cell::new(usize::MAX) };
-    static DROPS: Cell<usize> = const { Cell::new(0) };
+    static DROPS: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
 }
-// Owning, so the backend maintains the exact recovery offset for it. Recovery
-// after a panic is then observable as one drop per original record: a lost
-// record drops fewer, a duplicated one drops more.
+// Check each original ID's drop count, as well as the recovered record set.
 struct Item<const N: usize> {
     identity: usize,
     payload: [u8; N],
@@ -27,7 +25,7 @@ impl<const N: usize> Clone for Item<N> {
 }
 impl<const N: usize> Drop for Item<N> {
     fn drop(&mut self) {
-        DROPS.with(|d| d.set(d.get() + 1));
+        DROPS.with(|d| d.borrow_mut()[self.identity] += 1);
     }
 }
 fn key_value(i: usize) -> u64 {
@@ -82,6 +80,7 @@ fn panic_retention<S: Sort, const PAD: usize>() {
             &[2, 3, 17, 127, 128, 129, 257, 1025, 8193]
         };
         for &n in sizes {
+            DROPS.with(|v| *v.borrow_mut() = vec![0; n]);
             let original: Vec<_> = (0..n)
                 .map(|identity| Item {
                     identity,
@@ -115,7 +114,7 @@ fn panic_retention<S: Sort, const PAD: usize>() {
                 let mut data = original.clone();
                 CALLS.with(|v| v.set(0));
                 PANIC_AT.with(|v| v.set(target));
-                DROPS.with(|v| v.set(0));
+                DROPS.with(|v| v.borrow_mut().fill(0));
                 let panic =
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| S::sort(&mut data)))
                         .unwrap_err();
@@ -125,15 +124,6 @@ fn panic_retention<S: Sort, const PAD: usize>() {
                     "unexpected recovery panic: n={n}, pad={PAD}"
                 );
                 PANIC_AT.with(|v| v.set(usize::MAX));
-                // Every original record must be dropped exactly once, whether
-                // it was in the slice or still in a scratch block.
-                drop(data);
-                assert_eq!(
-                    DROPS.with(|v| v.get()),
-                    n,
-                    "record lost or duplicated by recovery: n={n}, target={target}, pad={PAD}"
-                );
-                let mut data = original.clone();
                 data.sort_unstable_by_key(|v| v.identity);
                 assert!(
                     data.iter()
@@ -141,8 +131,95 @@ fn panic_retention<S: Sort, const PAD: usize>() {
                         .all(|(a, b)| a.identity == b.identity && a.payload == b.payload),
                     "original set changed: n={n}, target={target}, pad={PAD}"
                 );
+                // Inspect the actual recovered slice before dropping it. A
+                // total of n drops alone cannot detect duplicated/lost IDs.
+                drop(data);
+                DROPS.with(|v| {
+                    assert!(
+                        v.borrow().iter().all(|&count| count == 1),
+                        "record lost or duplicated by recovery: n={n}, target={target}, pad={PAD}"
+                    );
+                });
             }
         }
+    }
+}
+
+#[test]
+fn panic_preserves_exclusive_borrows_without_drop() {
+    // No Drop impl and no owning allocation, but duplicating slot is unsound.
+    struct Record<'a> {
+        key: u64,
+        id: usize,
+        slot: &'a mut u64,
+    }
+    impl Key for Record<'_> {
+        type Value = u64;
+        fn key(&self) -> u64 {
+            let call = CALLS.with(|v| {
+                let call = v.get();
+                v.set(call + 1);
+                call
+            });
+            if PANIC_AT.with(|v| v.get() == call) {
+                std::panic::panic_any(call);
+            }
+            self.key
+        }
+    }
+    impl PartialEq for Record<'_> {
+        fn eq(&self, other: &Self) -> bool {
+            self.key == other.key
+        }
+    }
+    impl Eq for Record<'_> {}
+    impl PartialOrd for Record<'_> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+    impl Ord for Record<'_> {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.key.cmp(&other.key)
+        }
+    }
+
+    assert!(!std::mem::needs_drop::<Record<'_>>());
+    // Include the 100-record failure and a smaller input through the adapter.
+    for n in [17, 100] {
+        let mut slots: Vec<_> = (0..n as u64).collect();
+        let mut data: Vec<_> = slots
+            .iter_mut()
+            .enumerate()
+            .map(|(id, slot)| Record {
+                key: (id % 2) as u64,
+                id,
+                slot,
+            })
+            .collect();
+        // Both keys have constant high bits: the pre-scan reads all n keys.
+        // Panic on the second scatter extraction, after one committed move.
+        let target = n + 1;
+        CALLS.with(|v| v.set(0));
+        PANIC_AT.with(|v| v.set(target));
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            sort_research_rs::other::rust_block_lsd::SortImpl::sort(&mut data);
+        }))
+        .unwrap_err();
+        PANIC_AT.with(|v| v.set(usize::MAX));
+        assert_eq!(panic.downcast_ref::<usize>(), Some(&target));
+        assert_eq!(CALLS.with(|v| v.get()), target + 1);
+
+        let mut ids: Vec<_> = data.iter().map(|v| v.id).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, (0..n).collect::<Vec<_>>());
+        for record in &mut data {
+            assert_eq!(record.key, (record.id % 2) as u64);
+            assert_eq!(*record.slot, record.id as u64);
+            *record.slot += n as u64;
+        }
+        drop(data);
+        assert_eq!(slots, (n as u64..2 * n as u64).collect::<Vec<_>>());
     }
 }
 

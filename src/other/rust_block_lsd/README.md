@@ -45,10 +45,9 @@ floats and padded `u64` records implement it in `benches/bench.rs`.
 Unsupported, and explicit about it (no hidden fallback): variable-length keys such
 as `String`, and `sort_by`. Benchmark registration skips unsupported types via
 `supports_type`. If key extraction panics the panic resumes and the order is
-unspecified; for records with a destructor the sorter also restores the slice to
-a permutation of the original records, so none is lost or dropped twice. Types
-without destructors skip that recovery bookkeeping (measured 3% of the hot loop)
-because duplicated Copy records are inert bits.
+unspecified. The sorter restores the slice to a permutation of the original
+records for every type, including those without destructors. Such records can
+contain exclusive references and must not be duplicated.
 
 ## Tests
 
@@ -57,12 +56,15 @@ cargo test --release --no-default-features --features rust_block_lsd
 ```
 
 - `tests/block_lsd_functionality.rs`: the standard `instantiate_sort_tests!`
-  suite, the same 233 tests `tests/main.rs` runs for ipnsort.
+  suite: 233 registered tests, of which 79 enter the test body and 154 return
+  early because of capability declarations or existing skip rules.
 - `tests/block_lsd.rs`: stability with payloads, block tails, all integer widths,
   float total order, unsupported-type behavior; also runs the backend's own unit
   tests over configurable digit widths and explicit block sizes (8 tests).
 - `tests/radix_owned.rs`, `tests/radix_views.rs`: records that are neither `Copy`
-  nor `Clone`, drop counts, and key panics during different phases (2 + 6 tests).
+  nor `Clone`, per-ID drop counts, and key panics during different phases
+  (2 + 7 tests). The no-destructor regression owns `&mut u64` references and
+  checks the original panic payload, record IDs, and writes through each reference.
 
 The standard suite assumes a sort accepts every `Ord` type and implements
 `sort_by`. This one takes a fixed key and rejects everything else, so
@@ -87,8 +89,10 @@ CARGO_TARGET_DIR=target-asan RUSTFLAGS=-Zsanitizer=address \
   --no-default-features --features rust_block_lsd
 ```
 
-All 328 tests pass without a sanitizer report: 79 + 233 from the upstream
-suites and 8 + 2 + 6 from the tests above.
+The earlier recorded ASan run predates the recovery correction and the new
+regression. It is historical evidence, not validation of this candidate. Of the
+233 registered Block LSD standard tests, 79 exercise test bodies; 154 return
+early. The current candidate has not been compiled or run during closeout.
 
 ### Miri
 
@@ -97,11 +101,11 @@ cargo miri test --no-default-features --features rust_block_lsd \
   --test block_lsd --test radix_owned --test radix_views
 ```
 
-These three binaries pass under Miri: 8 + 2 + 6 tests, 178 s / 27 s / 207 s of
-interpreter time on a 6-core x86-64 with nightly 2026-10-08. This is the run that
-checks the ownership handling in `core.rs`: `MaybeUninit` scratch, the live
-prefix tracking, compaction on a key panic, and drop counts for non-`Copy`
-records.
+Earlier logs record 8 + 2 + 6 passing tests for these binaries, before the
+no-destructor regression was added. That coverage missed records containing
+exclusive references without a destructor. The recovery correction and the new
+regression have not been run under Miri during closeout; the current expected
+binary counts are 8 + 2 + 7.
 
 Miri interprets every instruction and every 8-bit pass writes
 `2 * 256 * block_size` bucket slots, so the shapes are reduced, not the code
@@ -117,7 +121,8 @@ paths:
   targets and drops the skewed key layout.
 
 The 79 functionality tests are not run under Miri: at these block sizes a single
-sort takes minutes there. They run in the release and ASan configurations above.
+sort takes minutes there. They belong in the release and ASan runs above; rerunning those configurations
+on the corrected candidate remains pending.
 
 Timing comparisons against `rust_std` and `rust_radsort` use the normal
 `cargo bench` harness. Peak extra heap is measured separately by
