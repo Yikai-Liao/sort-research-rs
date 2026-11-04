@@ -104,12 +104,23 @@ impl Plan {
         self.len == 0
     }
 
-    /// The same plan without its most significant digit.
-    fn tail(self) -> Self {
+    /// The plan for a child that was split on only the top `radix` bits of its
+    /// most significant digit. The unsplit low bits of that digit stay the
+    /// highest digit of the child.
+    fn after_split(self, radix: usize) -> Self {
         debug_assert!(self.len > 0);
         let mut out = self;
+        let top = self.digits[0];
         out.digits.copy_within(1..self.len, 0);
         out.len -= 1;
+        if radix < top.width {
+            out.digits.copy_within(0..out.len, 1);
+            out.digits[0] = Digit {
+                shift: top.shift,
+                width: top.width - radix,
+            };
+            out.len += 1;
+        }
         out
     }
 }
@@ -146,6 +157,21 @@ pub fn sort_with_tile_bytes<T: Key>(arr: &mut [T], tile_bytes: usize) {
     context.sort_node(arr, plan);
 }
 
+/// Digit width for one MSD split.
+///
+/// Aim for children of about half the tile budget: large enough that the split
+/// pass stays amortized, small enough that the common child needs no further
+/// split. The bucket count, and with it the block engine's scratch, then
+/// follows the node size instead of being fixed at 256 even for a node of a few
+/// thousand records.
+fn split_radix(node_len: usize, record_bytes: usize, tile_bytes: usize) -> usize {
+    let tile_records = (tile_bytes / record_bytes).max(64);
+    let target = (tile_records / 2).max(1);
+    let children = (node_len / target).max(2);
+    let bits = usize::BITS - (children - 1).leading_zeros();
+    (bits as usize).clamp(3, RADIX)
+}
+
 impl<T: Key> Context<T> {
     fn sort_node(&mut self, arr: &mut [T], plan: Plan) {
         if arr.len() < 2 {
@@ -157,9 +183,20 @@ impl<T: Key> Context<T> {
             return;
         }
         // MSD split: one stable block-permutation pass over the whole node.
-        let digit = plan.digits[0];
+        // The fan-out follows the node size. A node that is only slightly over
+        // the tile budget must not pay for 256 output streams and the block
+        // engine's per-bucket scratch floor.
+        let top = plan.digits[0];
+        let radix =
+            split_radix(arr.len(), std::mem::size_of::<T>(), self.tile_bytes).min(top.width);
+        // An MSD split has to take the *high* bits of the digit, so a partial
+        // split moves its shift up; the low remainder stays with the children.
+        let digit = Digit {
+            shift: top.shift + top.width - radix,
+            width: radix,
+        };
         block::partition_digit(arr, digit.width, digit.shift);
-        self.descend(arr, digit, plan.tail());
+        self.descend(arr, digit, plan.after_split(radix));
     }
 
     /// Walks the freshly partitioned node, and sorts each bucket as a separate
@@ -305,7 +342,19 @@ mod tests {
         let mut expected = input.clone();
         expected.sort();
         sort_with_tile_bytes(&mut input, tile_bytes);
-        assert_eq!(input, expected);
+        if input != expected {
+            let mismatch = input
+                .iter()
+                .zip(expected.iter())
+                .position(|(a, b)| a != b)
+                .unwrap_or(0);
+            panic!(
+                "tile={tile_bytes} len={} first mismatch at {mismatch}: got {:?}, want {:?}",
+                input.len(),
+                input[mismatch],
+                expected[mismatch]
+            );
+        }
     }
 
     #[test]
