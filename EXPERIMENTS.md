@@ -283,7 +283,7 @@ split's last pass lands in a different 40 KiB region; the page and TLB pressure
 costs more than the L1-resident leaves save. Reverted, with the numbers in the
 comment so it is not retried blind.
 
-### 17. The streamed fallback, out of line
+### 15. The streamed fallback, out of line
 
 The routing model's "do not split" branch runs the block engine, which is a large
 function. Marking it `#[cold] #[inline(never)]` keeps the split path's code
@@ -310,7 +310,7 @@ between the two halves of the same A/B), i.e. inside noise; a claimed 4 % at u12
 be O(array) for every array between 64 KiB and 512 KiB, which contradicts the
 space story for exactly the sizes a caller is most likely to have. Reverted.
 
-### 15. Measurement hygiene: background jobs and a single fast round
+### 17. Measurement hygiene: background jobs and a single fast round
 
 Two runs disagreed by 6x on one cell, and a whole sweep was 30-60 % slow. The
 causes were mundane: a `criterion` run left in the background (46 minutes of one
