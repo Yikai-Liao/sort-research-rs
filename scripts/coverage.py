@@ -1,6 +1,7 @@
 
 import json, re, collections
-d = json.load(open("/root/code/sort-research-rs-pr/results/block_lsd.json"))["benchmarks"]
+from pathlib import Path
+d = json.load(open(Path(__file__).resolve().parents[1] / "results/block_lsd.json"))["benchmarks"]
 sorts, types, temps, pats, sizes = set(), set(), set(), set(), set()
 for name in d:
     m = re.match(r"^(rust_[a-z_0-9]+)-(hot|cold)-([a-z0-9_]+)-([a-z_0-9]+)-(\d+)$", name)

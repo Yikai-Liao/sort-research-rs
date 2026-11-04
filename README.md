@@ -1,60 +1,76 @@
-# block LSD radix sort — artifacts
+# Block LSD research artifacts
 
-Orphan branch: measurement data, comparison harnesses and the issue/PR drafts for
-the feat/block-lsd branch. Nothing here is meant to be merged; it exists so the
-numbers in the issue reply and PR body can be reproduced and audited.
+This branch holds historical measurements and publication drafts for
+[feat/block-lsd](https://github.com/Yikai-Liao/sort-research-rs/tree/feat/block-lsd).
+It is separate from the code branch and is not intended for merging.
+The branch began with the root commit `c306e53`; closeout is appended as a new
+commit rather than replacing that archive.
 
-Code under review: branch feat/block-lsd, commit 429f6f7.
+Corrected code candidate: **22463e9ef3e59a917afe8fcd1ed1a52ca123d9b7**.
+The closeout did not compile or execute it, run tests/Miri/ASan, or collect new
+performance measurements. Earlier passing tests and benchmark numbers are
+historical evidence and do not validate the corrected candidate.
 
-## Contents
+## Contents and provenance
 
-| path | what |
+| path | contents |
 | --- | --- |
-| drafts/issue-reply.md | draft comment for issue #35 |
-| drafts/pr-body.md | draft PR body |
-| drafts/TODO.md | checklist that produced this state |
-| results/block_lsd.json | critcmp export, baseline block_lsd, 106 benchmarks |
-| results/block_lsd_all.txt | the same data as critcmp table output |
-| analysis_block_lsd/ | graphs from util/graph_bench_result/graph_all.py (HTML) |
-| figures/ | static PNG versions of the scaling and relative plots |
-| logs/ | raw criterion output of every benchmark run |
-| scripts/ | the exact commands and post-processing used |
-| c-comparison/ | local comparison against the reference implementation |
+| HANDOFF.md | Chinese closeout report and remaining validation |
+| drafts/ | revised issue reply, PR body and checklist; not published |
+| results/block_lsd.json | unchanged historical critcmp export, 106 entries |
+| results/block_lsd_all.txt | generated median, mean and standard-deviation summary |
+| results/TABLES.md | generated random timing and peak-extra-heap tables |
+| results/provenance.json | JSON hash, candidate revision and per-entry log classification |
+| NUMBERS.md | generated medians, corrected log paths and provenance limitations |
+| analysis_block_lsd/ | all standard HTML plots regenerated from the saved JSON |
+| figures/ | PNGs regenerated from the same medians |
+| logs/ | aggregate Criterion logs and historical peak-extra-heap output |
+| logs/contaminated/ | discarded batch, retained only as an archive |
+| scripts/refresh.py | repeatable processing of saved data; runs no sorting code |
+| scripts/check_saved.py | checks all generated HTML payloads against JSON medians |
+| scripts/graph_bench_result/ | graph tools copied from code candidate 22463e9, with explicit historical machine labels |
+| scripts/run-*.sh | historical benchmark commands; hard-coded paths, not closeout validation |
+| c-comparison/ | archived C/C++ and Rust comparison harnesses and logs; not final candidate evidence |
 
-## How the benchmark data was produced
+Of the 106 JSON entries, 82 random cases match the rounded mean/slope and
+confidence intervals in their clean aggregate logs. The logs do not include raw
+samples to recompute the medians; median values come from the JSON. The other
+24 pattern entries are saved baseline estimates whose original measurement log
+has not been recovered. `logs/pattern-bench.log` contains a later run and cannot
+serve as their original log. The reply/PR numeric comparisons omit those rows;
+the archive retains them with explicit labels.
 
-    cd sort-research-rs
-    cargo bench --features \
-        rust_block_lsd,rust_radsort,cold_benchmarks,bench_type_u128,\
-bench_type_f64,bench_type_u64_16b,bench_type_u64_128b \
-      --bench bench -- --warm-up-time 2 --measurement-time 4 --noplot \
-      --save-baseline block_lsd
-    critcmp --export block_lsd > block_lsd.json
+Individual measurement commit IDs were not recorded. The previous candidate
+head was `429f6f7`; it must not be treated as proven provenance for every run.
 
-Same warm-up and measurement times as util/run_benchmarks.py; the regexes that
-selected each batch are in scripts/. Machine: Skylake-SP Xeon Gold 6140, 2.3 GHz,
-shared 6 vCPU VM, nightly 2026-10-08.
+The historical machine was a Skylake-SP Xeon Gold 6140, 2.3 GHz nominal, shared
+6 vCPU Linux VM, with nightly 2026-10-08. Warm-up was 2 s and measurement 4 s.
+Hot and cold both generate inputs through batch setup. Cold additionally
+perturbs prediction state; the harness deliberately avoids measuring loading
+from main memory. Hot does not repeatedly sort a single input buffer.
 
-Caveat worth stating: one earlier hot-cache batch ran while other work competed
-for the same cores and came out about 2x slow. It was discarded and re-run on an
-idle machine; logs/ holds only the clean runs.
+## Regenerate saved artifacts without running benchmarks
 
-## Local comparison against the C reference
+From any directory:
 
-Not part of the PR: the issue reply and PR body compare against the sorts in this
-repository only. These files are the working material for the port itself.
+```sh
+python /path/to/artifacts/scripts/refresh.py
+```
 
-- c-comparison/c-compare/ — the reference (clausecker/radsort @ f69e816,
-  radixsort_permuted.c) with a driver that (a) uses the same input generator as
-  the Rust harness and (b) makes the block size a runtime parameter so both
-  sides can apply the same policy.
-- c-comparison/cxx/ — the same algorithm as a template over the record type, so
-  record shapes other than the paper's 8 byte pair can be measured.
-- c-comparison/rust-compare/ — the Rust side, including core.rs verbatim.
-- c-comparison/*.log — interleaved A/B runs (alternating binaries within each
-  round, median of ratios) and instruction counts.
+For HTML and PNGs, use an isolated Python environment with the versions in
+`scripts/requirements-plots.txt`, then:
 
-Result: with the same block policy the port matches the reference within noise on
-five record shapes (pair, u64, u128, 32 and 128 byte records) at 1e5 and 1e6
-records. The remaining difference was the panic-recovery store, which the
-needs_drop gate removes for every type this repository supports.
+```sh
+python /path/to/artifacts/scripts/refresh.py --plots
+```
+
+The plot tools use stored machine metadata rather than detecting the current
+host. Each HTML has a provenance notice and each PNG has a historical-data title.
+The corrected candidate is labeled unmeasured; pattern rows are baseline-only. `fill.py` now refreshes tables
+without rewriting the reviewed drafts. `check_saved.py` compares every HTML
+data point against the JSON, including throughput and relative-speedup values. `mktable.py`, `pattern_table.py` and
+`coverage.py` use paths relative to this archive.
+
+The C/C++ comparisons and fixed-block ablations helped explore the port, but
+have not been repeated after removing the unsound recovery optimization. They
+are retained as historical working material only.

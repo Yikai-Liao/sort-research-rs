@@ -1,0 +1,538 @@
+{
+  "source_sha256": "78abf9088f7f35990f35ad6070dd07895d27068f959e08bfa7e5c437f523019c",
+  "corrected_candidate": "22463e9ef3e59a917afe8fcd1ed1a52ca123d9b7",
+  "measurement_commit": null,
+  "candidate_validation": "not run; static closeout only",
+  "benchmarks": {
+    "rust_block_lsd_stable_radix-cold-f64-random-100000": {
+      "median_ns": 2730074.95,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-cold-f64-random-1000000": {
+      "median_ns": 54195239.0,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-cold-u128-random-100000": {
+      "median_ns": 4576870.785714285,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-cold-u128-random-1000000": {
+      "median_ns": 86027371.5,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-cold-u64-random-100000": {
+      "median_ns": 2488113.708333333,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-cold-u64-random-1000000": {
+      "median_ns": 42786225.5,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-cold-u64-random-10000000": {
+      "median_ns": 583462979.5,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-cold-u64_128b-random-10000": {
+      "median_ns": 1417088.35,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-cold-u64_128b-random-100000": {
+      "median_ns": 33948959.75,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-cold-u64_128b-random-1000000": {
+      "median_ns": 544941655.0,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-f64-random-10000": {
+      "median_ns": 336871.9696106363,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-f64-random-100000": {
+      "median_ns": 2669196.5,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-f64-random-1000000": {
+      "median_ns": 53944225.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-u128-random-10000": {
+      "median_ns": 373832.7055389965,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-u128-random-100000": {
+      "median_ns": 4159553.555555555,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-u128-random-1000000": {
+      "median_ns": 102449829.5,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-u64-ascending-100000": {
+      "median_ns": 3454302.0,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_block_lsd_stable_radix-hot-u64-ascending-1000000": {
+      "median_ns": 41145566.5,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_block_lsd_stable_radix-hot-u64-descending-100000": {
+      "median_ns": 3453185.8333333335,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_block_lsd_stable_radix-hot-u64-descending-1000000": {
+      "median_ns": 41401338.5,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_block_lsd_stable_radix-hot-u64-random-10000": {
+      "median_ns": 297843.06492374727,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-u64-random-100000": {
+      "median_ns": 2352687.3,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-u64-random-1000000": {
+      "median_ns": 47171650.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-u64-random-10000000": {
+      "median_ns": 687973323.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-u64-random_p5-100000": {
+      "median_ns": 2710443.833333333,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_block_lsd_stable_radix-hot-u64-random_p5-1000000": {
+      "median_ns": 27237462.5,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_block_lsd_stable_radix-hot-u64_128b-random-10000": {
+      "median_ns": 1383260.111111111,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-u64_128b-random-100000": {
+      "median_ns": 34571679.25,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_block_lsd_stable_radix-hot-u64_128b-random-1000000": {
+      "median_ns": 557687920.5,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-cold-u64-random-100000": {
+      "median_ns": 2148741.8333333335,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-cold-u64-random-1000000": {
+      "median_ns": 27909522.75,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-cold-u64-random-10000000": {
+      "median_ns": 364527346.5,
+      "log": "logs/bench4.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-f64-random-10000": {
+      "median_ns": 842874.995,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-f64-random-100000": {
+      "median_ns": 9497123.875,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-f64-random-1000000": {
+      "median_ns": 117648588.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-u128-random-10000": {
+      "median_ns": 308797.41736111115,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-u128-random-100000": {
+      "median_ns": 3703773.222222222,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-u128-random-1000000": {
+      "median_ns": 47376598.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-u64-ascending-100000": {
+      "median_ns": 53666.73821917808,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_ipnsort_unstable-hot-u64-ascending-1000000": {
+      "median_ns": 1211574.0384615385,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_ipnsort_unstable-hot-u64-descending-100000": {
+      "median_ns": 112743.94692082112,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_ipnsort_unstable-hot-u64-descending-1000000": {
+      "median_ns": 1890771.05,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_ipnsort_unstable-hot-u64-random-10000": {
+      "median_ns": 184177.1619061086,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-u64-random-100000": {
+      "median_ns": 2239396.466666667,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-u64-random-1000000": {
+      "median_ns": 27595978.25,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-u64-random-10000000": {
+      "median_ns": 368681823.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_ipnsort_unstable-hot-u64-random_p5-100000": {
+      "median_ns": 286833.84210526315,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_ipnsort_unstable-hot-u64-random_p5-1000000": {
+      "median_ns": 4689845.25,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_radsort_keyed-cold-f64-random-100000": {
+      "median_ns": 3228791.7,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_keyed-cold-f64-random-1000000": {
+      "median_ns": 74104893.5,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_keyed-cold-u64_128b-random-10000": {
+      "median_ns": 2664203.9000000004,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_keyed-cold-u64_128b-random-100000": {
+      "median_ns": 75575249.0,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_keyed-cold-u64_128b-random-1000000": {
+      "median_ns": 812149866.0,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_keyed-hot-f64-random-10000": {
+      "median_ns": 319862.217948718,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_keyed-hot-f64-random-100000": {
+      "median_ns": 3068369.590909091,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_keyed-hot-f64-random-1000000": {
+      "median_ns": 71765230.5,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_keyed-hot-u64_128b-random-10000": {
+      "median_ns": 2406855.541666667,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_keyed-hot-u64_128b-random-100000": {
+      "median_ns": 70468963.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_keyed-hot-u64_128b-random-1000000": {
+      "median_ns": 806545243.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-cold-u128-random-100000": {
+      "median_ns": 7479786.625,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-cold-u128-random-1000000": {
+      "median_ns": 111221017.0,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-cold-u64-random-100000": {
+      "median_ns": 2618027.6818181816,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-cold-u64-random-1000000": {
+      "median_ns": 69633650.0,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-cold-u64-random-10000000": {
+      "median_ns": 786479694.5,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-hot-u128-random-10000": {
+      "median_ns": 338800.14220453874,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-hot-u128-random-100000": {
+      "median_ns": 6340694.199999999,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-hot-u128-random-1000000": {
+      "median_ns": 125387342.5,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-hot-u64-ascending-100000": {
+      "median_ns": 4702419.214285715,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_radsort_radix-hot-u64-ascending-1000000": {
+      "median_ns": 112591703.5,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_radsort_radix-hot-u64-descending-100000": {
+      "median_ns": 4021851.05,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_radsort_radix-hot-u64-descending-1000000": {
+      "median_ns": 107399445.5,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_radsort_radix-hot-u64-random-10000": {
+      "median_ns": 180018.77352150538,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-hot-u64-random-100000": {
+      "median_ns": 2335487.4000000004,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-hot-u64-random-1000000": {
+      "median_ns": 81376337.5,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-hot-u64-random-10000000": {
+      "median_ns": 777622424.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_radsort_radix-hot-u64-random_p5-100000": {
+      "median_ns": 2817508.1875,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_radsort_radix-hot-u64-random_p5-1000000": {
+      "median_ns": 41171586.0,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_std_stable-cold-f64-random-100000": {
+      "median_ns": 11247295.5,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-cold-f64-random-1000000": {
+      "median_ns": 142386454.0,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-cold-u128-random-100000": {
+      "median_ns": 6736487.875,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-cold-u128-random-1000000": {
+      "median_ns": 78655621.0,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-cold-u64-random-100000": {
+      "median_ns": 3356008.5,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-cold-u64-random-1000000": {
+      "median_ns": 43086859.0,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-cold-u64-random-10000000": {
+      "median_ns": 630220253.0,
+      "log": "logs/bench4.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-cold-u64_128b-random-10000": {
+      "median_ns": 2523010.05,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-cold-u64_128b-random-100000": {
+      "median_ns": 34750309.75,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-cold-u64_128b-random-1000000": {
+      "median_ns": 672239862.0,
+      "log": "logs/bench3.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-f64-random-10000": {
+      "median_ns": 920731.7088235294,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-f64-random-100000": {
+      "median_ns": 11048230.5,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-f64-random-1000000": {
+      "median_ns": 145638877.5,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-u128-random-10000": {
+      "median_ns": 409347.4015861571,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-u128-random-100000": {
+      "median_ns": 7003000.4,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-u128-random-1000000": {
+      "median_ns": 82034705.5,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-u64-ascending-100000": {
+      "median_ns": 85360.38167892158,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_std_stable-hot-u64-ascending-1000000": {
+      "median_ns": 1367316.7999999998,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_std_stable-hot-u64-descending-100000": {
+      "median_ns": 112626.56846590908,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_std_stable-hot-u64-descending-1000000": {
+      "median_ns": 2062097.75,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_std_stable-hot-u64-random-10000": {
+      "median_ns": 324922.73557692306,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-u64-random-100000": {
+      "median_ns": 3334631.1363636367,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-u64-random-1000000": {
+      "median_ns": 44847060.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-u64-random-10000000": {
+      "median_ns": 662811498.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-u64-random_p5-100000": {
+      "median_ns": 1170841.5909090908,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_std_stable-hot-u64-random_p5-1000000": {
+      "median_ns": 17885366.5,
+      "log": null,
+      "status": "saved_baseline_only"
+    },
+    "rust_std_stable-hot-u64_128b-random-10000": {
+      "median_ns": 2478248.1818181816,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-u64_128b-random-100000": {
+      "median_ns": 34209907.25,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    },
+    "rust_std_stable-hot-u64_128b-random-1000000": {
+      "median_ns": 606299865.0,
+      "log": "logs/hot-redo.log",
+      "status": "matching_aggregate_log"
+    }
+  }
+}

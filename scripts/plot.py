@@ -82,7 +82,8 @@ for temp in ("cold", "hot"):
     panel(axes[1], temp, "u64_128b", ["rust_std_stable", "rust_radsort_keyed",
                                       "rust_block_lsd_stable_radix"], f"128 byte records ({temp})")
     speedup(axes[2], temp, "u64", "rust_radsort_radix", f"block LSD vs radsort, u64 ({temp})")
-    fig.tight_layout()
+    fig.suptitle("Historical baseline; corrected candidate 22463e9 unmeasured", fontsize=9)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     fig.savefig(f"{OUT}/scaling-{temp}.png", dpi=180)
     plt.close(fig)
 
@@ -103,6 +104,7 @@ for ax, base in zip(axes, ["rust_radsort_radix", "rust_std_stable"]):
     ax.set_title(f"block LSD relative to {SORT_LABEL[base]} (cold)", fontsize=9)
     ax.grid(alpha=0.25, which="both", lw=0.4)
     ax.legend(fontsize=7, frameon=False)
-fig.tight_layout()
+fig.suptitle("Historical baseline; corrected candidate 22463e9 unmeasured", fontsize=9)
+fig.tight_layout(rect=(0, 0, 1, 0.92))
 fig.savefig(f"{OUT}/relative-{ty}.png".replace(f"-{ty}", ""), dpi=180)
 print("wrote figures to", OUT)

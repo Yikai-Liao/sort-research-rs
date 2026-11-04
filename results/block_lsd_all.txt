@@ -1,84 +1,109 @@
-group                                                       block_lsd
------                                                       ---------
-rust_block_lsd_stable_radix-cold-f64-random-100000          1.00      2.8±0.32ms        ? ?/sec
-rust_block_lsd_stable_radix-cold-f64-random-1000000         1.00     53.8±7.71ms        ? ?/sec
-rust_block_lsd_stable_radix-cold-u128-random-100000         1.00      4.6±0.43ms        ? ?/sec
-rust_block_lsd_stable_radix-cold-u128-random-1000000        1.00     88.0±6.98ms        ? ?/sec
-rust_block_lsd_stable_radix-cold-u64-random-100000          1.00      2.5±0.24ms        ? ?/sec
-rust_block_lsd_stable_radix-cold-u64-random-1000000         1.00     42.9±4.30ms        ? ?/sec
-rust_block_lsd_stable_radix-cold-u64-random-10000000        1.00   589.0±39.34ms        ? ?/sec
-rust_block_lsd_stable_radix-cold-u64_128b-random-10000      1.00  1445.1±120.10µs        ? ?/sec
-rust_block_lsd_stable_radix-cold-u64_128b-random-100000     1.00     34.4±4.47ms        ? ?/sec
-rust_block_lsd_stable_radix-cold-u64_128b-random-1000000    1.00   552.9±68.85ms        ? ?/sec
-rust_block_lsd_stable_radix-hot-f64-random-10000            1.00   339.0±27.15µs        ? ?/sec
-rust_block_lsd_stable_radix-hot-f64-random-100000           1.00      2.9±0.42ms        ? ?/sec
-rust_block_lsd_stable_radix-hot-f64-random-1000000          1.00     52.6±5.77ms        ? ?/sec
-rust_block_lsd_stable_radix-hot-u128-random-10000           1.00   407.5±40.31µs        ? ?/sec
-rust_block_lsd_stable_radix-hot-u128-random-100000          1.00      4.3±0.41ms        ? ?/sec
-rust_block_lsd_stable_radix-hot-u128-random-1000000         1.00    109.6±6.96ms        ? ?/sec
-rust_block_lsd_stable_radix-hot-u64-random-10000            1.00  673.4±117.76µs        ? ?/sec
-rust_block_lsd_stable_radix-hot-u64-random-100000           1.00      6.2±0.96ms        ? ?/sec
-rust_block_lsd_stable_radix-hot-u64-random-1000000          1.00   127.8±13.69ms        ? ?/sec
-rust_block_lsd_stable_radix-hot-u64-random-10000000         1.00  1494.3±153.13ms        ? ?/sec
-rust_block_lsd_stable_radix-hot-u64_128b-random-10000       1.00      3.4±0.43ms        ? ?/sec
-rust_block_lsd_stable_radix-hot-u64_128b-random-100000      1.00     83.4±6.90ms        ? ?/sec
-rust_block_lsd_stable_radix-hot-u64_128b-random-1000000     1.00  1130.0±87.02ms        ? ?/sec
-rust_ipnsort_unstable-cold-u64-random-100000                1.00      2.2±0.14ms        ? ?/sec
-rust_ipnsort_unstable-cold-u64-random-1000000               1.00     28.0±1.53ms        ? ?/sec
-rust_ipnsort_unstable-cold-u64-random-10000000              1.00   367.7±17.54ms        ? ?/sec
-rust_ipnsort_unstable-hot-f64-random-10000                  1.00   860.6±90.89µs        ? ?/sec
-rust_ipnsort_unstable-hot-f64-random-100000                 1.00     10.4±0.61ms        ? ?/sec
-rust_ipnsort_unstable-hot-f64-random-1000000                1.00    131.0±7.95ms        ? ?/sec
-rust_ipnsort_unstable-hot-u128-random-10000                 1.00   329.8±30.73µs        ? ?/sec
-rust_ipnsort_unstable-hot-u128-random-100000                1.00      4.0±0.41ms        ? ?/sec
-rust_ipnsort_unstable-hot-u128-random-1000000               1.00     48.8±3.01ms        ? ?/sec
-rust_ipnsort_unstable-hot-u64-random-10000                  1.00   363.9±73.79µs        ? ?/sec
-rust_ipnsort_unstable-hot-u64-random-100000                 1.00      4.8±0.58ms        ? ?/sec
-rust_ipnsort_unstable-hot-u64-random-1000000                1.00     60.1±3.56ms        ? ?/sec
-rust_ipnsort_unstable-hot-u64-random-10000000               1.00   713.7±24.50ms        ? ?/sec
-rust_radsort_keyed-cold-f64-random-100000                   1.00      3.3±0.42ms        ? ?/sec
-rust_radsort_keyed-cold-f64-random-1000000                  1.00     76.6±7.18ms        ? ?/sec
-rust_radsort_keyed-cold-u64_128b-random-10000               1.00      2.8±0.38ms        ? ?/sec
-rust_radsort_keyed-cold-u64_128b-random-100000              1.00     76.1±2.43ms        ? ?/sec
-rust_radsort_keyed-cold-u64_128b-random-1000000             1.00   777.2±84.60ms        ? ?/sec
-rust_radsort_keyed-hot-f64-random-10000                     1.00   262.2±20.04µs        ? ?/sec
-rust_radsort_keyed-hot-f64-random-100000                    1.00      2.8±0.42ms        ? ?/sec
-rust_radsort_keyed-hot-f64-random-1000000                   1.00     64.8±5.24ms        ? ?/sec
-rust_radsort_keyed-hot-u64_128b-random-10000                1.00      6.3±1.16ms        ? ?/sec
-rust_radsort_keyed-hot-u64_128b-random-100000               1.00   136.9±14.17ms        ? ?/sec
-rust_radsort_keyed-hot-u64_128b-random-1000000              1.00  1411.6±86.75ms        ? ?/sec
-rust_radsort_radix-cold-u128-random-100000                  1.00      7.8±1.51ms        ? ?/sec
-rust_radsort_radix-cold-u128-random-1000000                 1.00    113.9±9.44ms        ? ?/sec
-rust_radsort_radix-cold-u64-random-100000                   1.00      2.7±0.28ms        ? ?/sec
-rust_radsort_radix-cold-u64-random-1000000                  1.00     70.6±3.65ms        ? ?/sec
-rust_radsort_radix-cold-u64-random-10000000                 1.00  842.0±106.79ms        ? ?/sec
-rust_radsort_radix-hot-u128-random-10000                    1.00   360.4±52.50µs        ? ?/sec
-rust_radsort_radix-hot-u128-random-100000                   1.00      6.1±0.55ms        ? ?/sec
-rust_radsort_radix-hot-u128-random-1000000                  1.00   134.0±11.60ms        ? ?/sec
-rust_radsort_radix-hot-u64-random-10000                     1.00   358.7±74.77µs        ? ?/sec
-rust_radsort_radix-hot-u64-random-100000                    1.00      6.4±1.04ms        ? ?/sec
-rust_radsort_radix-hot-u64-random-1000000                   1.00   176.4±10.81ms        ? ?/sec
-rust_radsort_radix-hot-u64-random-10000000                  1.00  1539.8±63.04ms        ? ?/sec
-rust_std_stable-cold-f64-random-100000                      1.00     11.3±0.55ms        ? ?/sec
-rust_std_stable-cold-f64-random-1000000                     1.00    144.3±6.08ms        ? ?/sec
-rust_std_stable-cold-u128-random-100000                     1.00      6.8±0.39ms        ? ?/sec
-rust_std_stable-cold-u128-random-1000000                    1.00     79.5±5.74ms        ? ?/sec
-rust_std_stable-cold-u64-random-100000                      1.00      3.4±0.36ms        ? ?/sec
-rust_std_stable-cold-u64-random-1000000                     1.00     43.4±2.63ms        ? ?/sec
-rust_std_stable-cold-u64-random-10000000                    1.00   636.0±23.10ms        ? ?/sec
-rust_std_stable-cold-u64_128b-random-10000                  1.00      2.5±0.18ms        ? ?/sec
-rust_std_stable-cold-u64_128b-random-100000                 1.00     35.2±2.28ms        ? ?/sec
-rust_std_stable-cold-u64_128b-random-1000000                1.00   673.4±25.12ms        ? ?/sec
-rust_std_stable-hot-f64-random-10000                        1.00   944.9±67.31µs        ? ?/sec
-rust_std_stable-hot-f64-random-100000                       1.00     11.6±0.91ms        ? ?/sec
-rust_std_stable-hot-f64-random-1000000                      1.00    145.7±7.16ms        ? ?/sec
-rust_std_stable-hot-u128-random-10000                       1.00   538.8±41.67µs        ? ?/sec
-rust_std_stable-hot-u128-random-100000                      1.00      6.9±0.58ms        ? ?/sec
-rust_std_stable-hot-u128-random-1000000                     1.00     85.9±5.37ms        ? ?/sec
-rust_std_stable-hot-u64-random-10000                        1.00  672.7±123.34µs        ? ?/sec
-rust_std_stable-hot-u64-random-100000                       1.00      7.0±1.04ms        ? ?/sec
-rust_std_stable-hot-u64-random-1000000                      1.00     97.7±6.45ms        ? ?/sec
-rust_std_stable-hot-u64-random-10000000                     1.00  1337.2±47.17ms        ? ?/sec
-rust_std_stable-hot-u64_128b-random-10000                   1.00      6.0±1.27ms        ? ?/sec
-rust_std_stable-hot-u64_128b-random-100000                  1.00    76.3±10.88ms        ? ?/sec
-rust_std_stable-hot-u64_128b-random-1000000                 1.00  1291.8±83.29ms        ? ?/sec
+Historical baseline; corrected candidate 22463e9 unmeasured. Pattern rows: saved baseline only, original measurement log unavailable.
+Source: results/block_lsd.json; times in ms.
+benchmark	median_ms	mean_ms	mean_std_dev_ms	provenance
+rust_block_lsd_stable_radix-cold-f64-random-100000	2.730075	2.817458	0.319760	logs/bench3.log
+rust_block_lsd_stable_radix-cold-f64-random-1000000	54.195239	53.785980	7.713233	logs/bench3.log
+rust_block_lsd_stable_radix-cold-u128-random-100000	4.576871	4.643528	0.428278	logs/bench3.log
+rust_block_lsd_stable_radix-cold-u128-random-1000000	86.027372	88.049651	6.975194	logs/bench3.log
+rust_block_lsd_stable_radix-cold-u64-random-100000	2.488114	2.542228	0.236352	logs/bench3.log
+rust_block_lsd_stable_radix-cold-u64-random-1000000	42.786226	42.913576	4.295528	logs/bench3.log
+rust_block_lsd_stable_radix-cold-u64-random-10000000	583.462979	589.014004	39.337140	logs/bench3.log
+rust_block_lsd_stable_radix-cold-u64_128b-random-10000	1.417088	1.445084	0.120102	logs/bench3.log
+rust_block_lsd_stable_radix-cold-u64_128b-random-100000	33.948960	34.437392	4.471893	logs/bench3.log
+rust_block_lsd_stable_radix-cold-u64_128b-random-1000000	544.941655	552.942800	68.854370	logs/bench3.log
+rust_block_lsd_stable_radix-hot-f64-random-10000	0.336872	0.351281	0.035645	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-f64-random-100000	2.669196	2.723175	0.306323	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-f64-random-1000000	53.944225	54.211945	5.152092	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-u128-random-10000	0.373833	0.381690	0.038426	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-u128-random-100000	4.159554	4.287331	0.429744	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-u128-random-1000000	102.449830	103.129451	7.891954	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-u64-ascending-100000	3.454302	3.495756	0.169437	saved baseline only; original log unavailable
+rust_block_lsd_stable_radix-hot-u64-ascending-1000000	41.145567	41.491107	5.492352	saved baseline only; original log unavailable
+rust_block_lsd_stable_radix-hot-u64-descending-100000	3.453186	3.472881	0.129619	saved baseline only; original log unavailable
+rust_block_lsd_stable_radix-hot-u64-descending-1000000	41.401339	41.733636	6.462287	saved baseline only; original log unavailable
+rust_block_lsd_stable_radix-hot-u64-random-10000	0.297843	0.303992	0.022858	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-u64-random-100000	2.352687	2.402492	0.261895	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-u64-random-1000000	47.171650	47.537785	4.702883	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-u64-random-10000000	687.973323	692.057994	70.103199	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-u64-random_p5-100000	2.710444	2.730275	0.187775	saved baseline only; original log unavailable
+rust_block_lsd_stable_radix-hot-u64-random_p5-1000000	27.237462	27.925400	2.528047	saved baseline only; original log unavailable
+rust_block_lsd_stable_radix-hot-u64_128b-random-10000	1.383260	1.439175	0.152224	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-u64_128b-random-100000	34.571679	35.127733	3.545449	logs/hot-redo.log
+rust_block_lsd_stable_radix-hot-u64_128b-random-1000000	557.687921	562.390197	38.339514	logs/hot-redo.log
+rust_ipnsort_unstable-cold-u64-random-100000	2.148742	2.193641	0.139033	logs/bench3.log
+rust_ipnsort_unstable-cold-u64-random-1000000	27.909523	28.029926	1.525851	logs/bench3.log
+rust_ipnsort_unstable-cold-u64-random-10000000	364.527347	367.693988	17.544693	logs/bench4.log
+rust_ipnsort_unstable-hot-f64-random-10000	0.842875	0.834491	0.056967	logs/hot-redo.log
+rust_ipnsort_unstable-hot-f64-random-100000	9.497124	9.575068	0.398358	logs/hot-redo.log
+rust_ipnsort_unstable-hot-f64-random-1000000	117.648588	119.294265	6.570820	logs/hot-redo.log
+rust_ipnsort_unstable-hot-u128-random-10000	0.308797	0.314298	0.026987	logs/hot-redo.log
+rust_ipnsort_unstable-hot-u128-random-100000	3.703773	3.833305	0.380909	logs/hot-redo.log
+rust_ipnsort_unstable-hot-u128-random-1000000	47.376598	47.904843	2.325440	logs/hot-redo.log
+rust_ipnsort_unstable-hot-u64-ascending-100000	0.053667	0.055541	0.007285	saved baseline only; original log unavailable
+rust_ipnsort_unstable-hot-u64-ascending-1000000	1.211574	1.191160	0.229705	saved baseline only; original log unavailable
+rust_ipnsort_unstable-hot-u64-descending-100000	0.112744	0.123710	0.025307	saved baseline only; original log unavailable
+rust_ipnsort_unstable-hot-u64-descending-1000000	1.890771	1.912140	0.359901	saved baseline only; original log unavailable
+rust_ipnsort_unstable-hot-u64-random-10000	0.184177	0.190250	0.022139	logs/hot-redo.log
+rust_ipnsort_unstable-hot-u64-random-100000	2.239396	2.279318	0.189917	logs/hot-redo.log
+rust_ipnsort_unstable-hot-u64-random-1000000	27.595978	27.816854	1.872382	logs/hot-redo.log
+rust_ipnsort_unstable-hot-u64-random-10000000	368.681823	382.432817	43.838780	logs/hot-redo.log
+rust_ipnsort_unstable-hot-u64-random_p5-100000	0.286834	0.295648	0.032858	saved baseline only; original log unavailable
+rust_ipnsort_unstable-hot-u64-random_p5-1000000	4.689845	4.786459	0.363528	saved baseline only; original log unavailable
+rust_radsort_keyed-cold-f64-random-100000	3.228792	3.319976	0.421562	logs/bench3.log
+rust_radsort_keyed-cold-f64-random-1000000	74.104894	76.639446	7.175563	logs/bench3.log
+rust_radsort_keyed-cold-u64_128b-random-10000	2.664204	2.774957	0.384896	logs/bench3.log
+rust_radsort_keyed-cold-u64_128b-random-100000	75.575249	76.133262	2.434844	logs/bench3.log
+rust_radsort_keyed-cold-u64_128b-random-1000000	812.149866	777.151031	84.602887	logs/bench3.log
+rust_radsort_keyed-hot-f64-random-10000	0.319862	0.333292	0.041720	logs/hot-redo.log
+rust_radsort_keyed-hot-f64-random-100000	3.068370	3.222588	0.497296	logs/hot-redo.log
+rust_radsort_keyed-hot-f64-random-1000000	71.765231	74.123869	7.596161	logs/hot-redo.log
+rust_radsort_keyed-hot-u64_128b-random-10000	2.406856	2.490344	0.384597	logs/hot-redo.log
+rust_radsort_keyed-hot-u64_128b-random-100000	70.468963	70.811466	3.761640	logs/hot-redo.log
+rust_radsort_keyed-hot-u64_128b-random-1000000	806.545243	768.493123	78.788674	logs/hot-redo.log
+rust_radsort_radix-cold-u128-random-100000	7.479787	7.752756	1.505450	logs/bench3.log
+rust_radsort_radix-cold-u128-random-1000000	111.221017	113.880053	9.441395	logs/bench3.log
+rust_radsort_radix-cold-u64-random-100000	2.618028	2.679932	0.277826	logs/bench3.log
+rust_radsort_radix-cold-u64-random-1000000	69.633650	70.561742	3.647209	logs/bench3.log
+rust_radsort_radix-cold-u64-random-10000000	786.479695	842.030729	106.786266	logs/bench3.log
+rust_radsort_radix-hot-u128-random-10000	0.338800	0.351511	0.044747	logs/hot-redo.log
+rust_radsort_radix-hot-u128-random-100000	6.340694	6.599496	0.997643	logs/hot-redo.log
+rust_radsort_radix-hot-u128-random-1000000	125.387343	126.475037	7.483941	logs/hot-redo.log
+rust_radsort_radix-hot-u64-ascending-100000	4.702419	4.745334	0.224614	saved baseline only; original log unavailable
+rust_radsort_radix-hot-u64-ascending-1000000	112.591703	111.505495	9.721511	saved baseline only; original log unavailable
+rust_radsort_radix-hot-u64-descending-100000	4.021851	4.112765	0.249268	saved baseline only; original log unavailable
+rust_radsort_radix-hot-u64-descending-1000000	107.399445	105.398305	10.767888	saved baseline only; original log unavailable
+rust_radsort_radix-hot-u64-random-10000	0.180019	0.185085	0.017991	logs/hot-redo.log
+rust_radsort_radix-hot-u64-random-100000	2.335487	2.349852	0.156934	logs/hot-redo.log
+rust_radsort_radix-hot-u64-random-1000000	81.376338	79.516483	8.677950	logs/hot-redo.log
+rust_radsort_radix-hot-u64-random-10000000	777.622424	824.236222	87.449139	logs/hot-redo.log
+rust_radsort_radix-hot-u64-random_p5-100000	2.817508	2.860852	0.319432	saved baseline only; original log unavailable
+rust_radsort_radix-hot-u64-random_p5-1000000	41.171586	41.395957	4.394431	saved baseline only; original log unavailable
+rust_std_stable-cold-f64-random-100000	11.247295	11.334316	0.545591	logs/bench3.log
+rust_std_stable-cold-f64-random-1000000	142.386454	144.291756	6.083644	logs/bench3.log
+rust_std_stable-cold-u128-random-100000	6.736488	6.780433	0.385509	logs/bench3.log
+rust_std_stable-cold-u128-random-1000000	78.655621	79.467979	5.740087	logs/bench3.log
+rust_std_stable-cold-u64-random-100000	3.356009	3.433976	0.358492	logs/bench3.log
+rust_std_stable-cold-u64-random-1000000	43.086859	43.370211	2.625984	logs/bench3.log
+rust_std_stable-cold-u64-random-10000000	630.220253	636.014887	23.099182	logs/bench4.log
+rust_std_stable-cold-u64_128b-random-10000	2.523010	2.538276	0.181562	logs/bench3.log
+rust_std_stable-cold-u64_128b-random-100000	34.750310	35.245799	2.277764	logs/bench3.log
+rust_std_stable-cold-u64_128b-random-1000000	672.239862	673.426609	25.121173	logs/bench3.log
+rust_std_stable-hot-f64-random-10000	0.920732	0.958379	0.098392	logs/hot-redo.log
+rust_std_stable-hot-f64-random-100000	11.048231	11.093847	0.378494	logs/hot-redo.log
+rust_std_stable-hot-f64-random-1000000	145.638878	146.507647	7.518862	logs/hot-redo.log
+rust_std_stable-hot-u128-random-10000	0.409347	0.420575	0.038933	logs/hot-redo.log
+rust_std_stable-hot-u128-random-100000	7.003000	7.220693	0.813237	logs/hot-redo.log
+rust_std_stable-hot-u128-random-1000000	82.034706	82.271238	4.608288	logs/hot-redo.log
+rust_std_stable-hot-u64-ascending-100000	0.085360	0.088928	0.011553	saved baseline only; original log unavailable
+rust_std_stable-hot-u64-ascending-1000000	1.367317	1.391475	0.150495	saved baseline only; original log unavailable
+rust_std_stable-hot-u64-descending-100000	0.112627	0.114093	0.011443	saved baseline only; original log unavailable
+rust_std_stable-hot-u64-descending-1000000	2.062098	2.065885	0.256215	saved baseline only; original log unavailable
+rust_std_stable-hot-u64-random-10000	0.324923	0.328962	0.019489	logs/hot-redo.log
+rust_std_stable-hot-u64-random-100000	3.334631	3.482121	0.434345	logs/hot-redo.log
+rust_std_stable-hot-u64-random-1000000	44.847060	45.526550	3.653679	logs/hot-redo.log
+rust_std_stable-hot-u64-random-10000000	662.811498	683.266767	75.768526	logs/hot-redo.log
+rust_std_stable-hot-u64-random_p5-100000	1.170842	1.213981	0.155867	saved baseline only; original log unavailable
+rust_std_stable-hot-u64-random_p5-1000000	17.885366	17.999834	2.475484	saved baseline only; original log unavailable
+rust_std_stable-hot-u64_128b-random-10000	2.478248	2.502508	0.213179	logs/hot-redo.log
+rust_std_stable-hot-u64_128b-random-100000	34.209907	34.723185	2.167222	logs/hot-redo.log
+rust_std_stable-hot-u64_128b-random-1000000	606.299865	610.757060	26.322013	logs/hot-redo.log
