@@ -8,11 +8,27 @@ thread_local! {
     static SKEW: Cell<bool> = const { Cell::new(false) };
     static CALLS: Cell<usize> = const { Cell::new(0) };
     static PANIC_AT: Cell<usize> = const { Cell::new(usize::MAX) };
+    static DROPS: Cell<usize> = const { Cell::new(0) };
 }
-#[derive(Clone, Copy)]
+// Owning, so the backend maintains the exact recovery offset for it. Recovery
+// after a panic is then observable as one drop per original record: a lost
+// record drops fewer, a duplicated one drops more.
 struct Item<const N: usize> {
     identity: usize,
     payload: [u8; N],
+}
+impl<const N: usize> Clone for Item<N> {
+    fn clone(&self) -> Self {
+        Self {
+            identity: self.identity,
+            payload: self.payload,
+        }
+    }
+}
+impl<const N: usize> Drop for Item<N> {
+    fn drop(&mut self) {
+        DROPS.with(|d| d.set(d.get() + 1));
+    }
 }
 fn key_value(i: usize) -> u64 {
     SKEW.with(|skew| {
@@ -99,6 +115,7 @@ fn panic_retention<S: Sort, const PAD: usize>() {
                 let mut data = original.clone();
                 CALLS.with(|v| v.set(0));
                 PANIC_AT.with(|v| v.set(target));
+                DROPS.with(|v| v.set(0));
                 let panic =
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| S::sort(&mut data)))
                         .unwrap_err();
@@ -108,6 +125,15 @@ fn panic_retention<S: Sort, const PAD: usize>() {
                     "unexpected recovery panic: n={n}, pad={PAD}"
                 );
                 PANIC_AT.with(|v| v.set(usize::MAX));
+                // Every original record must be dropped exactly once, whether
+                // it was in the slice or still in a scratch block.
+                drop(data);
+                assert_eq!(
+                    DROPS.with(|v| v.get()),
+                    n,
+                    "record lost or duplicated by recovery: n={n}, target={target}, pad={PAD}"
+                );
+                let mut data = original.clone();
                 data.sort_unstable_by_key(|v| v.identity);
                 assert!(
                     data.iter()

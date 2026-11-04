@@ -44,8 +44,11 @@ floats and padded `u64` records implement it in `benches/bench.rs`.
 
 Unsupported, and explicit about it (no hidden fallback): variable-length keys such
 as `String`, and `sort_by`. Benchmark registration skips unsupported types via
-`supports_type`. If key extraction panics, all records are restored and the panic
-resumes; the resulting order is unspecified.
+`supports_type`. If key extraction panics the panic resumes and the order is
+unspecified; for records with a destructor the sorter also restores the slice to
+a permutation of the original records, so none is lost or dropped twice. Types
+without destructors skip that recovery bookkeeping (measured 3% of the hot loop)
+because duplicated Copy records are inert bits.
 
 ## Tests
 
