@@ -168,6 +168,8 @@ fn run_case<T: Ord + Clone>(
     run_sort::<T, stable::rust_std::SortImpl>(name, pattern, &input, &expected, full_eq);
     run_sort::<T, unstable::rust_ipnsort::SortImpl>(name, pattern, &input, &expected, full_eq);
     run_sort::<T, other::rust_block_lsd::SortImpl>(name, pattern, &input, &expected, full_eq);
+    #[cfg(feature = "rust_tessera_radix")]
+    run_sort::<T, other::rust_tessera_radix::SortImpl>(name, pattern, &input, &expected, full_eq);
     if radsort {
         run_sort::<T, other::rust_radsort::SortImpl>(name, pattern, &input, &expected, full_eq);
     }
@@ -426,6 +428,14 @@ fn run_owned(pattern: &str, values: &[i32]) {
         pattern,
         values,
         other::rust_block_lsd::sort,
+        true,
+    );
+    #[cfg(feature = "rust_tessera_radix")]
+    owned_sort(
+        "rust_tessera_stable_radix",
+        pattern,
+        values,
+        other::rust_tessera_radix::sort,
         true,
     );
     owned_sort(

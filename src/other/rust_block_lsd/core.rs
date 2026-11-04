@@ -103,6 +103,19 @@ where
     T: Key,
 {
     let (union, intersection) = varying_key_bits::<T>(arr);
+    sort_with_variation(arr, radix, block_size, union, intersection);
+}
+
+/// Same sort, with a variation scan the caller already paid for.
+pub(crate) fn sort_with_variation<T>(
+    arr: &mut [T],
+    radix: usize,
+    block_size: usize,
+    union: SortKey<T>,
+    intersection: SortKey<T>,
+) where
+    T: Key,
+{
     if union == intersection {
         return;
     }

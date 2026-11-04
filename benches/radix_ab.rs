@@ -318,6 +318,14 @@ fn tessera_tile<const BYTES: usize, T: sort_research_rs::other::radix_support::K
     sort_research_rs::other::rust_tessera_radix::sort_with_tile_bytes(s, BYTES);
 }
 
+/// Leaf-policy sweep: (merge ceiling, insertion ceiling) in records.
+#[cfg(feature = "rust_tessera_radix")]
+fn tessera_leaf<const MERGE: usize, const INS: usize, T: sort_research_rs::other::radix_support::Key>(
+    s: &mut [T],
+) {
+    sort_research_rs::other::rust_tessera_radix::sort_with_policy(s, 65536, MERGE, INS);
+}
+
 #[cfg(feature = "rust_msd_radix")]
 fn msd_radix<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
     sort_research_rs::other::rust_msd_radix::sort(s);
@@ -337,7 +345,18 @@ macro_rules! radix_variants {
             v.push(("tessera", |s: &mut [$ty]| {
                 sort_research_rs::other::rust_tessera_radix::sort(s)
             }));
-            v.push(("tessera_256k", tessera_tile::<262144, $ty>));
+            // The tile budget and the leaf crossovers are swept from here while
+            // tuning; they cost a build matrix, so they stay opt-in.
+            if std::env::var_os("RADIX_AB_LEAVES").is_some() {
+                v.push(("tessera_256k", tessera_tile::<262144, $ty>));
+                v.push(("leaf_count_only", tessera_leaf::<0, 0, $ty>));
+                v.push(("leaf_ins48", tessera_leaf::<0, 48, $ty>));
+                v.push(("leaf_merge32", tessera_leaf::<32, 48, $ty>));
+                v.push(("leaf_merge128", tessera_leaf::<128, 48, $ty>));
+                v.push(("leaf_merge512", tessera_leaf::<512, 48, $ty>));
+                v.push(("leaf_merge2k", tessera_leaf::<2048, 48, $ty>));
+                v.push(("leaf_merge_ins128", tessera_leaf::<512, 128, $ty>));
+            }
         }
         #[cfg(feature = "rust_msd_radix")]
         {

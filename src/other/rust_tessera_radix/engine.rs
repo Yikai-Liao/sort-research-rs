@@ -21,21 +21,28 @@ use crate::other::rust_block_lsd::core as block;
 
 type SortKey<T> = <T as Key>::Value;
 
-/// Bits per digit. The block engine's block-size coefficient is tuned for this
-/// width, and 256 leaf buckets keep the cursor array in L1.
+/// Bits per digit for the MSD split and for the block engine's own LSD passes.
+/// The block engine's block-size coefficient is tuned for this width.
 const RADIX: usize = 8;
+/// Widest digit a cache-resident leaf may use. Wider digits mean fewer passes
+/// over the tile, which is the whole cost there; the price is a bucket table of
+/// `8 << LEAF_RADIX_MAX` bytes that has to fit next to the tile in L1.
+const LEAF_RADIX_MAX: usize = 11;
 /// Largest tile finished with LSD passes, in bytes of record data.
 const TILE_BYTES: usize = 64 * 1024;
 /// Tiles at or below this many records are finished with an insertion sort
 /// instead of paying for a bucket table per remaining digit.
-const SMALL_LEAF: usize = 48;
-/// One digit per 8 key bits covers every supported key width. The literal
-/// appears in the array types: rustc's layout computation hits an ICE on a
-/// const-generic bound spelled through an inner associated constant here.
-const MAX_BUCKETS: usize = 1 << RADIX;
+const INSERTION_MAX: usize = 48;
+/// Tiles at or below this many records are finished with a merge sort. Placed by
+/// measurement; see EXPERIMENTS.md.
+const MERGE_MAX: usize = 384;
+/// Bucket capacity of a leaf pass. The literal appears in the array type:
+/// rustc's layout computation hits an ICE on a const-generic bound spelled
+/// through an inner associated constant here.
+const MAX_BUCKETS: usize = 1 << LEAF_RADIX_MAX;
 
 /// One digit of the converted key, highest digit first in a [`Plan`].
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Digit {
     shift: usize,
     width: usize,
@@ -47,117 +54,135 @@ impl Digit {
         (T::Value::from_usize((1usize << self.width) - 1)) << T::Value::from_usize(self.shift)
     }
 
-    #[inline]
-    fn extract<T: Key>(self, key: SortKey<T>) -> usize {
-        ((key & self.mask::<T>()) >> T::Value::from_usize(self.shift)).to_usize()
-    }
-
-    #[inline]
-    fn varies<T: Key>(self, union: SortKey<T>, intersection: SortKey<T>) -> bool {
-        let mask = self.mask::<T>();
-        union & mask != intersection & mask
-    }
 }
 
-/// The digits still worth a pass for one node, highest first.
+/// The passes one node will actually run, highest digit first.
 ///
-/// A fixed inline array keeps recursion free of per-node allocation; the width
-/// bound is the key width divided by the digit width.
-#[derive(Clone, Copy)]
-struct Plan {
-    digits: [Digit; 16],
-    len: usize,
+/// A fixed inline array keeps recursion free of per-node allocation. The slot
+/// count must cover the narrowest leaf digit over the widest key: 128 bits at
+/// six bits per digit.
+const PLAN_DIGITS: usize = 24;
+
+/// The bits that can still differ inside one node: every bit set in some key,
+/// and every bit set in all of them. Constant bits cannot change the order, so
+/// both routes use this to skip work.
+struct Variation<T: Key> {
+    union: SortKey<T>,
+    intersection: SortKey<T>,
 }
 
-impl Plan {
-    fn all<T: Key>() -> Self {
-        let bits = T::Value::BITS;
-        let mut plan = Plan {
-            digits: [Digit { shift: 0, width: 0 }; 16],
-            len: 0,
+// Manual impls: the bound belongs to the key type, which is `Copy`, not to the
+// record `T`, which need not be.
+impl<T: Key> Clone for Variation<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T: Key> Copy for Variation<T> {}
+
+impl<T: Key> Variation<T> {
+    fn varying(self) -> u128 {
+        self.union.to_u128() & !self.intersection.to_u128()
+    }
+}
+
+/// Writes the passes a node will really run into `digits`, highest first, and
+/// returns how many there are.
+///
+/// Consider digits of `width` bits covering the key, and keep only what varies:
+/// constant bits cannot change the order, so no pass runs for them. Dropping
+/// whole digits is what keeps a node full of duplicate keys cheap; narrowing a
+/// partially varying digit is what keeps a skewed node cheap, because both a
+/// split's bucket count and a leaf's digit width follow the digit it is given.
+/// Keys that differ only in their top bit would otherwise pay a 256-bucket pass
+/// to make two buckets.
+///
+/// The plan stays a slice of a caller-owned array: this toolchain's layout query
+/// ICEs when a function passes an array whose length is a path constant.
+fn plan_digits<T: Key>(width: usize, variation: Variation<T>, digits: &mut [Digit]) -> usize {
+    let varying_bits = variation.varying();
+    let mut len = 0;
+    let mut shift = T::Value::BITS;
+    while shift > 0 {
+        let width = width.min(shift);
+        shift -= width;
+        let span = ((1u128 << width) - 1) << shift;
+        let varying = varying_bits & span;
+        if varying == 0 {
+            continue;
+        }
+        // Absolute bit positions: the span already carries the digit's place.
+        let low = varying.trailing_zeros() as usize;
+        let high = u128::BITS as usize - 1 - varying.leading_zeros() as usize;
+        debug_assert!(len < digits.len());
+        digits[len] = Digit {
+            shift: low,
+            width: high - low + 1,
         };
-        for shift in (0..bits).step_by(RADIX).rev() {
-            debug_assert!(plan.len < plan.digits.len());
-            plan.digits[plan.len] = Digit {
-                shift,
-                width: RADIX.min(bits - shift),
-            };
-            plan.len += 1;
-        }
-        plan
+        len += 1;
     }
+    len
+}
 
-    /// Keeps only the digits whose bits vary between `union` and
-    /// `intersection`. Constant digits cannot change the order, so no pass runs
-    /// for them; this is what keeps a node full of duplicate keys cheap.
-    fn filter<T: Key>(self, union: SortKey<T>, intersection: SortKey<T>) -> Self {
-        let mut out = self;
-        out.len = 0;
-        for i in 0..self.len {
-            let digit = self.digits[i];
-            if digit.varies::<T>(union, intersection) {
-                out.digits[out.len] = digit;
-                out.len += 1;
-            }
-        }
-        out
-    }
-
-    fn is_empty(self) -> bool {
-        self.len == 0
-    }
-
-    /// The plan for a child that was split on only the top `radix` bits of its
-    /// most significant digit. The unsplit low bits of that digit stay the
-    /// highest digit of the child.
-    fn after_split(self, radix: usize) -> Self {
-        debug_assert!(self.len > 0);
-        let mut out = self;
-        let top = self.digits[0];
-        out.digits.copy_within(1..self.len, 0);
-        out.len -= 1;
-        if radix < top.width {
-            out.digits.copy_within(0..out.len, 1);
-            out.digits[0] = Digit {
-                shift: top.shift,
-                width: top.width - radix,
-            };
-            out.len += 1;
-        }
-        out
-    }
+/// Set `RADIX_TRACE=1` to print every routing decision. The trace costs one
+/// atomic read per node and is the only way to see why an input took a path.
+fn trace() -> bool {
+    static TRACE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *TRACE.get_or_init(|| std::env::var_os("RADIX_TRACE").is_some())
 }
 
 struct Context<T> {
-    /// Scratch for the LSD leaves; holds the largest tile seen so far.
+    /// Scratch for the leaves; holds the largest tile seen so far.
     scratch: Vec<MaybeUninit<T>>,
     tile_bytes: usize,
+    /// Tiles at or below this many records use an insertion sort.
+    insertion_max: usize,
+    /// Tiles at or below this many records use a merge sort instead of counting
+    /// passes: past the insertion crossover the bucket table of a counting pass
+    /// still costs more than a merge level while the tile is small.
+    merge_max: usize,
 }
 
 /// Sorts by converted radix key, stably, in O(n) time and O(sqrt(n)) auxiliary
 /// space. See the module documentation for the shape of the algorithm.
 pub fn sort<T: Key>(arr: &mut [T]) {
-    sort_with_tile_bytes(arr, TILE_BYTES);
+    sort_with_policy(arr, TILE_BYTES, MERGE_MAX, INSERTION_MAX);
 }
 
-/// Sorts with an explicit tile budget, in bytes of record data. `sort` uses the
-/// tuned default; benchmarks pin the budget to make the trade-off visible.
+/// Sorts with an explicit tile budget, in bytes of record data. Benchmarks pin
+/// the budget to make the trade-off visible.
 pub fn sort_with_tile_bytes<T: Key>(arr: &mut [T], tile_bytes: usize) {
+    sort_with_policy(arr, tile_bytes, MERGE_MAX, INSERTION_MAX);
+}
+
+/// Sorts with an explicit leaf policy. Leaf handling is a local cost decision:
+/// the tile is bounded by the budget, so the auxiliary space stays O(sqrt n)
+/// whatever the leaf does, and picking the cheapest leaf per size is free. This
+/// entry point exists so the crossovers are placed by measurement.
+pub fn sort_with_policy<T: Key>(
+    arr: &mut [T],
+    tile_bytes: usize,
+    merge_max: usize,
+    insertion_max: usize,
+) {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
         return;
     }
     let tile_bytes = tile_bytes.max(record_bytes);
     let (union, intersection) = block::varying_key_bits(arr);
-    let plan = Plan::all::<T>().filter::<T>(union, intersection);
-    if plan.is_empty() {
+    let variation = Variation { union, intersection };
+    if variation.varying() == 0 {
         return;
     }
     let mut context = Context {
         scratch: Vec::new(),
         tile_bytes,
+        insertion_max,
+        merge_max,
     };
-    context.sort_node(arr, plan);
+    context.sort_node(arr, variation);
 }
 
 // --- Cost model -----------------------------------------------------------
@@ -167,15 +192,34 @@ pub fn sort_with_tile_bytes<T: Key>(arr: &mut [T], tile_bytes: usize) {
 // threshold. The constants are machine facts about moving record bytes, not
 // properties of a data distribution.
 
-/// Cache-resident radix pass cost per byte of record data, in nanoseconds.
-/// Measured over 8-byte records at 2.6 ns per record; 16- and 128-byte records
-/// land within 10 % of the same per-byte figure.
-const HOT_NS_PER_BYTE: f64 = 0.33;
+/// A pass costs the same per record whatever the record width, until the memory
+/// term takes over: the per-record work (key, bucket, cursor, store) has a floor
+/// of 2.5 ns, and wide records add their traffic at the L1 write rate. Measured
+/// on cache-resident tiles: 2.3 ns per 4-byte record, 2.6 ns per 8-byte record.
+const HOT_NS_PER_RECORD: f64 = 2.5;
+const HOT_BYTES_PER_NS: f64 = 3.0;
 
-/// Effective bandwidth of a cold stable scatter, in bytes per nanosecond.
-/// memcpy reaches ~10 GB/s on this machine, but a 256-stream scatter gets about
-/// an eighth of that; measured as 5.4 ns per 8-byte record at a 7.6 MiB node.
-const COLD_BYTES_PER_NS: f64 = 1.1;
+/// A cold pass keeps the same per-record floor and streams through the working
+/// set at the scatter bandwidth, fitted to the measured block LSD passes:
+/// 3.4 GB/s at 1.6 MiB, 2.1 at 8 MiB, 1.7 at 16 MiB, 1.05 at 80 MiB. The power
+/// law below is within 25 % of those points; a cold scatter is that slow because
+/// it writes to 256 streams at once, where memcpy reaches ~10 GB/s. Note the
+/// measured floor of 3.0 ns per record: below a few MiB the passes are flat.
+const COLD_BANDWIDTH_PER_NS: f64 = 3.4;
+const COLD_BANDWIDTH_REFERENCE: f64 = 2_097_152.0;
+const COLD_BANDWIDTH_EXPONENT: f64 = 0.30;
+const COLD_NS_PER_RECORD_FLOOR: f64 = 3.0;
+
+fn hot_ns_per_record(record_bytes: usize) -> f64 {
+    HOT_NS_PER_RECORD.max(record_bytes as f64 / HOT_BYTES_PER_NS)
+}
+
+fn cold_ns_per_record(node_bytes: usize, records: usize) -> f64 {
+    let record_bytes = node_bytes as f64 / records.max(1) as f64;
+    let bandwidth = COLD_BANDWIDTH_PER_NS
+        * (node_bytes as f64 / COLD_BANDWIDTH_REFERENCE).powf(-COLD_BANDWIDTH_EXPONENT);
+    COLD_NS_PER_RECORD_FLOOR.max(record_bytes / bandwidth.min(HOT_BYTES_PER_NS))
+}
 
 /// Cost of one MSD split, in units of a cache-resident pass.
 ///
@@ -186,24 +230,69 @@ const COLD_BYTES_PER_NS: f64 = 1.1;
 /// ns per byte against a hot pass at 0.33 ns per byte.
 const SPLIT_HOT_PASSES: f64 = 4.0;
 
-/// Whether one more MSD split pays for itself.
+/// Whether an MSD split costs less than streaming the node cold.
 ///
-/// A split replaces `digits - 1` cold passes with cache-resident ones, and costs
-/// [`SPLIT_HOT_PASSES`] hot passes. It pays exactly when that difference is
-/// positive. When the node is already cache resident the two pass costs are
-/// equal and the answer is no, so the cache boundary does not need its own
-/// threshold.
-fn split_pays(node_bytes: usize, digits_left: usize) -> bool {
-    if digits_left < 2 {
+/// Not a threshold but the two predicted totals: streaming costs
+/// `cold_passes` cold passes, splitting costs the split itself plus
+/// `hot_passes` cache-resident passes for the whole node. Both pass counts are
+/// what this node would really run, so a wide key with sixteen digits and a
+/// narrow one with two are compared on their own work.
+fn split_pays(node_bytes: usize, records: usize, cold_passes: usize, hot_passes: usize) -> bool {
+    if cold_passes < 2 || records == 0 {
         return false;
     }
-    let hot = HOT_NS_PER_BYTE * node_bytes as f64;
-    let cold = hot.max(node_bytes as f64 / COLD_BYTES_PER_NS);
-    let saved_per_pass = cold - hot;
-    if saved_per_pass <= 0.0 {
-        return false;
+    let hot = hot_ns_per_record(node_bytes / records);
+    let streamed = cold_passes as f64 * cold_ns_per_record(node_bytes, records);
+    let split = SPLIT_HOT_PASSES * hot + hot_passes as f64 * hot;
+    split < streamed
+}
+
+/// Merges the two runs `[start, middle)` and `[middle, end)` from `source`
+/// into `destination` at the same offsets, stably: on equal keys the left run
+/// wins, which is what keeps the whole sort stable.
+///
+/// # Safety
+///
+/// Both runs must be sorted, `source` must hold `end` initialized records and
+/// `destination` must have room for `end`, in a different allocation.
+unsafe fn merge_runs<T: Key>(
+    source: *const T,
+    destination: *mut T,
+    start: usize,
+    middle: usize,
+    end: usize,
+) {
+    unsafe {
+        if middle >= end {
+            std::ptr::copy_nonoverlapping(source.add(start), destination.add(start), end - start);
+            return;
+        }
+        // The common case on partially sorted inputs: the runs already meet in
+        // order, so the whole pair is a copy.
+        if (*source.add(middle - 1)).key() <= (*source.add(middle)).key() {
+            std::ptr::copy_nonoverlapping(source.add(start), destination.add(start), end - start);
+            return;
+        }
+        let (mut left, mut right, mut out) = (start, middle, start);
+        while left < middle && right < end {
+            let take_left = (*source.add(left)).key() <= (*source.add(right)).key();
+            let from = if take_left { left } else { right };
+            std::ptr::write(destination.add(out), std::ptr::read(source.add(from)));
+            if take_left {
+                left += 1;
+            } else {
+                right += 1;
+            }
+            out += 1;
+        }
+        if left < middle {
+            std::ptr::copy_nonoverlapping(source.add(left), destination.add(out), middle - left);
+            out += middle - left;
+        }
+        if right < end {
+            std::ptr::copy_nonoverlapping(source.add(right), destination.add(out), end - right);
+        }
     }
-    (digits_left as f64 - 1.0) * saved_per_pass > SPLIT_HOT_PASSES * hot
 }
 
 /// Stable insertion sort on converted keys.
@@ -271,6 +360,17 @@ unsafe fn counting_pass<T: Key>(
     }
 }
 
+/// Digit width for a leaf that will run counting passes over `records`.
+///
+/// A pass costs `records` moves plus `2^width` table entries, and the pass
+/// count falls roughly as `1/width`, so the best width grows with the tile. The
+/// rule keeps the table at or below one entry per record, which is where the
+/// measured crossovers sit, and never exceeds [`LEAF_RADIX_MAX`].
+fn leaf_radix(records: usize) -> usize {
+    let bits = usize::BITS as usize - records.leading_zeros() as usize;
+    bits.clamp(6, LEAF_RADIX_MAX)
+}
+
 /// Digit width for one MSD split.
 ///
 /// Aim for children of about half the tile budget: large enough that the split
@@ -287,45 +387,72 @@ fn split_radix(node_len: usize, record_bytes: usize, tile_bytes: usize) -> usize
 }
 
 impl<T: Key> Context<T> {
-    fn sort_node(&mut self, arr: &mut [T], plan: Plan) {
-        if arr.len() < 2 {
+    fn sort_node(&mut self, arr: &mut [T], variation: Variation<T>) {
+        let records = arr.len();
+        let varying = variation.varying();
+        if records < 2 || varying == 0 {
             return;
         }
-        let node_bytes = arr.len().saturating_mul(std::mem::size_of::<T>());
-        if plan.is_empty() || node_bytes <= self.tile_bytes {
-            self.lsd_leaf(arr, plan);
+        let record_bytes = std::mem::size_of::<T>();
+        let node_bytes = records.saturating_mul(record_bytes);
+        if node_bytes <= self.tile_bytes {
+            if trace() {
+                eprintln!("leaf  len={} bytes={}", records, node_bytes);
+            }
+            self.lsd_leaf(arr, variation);
             return;
         }
-        if !split_pays(node_bytes, plan.len) {
+        // Two predicted totals: stream the node through cold passes the way the
+        // block engine would, or pay for one split and finish the children in
+        // cache. The pass counts are the ones each route would really run.
+        let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
+        let cold_passes = plan_digits::<T>(RADIX, variation, &mut scratch_digits);
+        let hot_passes = plan_digits::<T>(leaf_radix(records), variation, &mut scratch_digits);
+        if !split_pays(node_bytes, records, cold_passes, hot_passes) {
+            if trace() {
+                eprintln!(
+                    "block len={} bytes={} cold_passes={} hot_passes={}",
+                    records, node_bytes, cold_passes, hot_passes
+                );
+            }
             // Splitting would cost more than the passes it replaces. Finish the
             // node with the block engine's LSD pass, which needs no buffer the
-            // size of the node.
+            // size of the node. It gets the variation scan already done here.
             let block_size = block::default_block_size(arr.len(), std::mem::size_of::<T>(), RADIX);
-            block::sort_with_block_size(arr, RADIX, block_size);
+            block::sort_with_variation(arr, RADIX, block_size, variation.union, variation.intersection);
             return;
         }
         // MSD split: one stable block-permutation pass over the whole node.
         // The fan-out follows the node size. A node that is only slightly over
         // the tile budget must not pay for 256 output streams and the block
         // engine's per-bucket scratch floor.
-        let top = plan.digits[0];
-        let radix =
-            split_radix(arr.len(), std::mem::size_of::<T>(), self.tile_bytes).min(top.width);
-        // An MSD split has to take the *high* bits of the digit, so a partial
-        // split moves its shift up; the low remainder stays with the children.
+        // The split takes the topmost bits that can still differ. Anchoring it
+        // at the highest varying bit instead of at a digit boundary keeps every
+        // level useful and lets one level peel bits from several leaf digits: a
+        // level that peeled no varying bit would pay a pass to make one bucket.
+        let top = (u128::BITS - varying.leading_zeros()) as usize;
+        let radix = split_radix(records, record_bytes, self.tile_bytes)
+            .min(top)
+            .max(1);
         let digit = Digit {
-            shift: top.shift + top.width - radix,
+            shift: top - radix,
             width: radix,
         };
+        if trace() {
+            eprintln!(
+                "split len={} bytes={} cold_passes={} hot_passes={} radix={}",
+                records, node_bytes, cold_passes, hot_passes, radix
+            );
+        }
         block::partition_digit(arr, digit.width, digit.shift);
-        self.descend(arr, digit, plan.after_split(radix));
+        self.descend(arr, digit);
     }
 
     /// Walks the freshly partitioned node, and sorts each bucket as a separate
     /// child. The walk extracts every key once and accumulates the variation of
     /// the child while the bucket boundary is still open, so a child does not
     /// pay for a second scan of its own keys.
-    fn descend(&mut self, arr: &mut [T], digit: Digit, tail: Plan) {
+    fn descend(&mut self, arr: &mut [T], digit: Digit) {
         let mask = digit.mask::<T>();
         let shift = T::Value::from_usize(digit.shift);
         let mut start = 0;
@@ -344,8 +471,9 @@ impl<T: Key> Context<T> {
                 intersection = intersection & key;
                 end += 1;
             }
-            let child = tail.filter::<T>(union, intersection);
-            self.sort_node(&mut arr[start..end], child);
+            // Within a bucket every key shares the digits above the split, so
+            // they fall out of the child's variation on their own.
+            self.sort_node(&mut arr[start..end], Variation { union, intersection });
             start = end;
         }
     }
@@ -358,21 +486,73 @@ impl<T: Key> Context<T> {
         }
     }
 
+    /// Stable bottom-up merge sort over the tile, driven by the same buffer the
+    /// counting passes use. A merge level moves every record once and needs no
+    /// bucket table, which is what wins while the tile is only a few hundred
+    /// records; past that the level count outgrows the digit count.
+    fn merge_leaf(&mut self, arr: &mut [T]) {
+        let len = arr.len();
+        if len < 2 || arr.windows(2).all(|pair| pair[0].key() <= pair[1].key()) {
+            return;
+        }
+        self.set_scratch_len(len);
+        let buffer = self.scratch.as_mut_ptr().cast::<T>();
+        let mut source = arr.as_mut_ptr();
+        let mut destination = buffer;
+        let mut source_is_tile = true;
+        let mut width = 1;
+        loop {
+            let mut start = 0;
+            while start < len {
+                let middle = (start + width).min(len);
+                let end = (start + 2 * width).min(len);
+                // SAFETY: the source holds `len` initialized records and the
+                // destination has room for `len`; they are distinct
+                // allocations, and each pair of runs is read before it is
+                // written.
+                unsafe {
+                    merge_runs(source, destination, start, middle, end);
+                }
+                start = end;
+            }
+            // The pass just finished: its output is in `destination`.
+            std::mem::swap(&mut source, &mut destination);
+            source_is_tile = !source_is_tile;
+            if 2 * width >= len {
+                break;
+            }
+            width *= 2;
+        }
+        if !source_is_tile {
+            // SAFETY: the whole tile now lives, sorted, in the buffer.
+            unsafe { std::ptr::copy_nonoverlapping(buffer, arr.as_mut_ptr(), len) };
+        }
+    }
+
     /// Stable LSD counting sort over the tile, driven by a private buffer. One
     /// pass per remaining digit, ping-ponging between the tile and the buffer.
-    fn lsd_leaf(&mut self, arr: &mut [T], plan: Plan) {
+    fn lsd_leaf(&mut self, arr: &mut [T], variation: Variation<T>) {
         let len = arr.len();
-        if len < 2 || plan.is_empty() {
+        if len < 2 || variation.varying() == 0 {
             return;
         }
         // A counting pass costs a full bucket table before it moves a single
         // record. Below the crossover an insertion sort on converted keys is
         // both smaller and faster, and it is stable, so the tile's contract is
         // unchanged. Skewed inputs land here for every thin tail bucket.
-        if len <= SMALL_LEAF {
+        if len <= self.insertion_max {
             insertion_leaf(arr);
             return;
         }
+        if len <= self.merge_max {
+            self.merge_leaf(arr);
+            return;
+        }
+        // The leaf picks its own digit width: inside the tile the only cost that
+        // scales with it is the bucket table, so a wider digit buys fewer passes
+        // while the table still fits in L1 next to the records.
+        let mut digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
+        let passes = plan_digits::<T>(leaf_radix(len), variation, &mut digits);
         self.set_scratch_len(len);
         let scratch_ptr = self.scratch.as_mut_ptr().cast::<T>();
         // A tile is far smaller than 2^32 records, so 32-bit cursors are enough
@@ -388,13 +568,13 @@ impl<T: Key> Context<T> {
             let mut source: *mut T = arr.as_mut_ptr();
             let mut destination: *mut T = scratch_ptr;
             let mut source_is_tile = true;
-            for index in (0..plan.len).rev() {
+            for index in (0..passes).rev() {
                 *live_in_scratch = !source_is_tile;
                 // SAFETY: the source holds `len` initialized records, the
                 // destination has room for `len` records, and both are distinct
                 // allocations that stay alive for the whole leaf.
                 unsafe {
-                    counting_pass(source, destination, len, plan.digits[index], counts);
+                    counting_pass(source, destination, len, digits[index], counts);
                 }
                 std::mem::swap(&mut source, &mut destination);
                 source_is_tile = !source_is_tile;
