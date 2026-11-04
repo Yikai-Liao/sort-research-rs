@@ -331,6 +331,118 @@ loop that is already store-port bound — the same reason fusing the next pass's
 histogram failed (entry 4). Reverted. The slack is in the store port, not in
 address latency, so the lever is fewer passes, not a better pass.
 
+### 19. Bug: a key panic in the merge leaf duplicated and lost a record
+
+A review of the small-tile path found a hole that the counting leaf does not
+have. `merge_runs` moved records with `ptr::read` + `ptr::write`, so a level
+consumed its source: a panic from the key extractor half-way through a level
+left a prefix of the record set in the destination and a hole in the source.
+For a type with a destructor that is one record duplicated and one lost, and
+therefore a double free, not merely a wrong order. The `catch_unwind` in
+`lsd_leaf` did not help: `merge_leaf` had no recovery and no way to learn how
+far the inner merge had got.
+
+Fix, in two parts, both free:
+
+- `merge_runs` copies bitwise (`copy_nonoverlapping` of one record) instead of
+  moving. The source then holds the complete set for the whole level, so the
+  level is recoverable by construction. Same load/store pair, no cost.
+- `merge_leaf` copies the scratch buffer back before resuming a panic, under
+  the same `needs_drop::<T>()` const guard as `lsd_leaf`, so integer keys
+  compile with no recovery at all and only resource-owning types pay for it.
+
+The insertion leaf was already safe: it only swaps.
+
+Evidence, not just a passing test: `a_key_panic_never_loses_or_duplicates_a
+_record` sweeps 41 panic points over three leaves (insertion at 20, merge at
+300, counting at 2000) and asserts the record set and the drop log. With
+`ptr::read` and the recovery disabled the test fails on the record-set
+assertion; with the fix it passes. Put back only the recovery and it still
+fails, put back only the copy and it passes — the copy is the part that makes
+the level recoverable, the recovery is what puts the tile back.
+
+### 20. The patterns were lying about u128, so the matrix was re-cut
+
+Every u128 row except `random_wide` went through `narrow_u32(x) << 96`, so it
+was a 32-bit key in a 128-bit container: three leaf windows, not twelve. Those
+rows never measured what the table claimed. The harness now has type-space
+patterns that build the key in the target type (`type_two_near`, `type_two_far`,
+`type_eight_near`, `type_top_byte`), plus the i32-space shapes added for the
+same reason (`runs64`, `blocks_desc`, `staircase`, `random_local`,
+`high_byte_only`, `two_values_*`, `sorted_d20`).
+
+Two findings, both against the design as it stood:
+
+- `type_two_near` (one varying bit, 1M) is 4.8 ns on u64 and 11.7 on u128,
+  against 3.4 and 7.2 for `ipnsort`. Nothing is being sorted, so the cost is
+  the survey's full scan (it only early-exits when all bits vary) plus one
+  pass. On u128 that is a third of the time spent proving nothing varies.
+- `type_two_far` (two values, 128 bits apart) is 4.9 / 11.5 and the split
+  handles it in one level, so there is no low-cardinality blind spot for
+  well-separated values — the earlier suspicion came from a pattern that the
+  widening map had smeared into 31 scattered bits.
+
+Against the stable baseline the new shapes hold up (blocks_desc 21.2 vs 34.4,
+random_local 18.3 vs 36.9 at 1M u64), and `pipe_organ` is 22.3 against 12.5 for
+`std`: two long sorted runs are a comparison sort's best case, and a radix sort
+cannot see them. Not a defect to chase, a boundary to record.
+
+### 21. Leaf width is per tile, and the model must not follow it
+
+Sweeping `LEAF_RADIX_MAX` re-routed whole node classes, because the routing
+model priced a split with the leaf's own width: widening the leaf lowered the
+estimated hot passes, made splitting look cheaper, and u32 10M fell from 13.9
+to 18.6 ns by switching from streamed to split. The model now prices at a fixed
+`MODEL_LEAF_RADIX = 11`, so leaf tuning cannot move routing.
+
+With routing frozen, the optimum width differs by type, and physically so: a
+pass moves `records * record_bytes`, a table costs `2 << width` bytes, and the
+two only trade at the width where the table still fits beside the tile. At 1M
+(ns/record, routing frozen):
+
+| leaf width | u64 | u128 | u32 |
+| --- | --- | --- | --- |
+| 11 | 23.6 | 78.1 | 12.2 |
+| 12 | 24.2 | 70.6 | 9.8 |
+| 13 | 22.3 | 74.1 | 10.4 |
+| 14 | 27.0 | 68.0 | 10.3 |
+
+14 bits is best for u128 and worst for u64: its 32 KiB cursor table is the
+whole L1, so on 8-byte records the table evicts the tile. The width a leaf
+should use is therefore a per-tile cost decision, not a constant.
+
+### 22. Four independent reviews: what they found
+
+Micro-architecture (u64 1M budget: 6 leaf passes 59 %, split scatter 23 %,
+materialise 9 %, descend 6 %): the counting pass runs 5.3 cycles/record against
+a 2.0 cycle port floor, and its 3906-record destination tile plus the 4 KiB
+cursor table occupy 8.6 of L1's 8 ways before the source stream allocates
+anything, so the tile evicts itself. Sub-tiling to L1 capacity is the cheap
+test of that claim.
+
+Structure: the pass count is a function of key width, not of how many records
+the tile holds. A 3906-record tile runs six passes to produce 3906 distinct
+keys when twelve bits of discrimination would separate them all. A per-tile
+MSD recursion into the leaf's second buffer, terminated by insertion, needs one
+or two passes where the flat LSD plan needs six. This is the largest remaining
+lever and it is still a radix sort.
+
+Measurement: every cell at or below 8 MiB is measured cache-warm, because the
+harness clones the input immediately before the timed region; at 10M the 76 MiB
+clone is large enough for glibc's memcpy to switch to non-temporal stores, so
+the starting cache state changes discontinuously between 1M and 10M — exactly
+where the size-scaling conclusions live. The `record16`/`record128` payloads are
+constant zero, so a stable and an unstable sort produce identical bytes and the
+harness cannot see a stability regression on the two rows whose contract is
+stability.
+
+Literature (RADULS/RADULS2, ska_sort, Blits, IPS4o, radsort): the published
+wins are memory-system engineering of the scatter (64-byte packet buffering,
+non-temporal stores), not digit math; RADULS2 reports 10-50 % of its time in
+tiny-bin handling, and that is where our insertion/merge crossovers already
+sit. Buffered parcel scatter needs the destinations to stay aligned to 64 bytes
+across passes, which an in-place array does not guarantee.
+
 ## Where the candidate stands
 
 ns per record, one root each, pinned, min of 5 interleaved rounds.

@@ -113,6 +113,99 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             }
             v
         }
+        // Concatenated sorted runs with disjoint key ranges: what a merge of
+        // sorted pages, a k-way merge or a B-tree leaf scan looks like. The
+        // ordered probe rejects it (the run boundaries invert), so it is sorted as
+        // an unsorted array with a lot of local order.
+        "runs64" => {
+            let runs = 64usize.min(len.max(1));
+            let run_len = len / runs;
+            let mut v = Vec::with_capacity(len);
+            for run in 0..runs {
+                let base = (run as i64 * (i32::MAX as i64 / runs as i64)) as i32;
+                let mut part: Vec<i32> = patterns::random_uniform(run_len.max(1), 0..(1 << 20))
+                    .into_iter()
+                    .map(|x| base.wrapping_add(x))
+                    .collect();
+                part.sort_unstable();
+                v.extend_from_slice(&part);
+            }
+            v.truncate(len);
+            v
+        }
+        // The same runs, each descending: order exists but the wrong way round,
+        // and the probe cannot use it either.
+        "blocks_desc" => {
+            let runs = 64usize.min(len.max(1));
+            let run_len = len / runs;
+            let mut v = Vec::with_capacity(len);
+            for run in 0..runs {
+                let base = (run as i64 * (i32::MAX as i64 / runs as i64)) as i32;
+                let mut part: Vec<i32> = patterns::random_uniform(run_len.max(1), 0..(1 << 20))
+                    .into_iter()
+                    .map(|x| base.wrapping_add(x))
+                    .collect();
+                part.sort_unstable_by(|a, b| b.cmp(a));
+                v.extend_from_slice(&part);
+            }
+            v.truncate(len);
+            v
+        }
+        // Two values, half and half: the extreme of "few distinct values" and the
+        // case a counting pass with two buckets should finish in one pass.
+        "two_values" => {
+            let rng = patterns::random(len);
+            rng.into_iter()
+                .map(|x| if x >= 0 { 0 } else { i32::MAX })
+                .collect()
+        }
+        // 1000 groups of equal keys, groups in ascending order: a sorted array with
+        // long duplicate runs, so the ordered probe accepts it and the duplicate
+        // structure has to be cheap.
+        "staircase" => {
+            let groups = 1000usize;
+            (0..len)
+                .map(|index| ((index * groups / len.max(1)) as i32) << 20)
+                .collect()
+        }
+        // Random keys, but each 64-record block draws from a 64-wide window, so
+        // consecutive records share most of their bits: locality inside the array,
+        // no global order.
+        "random_local" => {
+            let bases = patterns::random_uniform(len.div_ceil(64), 0..(1 << 20));
+            let offsets = patterns::random_uniform(len, 0..64);
+            (0..len)
+                .map(|index| (bases[index / 64] << 10).wrapping_add(offsets[index]))
+                .collect()
+        }
+        // Only eight bits vary, and they sit above every other varying bit. The
+        // shift is chosen so the widening mappings (which scale the pattern into
+        // the type's high half) keep the cluster intact: bits 23-30 of the i32 land
+        // at bits 54-61 of a u64 and 119-126 of a u128.
+        "high_byte_only" => {
+            let rng = patterns::random(len);
+            rng.into_iter().map(|x| (x & 0xff) << 23).collect()
+        }
+        // Two values that are one bit apart, versus two_values above where they are
+        // thirty-two bits apart. A digit sort pays for the bit distance, a
+        // comparison sort pays for the number of distinct values; measuring both
+        // separates the two effects.
+        "two_values_far" => {
+            let rng = patterns::random(len);
+            rng.into_iter()
+                .map(|x| if x >= 0 { 0 } else { i32::MAX })
+                .collect()
+        }
+        "two_values_near" => {
+            let rng = patterns::random(len);
+            rng.into_iter().map(|x| x & 1).collect()
+        }
+        // Already-sorted low-cardinality keys: both shortcuts apply at once.
+        "sorted_d20" => {
+            let mut v = patterns::random_uniform(len, 0..20);
+            v.sort_unstable();
+            v
+        }
         "ascending" => patterns::ascending(len),
         "descending" => patterns::descending(len),
         "all_equal" => patterns::all_equal(len),
@@ -166,7 +259,36 @@ fn displaced(mut v: Vec<i32>, swaps: usize) -> Vec<i32> {
     v
 }
 
+/// Patterns that only make sense in the target type's own bit space: the
+/// widening mappings above scale an i32 pattern by ~2^31, which turns two
+/// adjacent values into a 31-bit difference. These build the key directly, so
+/// "two values one bit apart" really is one varying bit.
+fn type_space_keys(pattern: &str, len: usize) -> Option<Vec<u128>> {
+    let keys: Vec<u128> = match pattern {
+        // One varying bit, 50/50: the cheapest possible non-trivial input.
+        "type_two_near" => patterns::random(len).into_iter().map(|x| (x & 1) as u128).collect(),
+        // Two values at opposite ends of the key: same cardinality, maximal digit
+        // distance, so the digit work is maximal while the comparison work is not.
+        "type_two_far" => patterns::random(len)
+            .into_iter()
+            .map(|x| if x >= 0 { 0 } else { u128::MAX })
+            .collect(),
+        // Eight values one bit apart.
+        "type_eight_near" => patterns::random(len).into_iter().map(|x| (x & 7) as u128).collect(),
+        // Only the top byte varies.
+        "type_top_byte" => patterns::random(len)
+            .into_iter()
+            .map(|x| ((x & 0xff) as u128) << 120)
+            .collect(),
+        _ => return None,
+    };
+    Some(keys)
+}
+
 fn keys_u32(pattern: &str, len: usize) -> Vec<u32> {
+    if let Some(keys) = type_space_keys(pattern, len) {
+        return keys.into_iter().map(|key| key as u32).collect();
+    }
     if pattern == "random_wide" {
         wide_keys(pattern, len)
             .into_iter()
@@ -181,6 +303,9 @@ fn keys_u32(pattern: &str, len: usize) -> Vec<u32> {
 }
 
 fn keys_u64(pattern: &str, len: usize) -> Vec<u64> {
+    if let Some(keys) = type_space_keys(pattern, len) {
+        return keys.into_iter().map(|key| key as u64).collect();
+    }
     if pattern == "random_wide" {
         wide_keys(pattern, len)
             .into_iter()
@@ -195,6 +320,9 @@ fn keys_u64(pattern: &str, len: usize) -> Vec<u64> {
 }
 
 fn keys_u128(pattern: &str, len: usize) -> Vec<u128> {
+    if let Some(keys) = type_space_keys(pattern, len) {
+        return keys;
+    }
     if pattern == "random_wide" {
         // Full width: both halves hashed, every bit position varies.
         return wide_keys(pattern, len)

@@ -34,11 +34,17 @@
 //! a node whose keys differ only in their low byte pays one pass instead of
 //! `key width / digit width`.
 //!
-//! Records are never lost or duplicated, including through a panic: a leaf's
-//! record set lives in one of the two buffers at every point of every pass, and
-//! a panic from the key extractor copies the scratch buffer back before it
-//! resumes (`lsd_leaf`). `sort` is stable: equal keys keep their input order
-//! through the block engine's permutation and through every leaf.
+//! Records are never lost or duplicated, including through a panic. Every leaf
+//! keeps the complete record set in one buffer for the whole of every pass:
+//! the counting leaf reads a key before it moves the record, the merge leaf
+//! copies instead of moving so its source stays whole, and the insertion leaf
+//! only swaps. A panic from the key extractor therefore leaves every record
+//! reachable, and the two buffer-moving leaves copy the scratch buffer back
+//! before resuming it, but only for types that own a resource -- a duplicated
+//! record is a double free there, while a plain key type only risks an
+//! arbitrary order, so integer keys compile without any recovery at all.
+//! `sort` is stable: equal keys keep their input order through the block
+//! engine's permutation and through every leaf.
 
 use std::mem::MaybeUninit;
 
@@ -439,7 +445,14 @@ unsafe fn merge_runs<T: Key>(
         while left < middle && right < end {
             let take_left = (*source.add(left)).key() <= (*source.add(right)).key();
             let from = if take_left { left } else { right };
-            std::ptr::write(destination.add(out), std::ptr::read(source.add(from)));
+            // Bitwise copy, not read-then-write. Moving out of the source
+            // would leave a prefix of the record set in the destination and a
+            // hole in the source, so a panic from the key extractor half-way
+            // through a level would duplicate one record and lose another --
+            // a double free for a type with a destructor. Copying keeps the
+            // source whole for the entire level, which makes the level
+            // recoverable, and compiles to the same load/store pair.
+            std::ptr::copy_nonoverlapping(source.add(from), destination.add(out), 1);
             if take_left {
                 left += 1;
             } else {
@@ -614,6 +627,12 @@ unsafe fn counting_pass<T: Key>(
     }
 }
 
+/// Leaf digit width the routing model prices a split with. Fixed on purpose:
+/// the leaf's real width follows its tile (see `leaf_radix`), and letting that
+/// change the model made a wider leaf re-route whole node classes — u32 10M went
+/// from streamed to split and lost 34 %.
+const MODEL_LEAF_RADIX: usize = 11;
+
 /// Digit width for a leaf that will run counting passes over `records`.
 ///
 /// A pass costs `records` moves plus `2^width` table entries, and the pass
@@ -665,7 +684,10 @@ impl<T: Key> Context<T> {
         // cache. The pass counts are the ones each route would really run.
         let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
         let cold_passes = plan_digits::<T>(RADIX, variation, &mut scratch_digits);
-        let hot_passes = plan_digits_packed(varying, leaf_radix(records), &mut scratch_digits);
+        // Priced at the reference width, not at the leaf's own: routing must not
+        // move when the leaf width is tuned, or a wider leaf makes every node look
+        // more worth splitting and the tuning cannot be measured at all.
+        let hot_passes = plan_digits_packed(varying, MODEL_LEAF_RADIX, &mut scratch_digits);
         let (distinct, largest_child) = sample_split_shape(arr, varying);
         if trace() {
             eprintln!(
@@ -774,33 +796,69 @@ impl<T: Key> Context<T> {
         }
         self.set_scratch_len(len);
         let buffer = self.scratch.as_mut_ptr().cast::<T>();
-        let mut source = arr.as_mut_ptr();
-        let mut destination = buffer;
-        let mut source_is_tile = true;
-        let mut width = 1;
-        loop {
-            let mut start = 0;
-            while start < len {
-                let middle = (start + width).min(len);
-                let end = (start + 2 * width).min(len);
-                // SAFETY: the source holds `len` initialized records and the
-                // destination has room for `len`; they are distinct
-                // allocations, and each pair of runs is read before it is
-                // written.
-                unsafe {
-                    merge_runs(source, destination, start, middle, end);
+        // Same recoverability contract as the counting passes: each level
+        // copies from one buffer into the other, so the source holds the
+        // complete record set for the whole level. A panic from the key
+        // extractor therefore always leaves every record reachable, and one
+        // copy back puts the tile right if the live set is the buffer.
+        //
+        // The recovery is compiled only for types that own a resource, where
+        // a duplicated record is a double free. A key type without a
+        // destructor only risks an arbitrary order, which needs no rescue, so
+        // plain integer keys pay nothing for this.
+        let mut live_in_scratch = false;
+        let mut run = |live_in_scratch: &mut bool| {
+            let mut source = arr.as_mut_ptr();
+            let mut destination = buffer;
+            let mut source_is_tile = true;
+            let mut width = 1;
+            loop {
+                *live_in_scratch = !source_is_tile;
+                let mut start = 0;
+                while start < len {
+                    let middle = (start + width).min(len);
+                    let end = (start + 2 * width).min(len);
+                    // SAFETY: the source holds `len` initialized records and
+                    // the destination has room for `len`; they are distinct
+                    // allocations, the source is only read and the
+                    // destination only written, so a panic mid-level leaves
+                    // the source complete.
+                    unsafe {
+                        merge_runs(source, destination, start, middle, end);
+                    }
+                    start = end;
                 }
-                start = end;
+                // The pass just finished: its output is in `destination`.
+                std::mem::swap(&mut source, &mut destination);
+                source_is_tile = !source_is_tile;
+                if 2 * width >= len {
+                    break;
+                }
+                width *= 2;
             }
-            // The pass just finished: its output is in `destination`.
-            std::mem::swap(&mut source, &mut destination);
-            source_is_tile = !source_is_tile;
-            if 2 * width >= len {
-                break;
+            source_is_tile
+        };
+        let ended_in_tile = if const { std::mem::needs_drop::<T>() } {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run(&mut live_in_scratch)
+            })) {
+                Ok(ended_in_tile) => ended_in_tile,
+                Err(payload) => {
+                    if live_in_scratch {
+                        // SAFETY: the scratch buffer holds the complete
+                        // record set; the tile may hold a partly overwritten
+                        // copy of it.
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(buffer, arr.as_mut_ptr(), len);
+                        }
+                    }
+                    std::panic::resume_unwind(payload);
+                }
             }
-            width *= 2;
-        }
-        if !source_is_tile {
+        } else {
+            run(&mut live_in_scratch)
+        };
+        if !ended_in_tile {
             // SAFETY: the whole tile now lives, sorted, in the buffer.
             unsafe { std::ptr::copy_nonoverlapping(buffer, arr.as_mut_ptr(), len) };
         }
@@ -924,6 +982,110 @@ mod tests {
                 input[mismatch],
                 expected[mismatch]
             );
+        }
+    }
+
+    // A record that owns a resource, counts its drops, and has a key that can
+    // be made to panic on a chosen call. The recoverability contract is about
+    // types like this: a duplicated record is a double free, a lost one leaks.
+    mod tracked {
+        use super::*;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Mutex;
+
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        static PANIC_AT: AtomicUsize = AtomicUsize::new(usize::MAX);
+        static DROPS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+
+        pub struct Tracked {
+            pub id: u64,
+            pub key: u64,
+        }
+
+        impl Drop for Tracked {
+            fn drop(&mut self) {
+                DROPS.lock().unwrap().push(self.id);
+            }
+        }
+
+        impl Key for Tracked {
+            type Value = u64;
+
+            fn key(&self) -> u64 {
+                let call = CALLS.fetch_add(1, Ordering::Relaxed) + 1;
+                assert_ne!(
+                    call,
+                    PANIC_AT.load(Ordering::Relaxed),
+                    "the armed key panic"
+                );
+                self.key
+            }
+        }
+
+        pub fn reset() {
+            CALLS.store(0, Ordering::Relaxed);
+            PANIC_AT.store(usize::MAX, Ordering::Relaxed);
+            DROPS.lock().unwrap().clear();
+        }
+
+        pub fn arm(call: usize) {
+            PANIC_AT.store(call, Ordering::Relaxed);
+        }
+
+        pub fn drops() -> Vec<u64> {
+            DROPS.lock().unwrap().clone()
+        }
+
+        pub fn disarm() {
+            PANIC_AT.store(usize::MAX, Ordering::Relaxed);
+        }
+    }
+
+    /// The three leaves reach their keys at different points of a pass, so each
+    /// is armed to panic on many different calls. Whatever the leaf and whatever
+    /// the call, the record set has to survive exactly once and no record may be
+    /// dropped twice.
+    #[test]
+    fn a_key_panic_never_loses_or_duplicates_a_record() {
+        // The interesting panics are the ones inside a level that is writing
+        // into the live buffer, and where those sit in the call sequence depends
+        // on the leaf, so the whole sequence is swept instead of guessed.
+        let mut rng = Rng(0x2436_8f5c_1e97_b3d1);
+        for &len in &[20usize, 300, 2000] {
+            for step in 0..=40 {
+                let panic_at = 1 + step * len / 8;
+                tracked::reset();
+                let mut records: Vec<tracked::Tracked> = (0..len)
+                    .map(|id| tracked::Tracked {
+                        id: id as u64,
+                        key: rng.next(),
+                    })
+                    .collect();
+                let expected: Vec<u64> = (0..len as u64).collect();
+                tracked::arm(panic_at);
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    sort_with_tile_bytes(&mut records, TILE_BYTES);
+                }));
+                assert!(outcome.is_err(), "len={len} panic_at={panic_at} did not panic");
+                let mut ids: Vec<u64> = records.iter().map(|record| record.id).collect();
+                ids.sort_unstable();
+                assert_eq!(
+                    ids, expected,
+                    "len={len} panic_at={panic_at} left the record set different"
+                );
+                assert!(
+                    tracked::drops().is_empty(),
+                    "len={len} panic_at={panic_at} dropped a record while the tile still held it"
+                );
+                tracked::disarm();
+                drop(records);
+                let mut dropped = tracked::drops();
+                dropped.sort_unstable();
+                assert_eq!(
+                    dropped, expected,
+                    "len={len} panic_at={panic_at} did not drop every record exactly once"
+                );
+            }
         }
     }
 
