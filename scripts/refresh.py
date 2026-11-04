@@ -174,7 +174,8 @@ def refresh(plots=False):
             banner = ('<p style="font: 14px sans-serif; margin: 12px; max-width: 900px">'
                       + html.escape(WARNING)
                       + ' <a href="../../NUMBERS.md">Provenance</a></p>')
-            path.write_text(path.read_text().replace("<body>", "<body>\n" + banner, 1))
+            content = path.read_text().replace("<body>", "<body>\n" + banner, 1)
+            path.write_text("\n".join(line.rstrip() for line in content.splitlines()) + "\n")
         subprocess.run([sys.executable, str(ROOT / "scripts/plot.py"), str(SOURCE), str(ROOT / "figures")],
                        cwd=ROOT, check=True)
     print("Refreshed 106 historical entries: 82 matching aggregate logs, 24 saved-baseline-only.")
