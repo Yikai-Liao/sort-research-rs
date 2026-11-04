@@ -5,6 +5,9 @@ pub mod radix_support;
 #[cfg(feature = "rust_block_lsd")]
 pub mod rust_block_lsd;
 
+#[cfg(feature = "rust_tessera_radix")]
+pub mod rust_tessera_radix;
+
 #[cfg(feature = "rust_radsort")]
 pub mod rust_radsort;
 

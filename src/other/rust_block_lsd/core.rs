@@ -85,35 +85,14 @@ pub fn sort<T>(arr: &mut [T], radix: usize)
 where
     T: Key,
 {
-    assert!((1..=8).contains(&radix), "radix must be in 1..=8");
+    // Widths above 8 are only reachable from the experiment harness; the
+    // adapter keeps 8, which the block-size coefficient is tuned for.
+    assert!((1..=12).contains(&radix), "radix must be in 1..=12");
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
         return;
     }
-    let range = 1usize << radix;
-    // Grow blocks with n so scratch and the block tables both stay O(sqrt(n)).
-    // With b elements per block, scratch costs 2*R*b*s bytes. The two u32
-    // permutation tables and u8 bucket IDs cost about 9*n/b bytes. Their sum
-    // is minimized at b = sqrt(9*n / (2*R*s)). Convert before multiplying to
-    // avoid overflowing usize on large slices.
-    // Tuning of the block size policy below. Both are deviations from the
-    // reference implementation, which uses a fixed 512 records because it only
-    // ever sorts one record type. Ablation over the benchmark types found this
-    // policy faster than the fixed size at every length below ~4M records and
-    // equal above it, while the auxiliary space now follows sqrt(n).
-    const SQRT_SCALE: f64 = 4.0;
-    const BLOCK_BYTES_FLOOR: usize = 1024;
-
-    let descriptor_bytes = 9.0 * arr.len() as f64;
-    let scratch_bytes_per_element = 2.0 * range as f64 * record_bytes as f64;
-    let balanced = (descriptor_bytes / scratch_bytes_per_element).sqrt();
-    // Favor larger blocks to reduce descriptor and rollover work, at the cost
-    // of more scratch. The factor 4 is tuned for radix 8. A roughly 1 KiB floor
-    // limits bookkeeping when the square-root optimum gives tiny blocks;
-    // records larger than that still need at least one element per block.
-    let scaled = (SQRT_SCALE * balanced).ceil() as usize;
-    let block_size = scaled.max(BLOCK_BYTES_FLOOR / record_bytes).max(1);
-    sort_with_block_size(arr, radix, block_size);
+    sort_with_block_size(arr, radix, default_block_size(arr.len(), record_bytes, radix));
 }
 
 /// Sorts with an explicit block size. `sort` derives one from the input; the
@@ -149,7 +128,62 @@ where
     sorter.compact();
 }
 
-fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
+/// Records per block for the block-permutation engine.
+///
+/// Grow blocks with n so scratch and the block tables both stay O(sqrt(n)).
+/// With b elements per block, scratch costs 2*R*b*s bytes. The two u32
+/// permutation tables and the bucket IDs cost about 9*n/b bytes. Their sum is
+/// minimized at b = sqrt(9*n / (2*R*s)). Convert before multiplying to avoid
+/// overflowing usize on large slices.
+///
+/// Both constants below are deviations from the reference implementation, which
+/// uses a fixed 512 records because it only ever sorts one record type.
+/// Ablation over the benchmark types found this policy faster than the fixed
+/// size at every length below ~4M records and equal above it, while the
+/// auxiliary space now follows sqrt(n).
+pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) -> usize {
+    const SQRT_SCALE: f64 = 4.0;
+    const BLOCK_BYTES_FLOOR: usize = 1024;
+    let range = 1usize << radix;
+    let descriptor_bytes = 9.0 * len as f64;
+    let scratch_bytes_per_element = 2.0 * range as f64 * record_bytes as f64;
+    let balanced = (descriptor_bytes / scratch_bytes_per_element).sqrt();
+    // Favor larger blocks to reduce descriptor and rollover work, at the cost
+    // of more scratch. The factor 4 is tuned for radix 8. A roughly 1 KiB floor
+    // limits bookkeeping when the square-root optimum gives tiny blocks;
+    // records larger than that still need at least one element per block.
+    let scaled = (SQRT_SCALE * balanced).ceil() as usize;
+    scaled.max(BLOCK_BYTES_FLOOR / record_bytes).max(1)
+}
+
+/// One stable partition pass by the digit selected by `shift` and `radix`.
+///
+/// The engine keeps its records scattered over physical blocks; after this call
+/// the slice again holds them contiguously, ordered by that digit and stable
+/// within each bucket. Used by the MSD front end of the hybrid sorts.
+pub(crate) fn partition_digit<T: Key>(arr: &mut [T], radix: usize, shift: usize) {
+    let record_bytes = std::mem::size_of::<T>();
+    if arr.len() < 2 || record_bytes == 0 {
+        return;
+    }
+    assert!((1..=12).contains(&radix), "radix must be in 1..=12");
+    let bits = T::Value::BITS;
+    assert!(shift < bits, "digit shift outside the key");
+    let width = radix.min(bits - shift);
+    let mask = (T::Value::from_usize((1usize << width) - 1))
+        << T::Value::from_usize(shift);
+    let block_size = default_block_size(arr.len(), record_bytes, radix);
+    let mut sorter = Sorter::new(arr, 1usize << radix, block_size);
+    if let Some(payload) = sorter.step(mask, shift) {
+        // Same recovery contract as `sort`: materialize the permutation, then
+        // let the caller's panic continue.
+        sorter.compact();
+        std::panic::resume_unwind(payload);
+    }
+    sorter.compact();
+}
+
+pub(crate) fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
     let dummy = &arr[0];
     // The C reference always scatters every digit. Sparse and repeated keys
     // would pay for passes that cannot change their order. Union/intersection
@@ -279,7 +313,8 @@ struct Sorter<'a, T> {
     block_order: Vec<u32>,
     next_block_order: Vec<u32>,
     // Bucket IDs for output blocks, used to build next_block_order after scatter.
-    bucket_ids: Vec<u8>,
+    // u16 keeps digit widths above 8 available to the experiment harness.
+    bucket_ids: Vec<u16>,
     partial_blocks: Vec<PartialBlock>,
     active_blocks_end: usize,
     input_materialized: bool,
@@ -406,7 +441,7 @@ impl<'a, T> Sorter<'a, T> {
                 next: out,
                 end: unsafe { out.add(self.blocks.block_size) },
             });
-            self.bucket_ids[i] = i as u8;
+            self.bucket_ids[i] = i as u16;
         }
         (buckets, vec![1; self.bucket_count])
     }
@@ -506,7 +541,7 @@ impl<'a, T> Sorter<'a, T> {
                         next: out,
                         end: unsafe { out.add(self.blocks.block_size) },
                     };
-                    self.bucket_ids[position.output] = b as u8;
+                    self.bucket_ids[position.output] = b as u16;
                     counts[b] += 1;
                     position.output += 1;
                 }

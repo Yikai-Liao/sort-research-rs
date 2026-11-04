@@ -219,6 +219,7 @@ rust_wpwoodjr = []
 # Enable the vendored single-threaded stable block LSD radix sort, see
 # src/other/rust_block_lsd/README.md.
 rust_block_lsd = []
+rust_tessera_radix = []
 
 # Enable radsort. Radix sort used by bevy.
 # No additional requirements, but disabled by default to keep things lean.
@@ -327,3 +328,8 @@ bench_type_u64_96b = []
 bench_type_u64_128b = []
 
 large_test_sizes = ["sort_test_tools/large_test_sizes"]
+
+# Experiment harness for the radix tuning sessions.
+[[bench]]
+name = "radix_ab"
+harness = false
