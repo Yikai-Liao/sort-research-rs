@@ -1,0 +1,69 @@
+warning: `feature(generic_const_exprs)` is not supported with the next-generation trait solver
+  --> src/lib.rs:16:5
+   |
+16 |     generic_const_exprs
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `-Znext-solver=globally` is currently enabled by default for testing
+   = note: reverted the setting to `-Znext-solver=coherence` for this crate
+   = note: the currently stable trait solver will be used for this crate
+   = note: see issues #160895 <https://github.com/rust-lang/rust/issues/160895> for more information
+
+warning: feature `negative_impls` is declared but not used
+  --> src/lib.rs:14:5
+   |
+14 |     negative_impls,
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_features)]` (part of `#[warn(unused)]`) on by default
+
+warning: feature `auto_traits` is declared but not used
+  --> src/lib.rs:15:5
+   |
+15 |     auto_traits,
+   |     ^^^^^^^^^^^
+
+warning: feature `core_intrinsics` is declared but not used
+ --> src/lib.rs:4:5
+  |
+4 |     core_intrinsics,
+  |     ^^^^^^^^^^^^^^^
+
+warning: feature `sized_type_properties` is declared but not used
+ --> src/lib.rs:9:5
+  |
+9 |     sized_type_properties,
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: feature `portable_simd` is declared but not used
+  --> src/lib.rs:10:5
+   |
+10 |     portable_simd,
+   |     ^^^^^^^^^^^^^
+
+warning: `sort_research_rs` (lib) generated 6 warnings
+    Finished `bench` profile [optimized] target(s) in 0.12s
+     Running benches/bench.rs (/root/code/sort-research-rs-target/release/build/sort_research_rs/fa07cda79d74ec95/out/bench-fa07cda79d74ec95)
+Gnuplot not found, using plotters backend
+Benchmarking rust_std_stable-cold-u64-random-10000000
+Benchmarking rust_std_stable-cold-u64-random-10000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 80.0s, or reduce sample count to 10.
+Benchmarking rust_std_stable-cold-u64-random-10000000: Collecting 100 samples in estimated 80.027 s (100 iterations)
+Benchmarking rust_std_stable-cold-u64-random-10000000: Analyzing
+rust_std_stable-cold-u64-random-10000000
+                        time:   [631.64 ms 636.01 ms 640.63 ms]
+Found 4 outliers among 100 measurements (4.00%)
+  4 (4.00%) high mild
+
+Benchmarking rust_ipnsort_unstable-cold-u64-random-10000000
+Benchmarking rust_ipnsort_unstable-cold-u64-random-10000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 50.9s, or reduce sample count to 10.
+Benchmarking rust_ipnsort_unstable-cold-u64-random-10000000: Collecting 100 samples in estimated 50.924 s (100 iterations)
+Benchmarking rust_ipnsort_unstable-cold-u64-random-10000000: Analyzing
+rust_ipnsort_unstable-cold-u64-random-10000000
+                        time:   [364.36 ms 367.69 ms 371.17 ms]
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high mild
+

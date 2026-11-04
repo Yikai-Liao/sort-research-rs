@@ -1,0 +1,11 @@
+[package]
+name = "rust-compare"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+sort_research_rs = { path = "/root/code/sort-research-rs", default-features = false, features = ["rust_block_lsd", "rust_radsort"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"

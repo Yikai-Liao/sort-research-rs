@@ -1,0 +1,640 @@
+warning: `feature(generic_const_exprs)` is not supported with the next-generation trait solver
+  --> src/lib.rs:16:5
+   |
+16 |     generic_const_exprs
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `-Znext-solver=globally` is currently enabled by default for testing
+   = note: reverted the setting to `-Znext-solver=coherence` for this crate
+   = note: the currently stable trait solver will be used for this crate
+   = note: see issues #160895 <https://github.com/rust-lang/rust/issues/160895> for more information
+
+warning: feature `negative_impls` is declared but not used
+  --> src/lib.rs:14:5
+   |
+14 |     negative_impls,
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_features)]` (part of `#[warn(unused)]`) on by default
+
+warning: feature `auto_traits` is declared but not used
+  --> src/lib.rs:15:5
+   |
+15 |     auto_traits,
+   |     ^^^^^^^^^^^
+
+warning: feature `core_intrinsics` is declared but not used
+ --> src/lib.rs:4:5
+  |
+4 |     core_intrinsics,
+  |     ^^^^^^^^^^^^^^^
+
+warning: feature `sized_type_properties` is declared but not used
+ --> src/lib.rs:9:5
+  |
+9 |     sized_type_properties,
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: feature `portable_simd` is declared but not used
+  --> src/lib.rs:10:5
+   |
+10 |     portable_simd,
+   |     ^^^^^^^^^^^^^
+
+warning: `sort_research_rs` (lib) generated 6 warnings
+    Finished `bench` profile [optimized] target(s) in 0.10s
+     Running benches/bench.rs (/root/code/sort-research-rs-target/release/build/sort_research_rs/fa07cda79d74ec95/out/bench-fa07cda79d74ec95)
+Gnuplot not found, using plotters backend
+Benchmarking rust_std_stable-hot-u64-random-10000
+Benchmarking rust_std_stable-hot-u64-random-10000: Warming up for 2.0000 s
+Benchmarking rust_std_stable-hot-u64-random-10000: Collecting 100 samples in estimated 5.9996 s (15k iterations)
+Benchmarking rust_std_stable-hot-u64-random-10000: Analyzing
+rust_std_stable-hot-u64-random-10000
+                        time:   [323.64 µs 327.52 µs 331.98 µs]
+                        change: [-52.822% -51.097% -49.170%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 7 outliers among 100 measurements (7.00%)
+  6 (6.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_ipnsort_unstable-hot-u64-random-10000
+Benchmarking rust_ipnsort_unstable-hot-u64-random-10000: Warming up for 2.0000 s
+Benchmarking rust_ipnsort_unstable-hot-u64-random-10000: Collecting 100 samples in estimated 4.8525 s (20k iterations)
+Benchmarking rust_ipnsort_unstable-hot-u64-random-10000: Analyzing
+rust_ipnsort_unstable-hot-u64-random-10000
+                        time:   [188.42 µs 193.69 µs 199.98 µs]
+                        change: [-49.947% -47.722% -45.229%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 7 outliers among 100 measurements (7.00%)
+  5 (5.00%) high mild
+  2 (2.00%) high severe
+
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-10000
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-10000: Warming up for 2.0000 s
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-10000: Collecting 100 samples in estimated 5.5083 s (15k iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-10000: Analyzing
+rust_block_lsd_stable_radix-hot-u64-random-10000
+                        time:   [294.69 µs 297.90 µs 301.45 µs]
+                        change: [-56.533% -54.856% -53.208%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+Benchmarking rust_radsort_radix-hot-u64-random-10000
+Benchmarking rust_radsort_radix-hot-u64-random-10000: Warming up for 2.0000 s
+Benchmarking rust_radsort_radix-hot-u64-random-10000: Collecting 100 samples in estimated 4.8169 s (20k iterations)
+Benchmarking rust_radsort_radix-hot-u64-random-10000: Analyzing
+rust_radsort_radix-hot-u64-random-10000
+                        time:   [177.35 µs 180.99 µs 185.34 µs]
+                        change: [-50.580% -48.407% -45.965%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 100 measurements (3.00%)
+  3 (3.00%) high mild
+
+Benchmarking rust_std_stable-hot-u128-random-10000
+Benchmarking rust_std_stable-hot-u128-random-10000: Warming up for 2.0000 s
+Benchmarking rust_std_stable-hot-u128-random-10000: Collecting 100 samples in estimated 4.8046 s (10k iterations)
+Benchmarking rust_std_stable-hot-u128-random-10000: Analyzing
+rust_std_stable-hot-u128-random-10000
+                        time:   [409.36 µs 418.83 µs 429.69 µs]
+                        change: [-23.691% -21.941% -20.067%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  5 (5.00%) high mild
+
+Benchmarking rust_ipnsort_unstable-hot-u128-random-10000
+Benchmarking rust_ipnsort_unstable-hot-u128-random-10000: Warming up for 2.0000 s
+Benchmarking rust_ipnsort_unstable-hot-u128-random-10000: Collecting 100 samples in estimated 5.6618 s (15k iterations)
+Benchmarking rust_ipnsort_unstable-hot-u128-random-10000: Analyzing
+rust_ipnsort_unstable-hot-u128-random-10000
+                        time:   [315.62 µs 322.16 µs 329.11 µs]
+                        change: [-7.0564% -4.7021% -2.2334%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high mild
+
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-10000
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-10000: Warming up for 2.0000 s
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-10000: Collecting 100 samples in estimated 4.3371 s (10k iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-10000: Analyzing
+rust_block_lsd_stable_radix-hot-u128-random-10000
+                        time:   [378.24 µs 382.91 µs 387.87 µs]
+                        change: [-8.8671% -6.3364% -3.7752%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) high mild
+  5 (5.00%) high severe
+
+Benchmarking rust_radsort_radix-hot-u128-random-10000
+Benchmarking rust_radsort_radix-hot-u128-random-10000: Warming up for 2.0000 s
+Benchmarking rust_radsort_radix-hot-u128-random-10000: Collecting 100 samples in estimated 5.8003 s (15k iterations)
+Benchmarking rust_radsort_radix-hot-u128-random-10000: Analyzing
+rust_radsort_radix-hot-u128-random-10000
+                        time:   [352.84 µs 363.69 µs 374.75 µs]
+                        change: [-5.9828% -2.4793% +1.2296%] (p = 0.20 > 0.05)
+                        No change in performance detected.
+Found 7 outliers among 100 measurements (7.00%)
+  7 (7.00%) high mild
+
+Benchmarking rust_std_stable-hot-f64-random-10000
+Benchmarking rust_std_stable-hot-f64-random-10000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 5.1s, enable flat sampling, or reduce sample count to 60.
+Benchmarking rust_std_stable-hot-f64-random-10000: Collecting 100 samples in estimated 5.1283 s (5050 iterations)
+Benchmarking rust_std_stable-hot-f64-random-10000: Analyzing
+rust_std_stable-hot-f64-random-10000
+                        time:   [971.06 µs 1.0012 ms 1.0316 ms]
+                        change: [-0.8783% +1.4318% +3.8728%] (p = 0.26 > 0.05)
+                        No change in performance detected.
+Found 8 outliers among 100 measurements (8.00%)
+  7 (7.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_ipnsort_unstable-hot-f64-random-10000
+Benchmarking rust_ipnsort_unstable-hot-f64-random-10000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 4.6s, enable flat sampling, or reduce sample count to 60.
+Benchmarking rust_ipnsort_unstable-hot-f64-random-10000: Collecting 100 samples in estimated 4.6174 s (5050 iterations)
+Benchmarking rust_ipnsort_unstable-hot-f64-random-10000: Analyzing
+rust_ipnsort_unstable-hot-f64-random-10000
+                        time:   [801.15 µs 814.86 µs 829.77 µs]
+                        change: [-5.4661% -3.0323% -0.7712%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-10000
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-10000: Warming up for 2.0000 s
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-10000: Collecting 100 samples in estimated 5.9219 s (15k iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-10000: Analyzing
+rust_block_lsd_stable_radix-hot-f64-random-10000
+                        time:   [345.40 µs 354.22 µs 362.99 µs]
+                        change: [+1.0713% +3.6085% +6.2051%] (p = 0.01 < 0.05)
+                        Performance has regressed.
+Found 3 outliers among 100 measurements (3.00%)
+  3 (3.00%) high mild
+
+Benchmarking rust_radsort_keyed-hot-f64-random-10000
+Benchmarking rust_radsort_keyed-hot-f64-random-10000: Warming up for 2.0000 s
+Benchmarking rust_radsort_keyed-hot-f64-random-10000: Collecting 100 samples in estimated 5.7010 s (15k iterations)
+Benchmarking rust_radsort_keyed-hot-f64-random-10000: Analyzing
+rust_radsort_keyed-hot-f64-random-10000
+                        time:   [326.05 µs 333.26 µs 341.57 µs]
+                        change: [+23.496% +27.109% +30.747%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 7 outliers among 100 measurements (7.00%)
+  4 (4.00%) high mild
+  3 (3.00%) high severe
+
+Benchmarking rust_std_stable-hot-u64_128b-random-10000
+Benchmarking rust_std_stable-hot-u64_128b-random-10000: Warming up for 2.0000 s
+Benchmarking rust_std_stable-hot-u64_128b-random-10000: Collecting 100 samples in estimated 4.3611 s (1100 iterations)
+Benchmarking rust_std_stable-hot-u64_128b-random-10000: Analyzing
+rust_std_stable-hot-u64_128b-random-10000
+                        time:   [2.4622 ms 2.5025 ms 2.5456 ms]
+                        change: [-60.276% -58.537% -56.582%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-10000
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-10000: Warming up for 2.0000 s
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-10000: Collecting 100 samples in estimated 4.0220 s (1800 iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-10000: Analyzing
+rust_block_lsd_stable_radix-hot-u64_128b-random-10000
+                        time:   [1.4111 ms 1.4392 ms 1.4703 ms]
+                        change: [-59.445% -58.181% -56.849%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 10 outliers among 100 measurements (10.00%)
+  9 (9.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-10000
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-10000: Warming up for 2.0000 s
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-10000: Collecting 100 samples in estimated 4.1710 s (1200 iterations)
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-10000: Analyzing
+rust_radsort_keyed-hot-u64_128b-random-10000
+                        time:   [2.4289 ms 2.4903 ms 2.5766 ms]
+                        change: [-61.981% -60.294% -58.211%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_std_stable-hot-u64-random-100000
+Benchmarking rust_std_stable-hot-u64-random-100000: Warming up for 2.0000 s
+Benchmarking rust_std_stable-hot-u64-random-100000: Collecting 100 samples in estimated 4.2113 s (1100 iterations)
+Benchmarking rust_std_stable-hot-u64-random-100000: Analyzing
+rust_std_stable-hot-u64-random-100000
+                        time:   [3.4012 ms 3.4821 ms 3.5693 ms]
+                        change: [-51.698% -49.898% -47.908%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 6 outliers among 100 measurements (6.00%)
+  6 (6.00%) high mild
+
+Benchmarking rust_ipnsort_unstable-hot-u64-random-100000
+Benchmarking rust_ipnsort_unstable-hot-u64-random-100000: Warming up for 2.0000 s
+Benchmarking rust_ipnsort_unstable-hot-u64-random-100000: Collecting 100 samples in estimated 4.0961 s (1500 iterations)
+Benchmarking rust_ipnsort_unstable-hot-u64-random-100000: Analyzing
+rust_ipnsort_unstable-hot-u64-random-100000
+                        time:   [2.2442 ms 2.2793 ms 2.3182 ms]
+                        change: [-53.932% -52.587% -51.220%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 11 outliers among 100 measurements (11.00%)
+  7 (7.00%) high mild
+  4 (4.00%) high severe
+
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-100000
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-100000: Warming up for 2.0000 s
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-100000: Collecting 100 samples in estimated 4.1562 s (1500 iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-100000: Analyzing
+rust_block_lsd_stable_radix-hot-u64-random-100000
+                        time:   [2.3526 ms 2.4025 ms 2.4550 ms]
+                        change: [-62.742% -61.325% -59.870%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  5 (5.00%) high mild
+
+Benchmarking rust_radsort_radix-hot-u64-random-100000
+Benchmarking rust_radsort_radix-hot-u64-random-100000: Warming up for 2.0000 s
+Benchmarking rust_radsort_radix-hot-u64-random-100000: Collecting 100 samples in estimated 4.1342 s (1500 iterations)
+Benchmarking rust_radsort_radix-hot-u64-random-100000: Analyzing
+rust_radsort_radix-hot-u64-random-100000
+                        time:   [2.3204 ms 2.3499 ms 2.3817 ms]
+                        change: [-64.313% -63.069% -61.750%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_std_stable-hot-u128-random-100000
+Benchmarking rust_std_stable-hot-u128-random-100000: Warming up for 2.0000 s
+Benchmarking rust_std_stable-hot-u128-random-100000: Collecting 100 samples in estimated 4.7164 s (500 iterations)
+Benchmarking rust_std_stable-hot-u128-random-100000: Analyzing
+rust_std_stable-hot-u128-random-100000
+                        time:   [7.0658 ms 7.2207 ms 7.3813 ms]
+                        change: [+2.4295% +5.1479% +8.0493%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+
+Benchmarking rust_ipnsort_unstable-hot-u128-random-100000
+Benchmarking rust_ipnsort_unstable-hot-u128-random-100000: Warming up for 2.0000 s
+Benchmarking rust_ipnsort_unstable-hot-u128-random-100000: Collecting 100 samples in estimated 4.1738 s (900 iterations)
+Benchmarking rust_ipnsort_unstable-hot-u128-random-100000: Analyzing
+rust_ipnsort_unstable-hot-u128-random-100000
+                        time:   [3.7608 ms 3.8333 ms 3.9090 ms]
+                        change: [-5.8566% -3.2510% -0.5926%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  8 (8.00%) high mild
+
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-100000
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-100000: Warming up for 2.0000 s
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-100000: Collecting 100 samples in estimated 4.1076 s (900 iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-100000: Analyzing
+rust_block_lsd_stable_radix-hot-u128-random-100000
+                        time:   [4.2070 ms 4.2873 ms 4.3738 ms]
+                        change: [-2.1938% +0.5691% +3.2862%] (p = 0.68 > 0.05)
+                        No change in performance detected.
+Found 10 outliers among 100 measurements (10.00%)
+  2 (2.00%) high mild
+  8 (8.00%) high severe
+
+Benchmarking rust_radsort_radix-hot-u128-random-100000
+Benchmarking rust_radsort_radix-hot-u128-random-100000: Warming up for 2.0000 s
+Benchmarking rust_radsort_radix-hot-u128-random-100000: Collecting 100 samples in estimated 4.3261 s (500 iterations)
+Benchmarking rust_radsort_radix-hot-u128-random-100000: Analyzing
+rust_radsort_radix-hot-u128-random-100000
+                        time:   [6.4084 ms 6.5995 ms 6.7969 ms]
+                        change: [+3.8174% +7.3502% +11.009%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+
+Benchmarking rust_std_stable-hot-f64-random-100000
+Benchmarking rust_std_stable-hot-f64-random-100000: Warming up for 2.0000 s
+Benchmarking rust_std_stable-hot-f64-random-100000: Collecting 100 samples in estimated 4.8206 s (400 iterations)
+Benchmarking rust_std_stable-hot-f64-random-100000: Analyzing
+rust_std_stable-hot-f64-random-100000
+                        time:   [11.022 ms 11.094 ms 11.170 ms]
+                        change: [-5.8125% -4.2106% -2.6234%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_ipnsort_unstable-hot-f64-random-100000
+Benchmarking rust_ipnsort_unstable-hot-f64-random-100000: Warming up for 2.0000 s
+Benchmarking rust_ipnsort_unstable-hot-f64-random-100000: Collecting 100 samples in estimated 4.0130 s (400 iterations)
+Benchmarking rust_ipnsort_unstable-hot-f64-random-100000: Analyzing
+rust_ipnsort_unstable-hot-f64-random-100000
+                        time:   [9.4998 ms 9.5751 ms 9.6553 ms]
+                        change: [-8.8112% -7.5205% -6.1959%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-100000
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-100000: Warming up for 2.0000 s
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-100000: Collecting 100 samples in estimated 4.1276 s (1300 iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-100000: Analyzing
+rust_block_lsd_stable_radix-hot-f64-random-100000
+                        time:   [2.6661 ms 2.7232 ms 2.7861 ms]
+                        change: [-8.1233% -4.7704% -1.1050%] (p = 0.01 < 0.05)
+                        Performance has improved.
+Found 8 outliers among 100 measurements (8.00%)
+  4 (4.00%) high mild
+  4 (4.00%) high severe
+
+Benchmarking rust_radsort_keyed-hot-f64-random-100000
+Benchmarking rust_radsort_keyed-hot-f64-random-100000: Warming up for 2.0000 s
+Benchmarking rust_radsort_keyed-hot-f64-random-100000: Collecting 100 samples in estimated 4.1043 s (1100 iterations)
+Benchmarking rust_radsort_keyed-hot-f64-random-100000: Analyzing
+rust_radsort_keyed-hot-f64-random-100000
+                        time:   [3.1321 ms 3.2226 ms 3.3254 ms]
+                        change: [+10.246% +15.237% +20.343%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 9 outliers among 100 measurements (9.00%)
+  3 (3.00%) high mild
+  6 (6.00%) high severe
+
+Benchmarking rust_std_stable-hot-u64_128b-random-100000
+Benchmarking rust_std_stable-hot-u64_128b-random-100000: Warming up for 2.0000 s
+Benchmarking rust_std_stable-hot-u64_128b-random-100000: Collecting 100 samples in estimated 7.3124 s (200 iterations)
+Benchmarking rust_std_stable-hot-u64_128b-random-100000: Analyzing
+rust_std_stable-hot-u64_128b-random-100000
+                        time:   [34.307 ms 34.723 ms 35.150 ms]
+                        change: [-55.878% -54.473% -53.083%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-100000
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-100000: Warming up for 2.0000 s
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-100000: Collecting 100 samples in estimated 7.4048 s (200 iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-100000: Analyzing
+rust_block_lsd_stable_radix-hot-u64_128b-random-100000
+                        time:   [34.454 ms 35.128 ms 35.838 ms]
+                        change: [-58.960% -57.868% -56.870%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 8 outliers among 100 measurements (8.00%)
+  7 (7.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-100000
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-100000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 8.8s, or reduce sample count to 40.
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-100000: Collecting 100 samples in estimated 8.7997 s (100 iterations)
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-100000: Analyzing
+rust_radsort_keyed-hot-u64_128b-random-100000
+                        time:   [70.065 ms 70.811 ms 71.537 ms]
+                        change: [-49.475% -48.284% -47.113%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 7 outliers among 100 measurements (7.00%)
+  6 (6.00%) low mild
+  1 (1.00%) high mild
+
+Benchmarking rust_std_stable-hot-u64-random-1000000
+Benchmarking rust_std_stable-hot-u64-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 4.9s, or reduce sample count to 80.
+Benchmarking rust_std_stable-hot-u64-random-1000000: Collecting 100 samples in estimated 4.9338 s (100 iterations)
+Benchmarking rust_std_stable-hot-u64-random-1000000: Analyzing
+rust_std_stable-hot-u64-random-1000000
+                        time:   [44.873 ms 45.527 ms 46.294 ms]
+                        change: [-54.323% -53.391% -52.404%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_ipnsort_unstable-hot-u64-random-1000000
+Benchmarking rust_ipnsort_unstable-hot-u64-random-1000000: Warming up for 2.0000 s
+Benchmarking rust_ipnsort_unstable-hot-u64-random-1000000: Collecting 100 samples in estimated 6.8127 s (200 iterations)
+Benchmarking rust_ipnsort_unstable-hot-u64-random-1000000: Analyzing
+rust_ipnsort_unstable-hot-u64-random-1000000
+                        time:   [27.460 ms 27.817 ms 28.189 ms]
+                        change: [-54.559% -53.739% -52.909%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high mild
+
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-1000000
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 5.4s, or reduce sample count to 70.
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-1000000: Collecting 100 samples in estimated 5.3594 s (100 iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-1000000: Analyzing
+rust_block_lsd_stable_radix-hot-u64-random-1000000
+                        time:   [46.642 ms 47.538 ms 48.479 ms]
+                        change: [-63.833% -62.804% -61.741%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) low mild
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_radsort_radix-hot-u64-random-1000000
+Benchmarking rust_radsort_radix-hot-u64-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 8.6s, or reduce sample count to 40.
+Benchmarking rust_radsort_radix-hot-u64-random-1000000: Collecting 100 samples in estimated 8.5920 s (100 iterations)
+Benchmarking rust_radsort_radix-hot-u64-random-1000000: Analyzing
+rust_radsort_radix-hot-u64-random-1000000
+                        time:   [77.819 ms 79.516 ms 81.208 ms]
+                        change: [-55.970% -54.919% -53.856%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+Benchmarking rust_std_stable-hot-u128-random-1000000
+Benchmarking rust_std_stable-hot-u128-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 9.1s, or reduce sample count to 40.
+Benchmarking rust_std_stable-hot-u128-random-1000000: Collecting 100 samples in estimated 9.0924 s (100 iterations)
+Benchmarking rust_std_stable-hot-u128-random-1000000: Analyzing
+rust_std_stable-hot-u128-random-1000000
+                        time:   [81.384 ms 82.271 ms 83.178 ms]
+                        change: [-5.8136% -4.2709% -2.6623%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+
+Benchmarking rust_ipnsort_unstable-hot-u128-random-1000000
+Benchmarking rust_ipnsort_unstable-hot-u128-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 5.6s, or reduce sample count to 70.
+Benchmarking rust_ipnsort_unstable-hot-u128-random-1000000: Collecting 100 samples in estimated 5.5733 s (100 iterations)
+Benchmarking rust_ipnsort_unstable-hot-u128-random-1000000: Analyzing
+rust_ipnsort_unstable-hot-u128-random-1000000
+                        time:   [47.465 ms 47.905 ms 48.372 ms]
+                        change: [-3.4365% -1.8874% -0.3438%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  4 (4.00%) high mild
+
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-1000000
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 11.0s, or reduce sample count to 30.
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-1000000: Collecting 100 samples in estimated 11.041 s (100 iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-u128-random-1000000: Analyzing
+rust_block_lsd_stable_radix-hot-u128-random-1000000
+                        time:   [101.61 ms 103.13 ms 104.69 ms]
+                        change: [-7.5883% -5.8859% -4.0270%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+
+Benchmarking rust_radsort_radix-hot-u128-random-1000000
+Benchmarking rust_radsort_radix-hot-u128-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 14.9s, or reduce sample count to 20.
+Benchmarking rust_radsort_radix-hot-u128-random-1000000: Collecting 100 samples in estimated 14.935 s (100 iterations)
+Benchmarking rust_radsort_radix-hot-u128-random-1000000: Analyzing
+rust_radsort_radix-hot-u128-random-1000000
+                        time:   [125.04 ms 126.48 ms 127.95 ms]
+                        change: [-7.5461% -5.6292% -3.6574%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high mild
+
+Benchmarking rust_std_stable-hot-f64-random-1000000
+Benchmarking rust_std_stable-hot-f64-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 15.1s, or reduce sample count to 20.
+Benchmarking rust_std_stable-hot-f64-random-1000000: Collecting 100 samples in estimated 15.056 s (100 iterations)
+Benchmarking rust_std_stable-hot-f64-random-1000000: Analyzing
+rust_std_stable-hot-f64-random-1000000
+                        time:   [145.06 ms 146.51 ms 148.00 ms]
+                        change: [-0.8120% +0.5868% +2.0310%] (p = 0.41 > 0.05)
+                        No change in performance detected.
+
+Benchmarking rust_ipnsort_unstable-hot-f64-random-1000000
+Benchmarking rust_ipnsort_unstable-hot-f64-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 12.2s, or reduce sample count to 30.
+Benchmarking rust_ipnsort_unstable-hot-f64-random-1000000: Collecting 100 samples in estimated 12.184 s (100 iterations)
+Benchmarking rust_ipnsort_unstable-hot-f64-random-1000000: Analyzing
+rust_ipnsort_unstable-hot-f64-random-1000000
+                        time:   [118.07 ms 119.29 ms 120.63 ms]
+                        change: [-10.393% -8.9394% -7.4812%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-1000000
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 6.2s, or reduce sample count to 60.
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-1000000: Collecting 100 samples in estimated 6.1639 s (100 iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-f64-random-1000000: Analyzing
+rust_block_lsd_stable_radix-hot-f64-random-1000000
+                        time:   [53.220 ms 54.212 ms 55.231 ms]
+                        change: [+0.2205% +3.0991% +6.0918%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 100 measurements (4.00%)
+  4 (4.00%) high mild
+
+Benchmarking rust_radsort_keyed-hot-f64-random-1000000
+Benchmarking rust_radsort_keyed-hot-f64-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 7.7s, or reduce sample count to 50.
+Benchmarking rust_radsort_keyed-hot-f64-random-1000000: Collecting 100 samples in estimated 7.6509 s (100 iterations)
+Benchmarking rust_radsort_keyed-hot-f64-random-1000000: Analyzing
+rust_radsort_keyed-hot-f64-random-1000000
+                        time:   [72.703 ms 74.124 ms 75.662 ms]
+                        change: [+11.687% +14.456% +17.403%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 7 outliers among 100 measurements (7.00%)
+  7 (7.00%) high mild
+
+Benchmarking rust_std_stable-hot-u64_128b-random-1000000
+Benchmarking rust_std_stable-hot-u64_128b-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 76.5s, or reduce sample count to 10.
+Benchmarking rust_std_stable-hot-u64_128b-random-1000000: Collecting 100 samples in estimated 76.460 s (100 iterations)
+Benchmarking rust_std_stable-hot-u64_128b-random-1000000: Analyzing
+rust_std_stable-hot-u64_128b-random-1000000
+                        time:   [605.75 ms 610.76 ms 616.04 ms]
+                        change: [-53.450% -52.722% -52.006%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 8 outliers among 100 measurements (8.00%)
+  7 (7.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-1000000
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 67.4s, or reduce sample count to 10.
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-1000000: Collecting 100 samples in estimated 67.436 s (100 iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-u64_128b-random-1000000: Analyzing
+rust_block_lsd_stable_radix-hot-u64_128b-random-1000000
+                        time:   [555.07 ms 562.39 ms 569.96 ms]
+                        change: [-51.262% -50.232% -49.222%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high mild
+
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-1000000
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-1000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 97.7s, or reduce sample count to 10.
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-1000000: Collecting 100 samples in estimated 97.651 s (100 iterations)
+Benchmarking rust_radsort_keyed-hot-u64_128b-random-1000000: Analyzing
+rust_radsort_keyed-hot-u64_128b-random-1000000
+                        time:   [753.06 ms 768.49 ms 783.85 ms]
+                        change: [-46.840% -45.557% -44.333%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+Benchmarking rust_std_stable-hot-u64-random-10000000
+Benchmarking rust_std_stable-hot-u64-random-10000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 90.7s, or reduce sample count to 10.
+Benchmarking rust_std_stable-hot-u64-random-10000000: Collecting 100 samples in estimated 90.728 s (100 iterations)
+Benchmarking rust_std_stable-hot-u64-random-10000000: Analyzing
+rust_std_stable-hot-u64-random-10000000
+                        time:   [669.33 ms 683.27 ms 698.89 ms]
+                        change: [-50.056% -48.902% -47.881%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 8 outliers among 100 measurements (8.00%)
+  2 (2.00%) high mild
+  6 (6.00%) high severe
+
+Benchmarking rust_ipnsort_unstable-hot-u64-random-10000000
+Benchmarking rust_ipnsort_unstable-hot-u64-random-10000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 54.9s, or reduce sample count to 10.
+Benchmarking rust_ipnsort_unstable-hot-u64-random-10000000: Collecting 100 samples in estimated 54.887 s (100 iterations)
+Benchmarking rust_ipnsort_unstable-hot-u64-random-10000000: Analyzing
+rust_ipnsort_unstable-hot-u64-random-10000000
+                        time:   [374.41 ms 382.43 ms 391.47 ms]
+                        change: [-47.659% -46.414% -45.005%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 10 outliers among 100 measurements (10.00%)
+  3 (3.00%) high mild
+  7 (7.00%) high severe
+
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-10000000
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-10000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 94.4s, or reduce sample count to 10.
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-10000000: Collecting 100 samples in estimated 94.399 s (100 iterations)
+Benchmarking rust_block_lsd_stable_radix-hot-u64-random-10000000: Analyzing
+rust_block_lsd_stable_radix-hot-u64-random-10000000
+                        time:   [678.43 ms 692.06 ms 705.84 ms]
+                        change: [-54.942% -53.687% -52.371%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+
+Benchmarking rust_radsort_radix-hot-u64-random-10000000
+Benchmarking rust_radsort_radix-hot-u64-random-10000000: Warming up for 2.0000 s
+
+Warning: Unable to complete 100 samples in 4.0s. You may wish to increase target time to 90.1s, or reduce sample count to 10.
+Benchmarking rust_radsort_radix-hot-u64-random-10000000: Collecting 100 samples in estimated 90.094 s (100 iterations)
+Benchmarking rust_radsort_radix-hot-u64-random-10000000: Analyzing
+rust_radsort_radix-hot-u64-random-10000000
+                        time:   [807.47 ms 824.24 ms 841.63 ms]
+                        change: [-47.641% -46.472% -45.272%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+HOTREDO_DONE
