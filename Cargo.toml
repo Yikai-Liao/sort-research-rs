@@ -59,6 +59,11 @@ lto = "thin"
 name = "bench"
 harness = false
 
+[[bench]]
+name = "extra_memory"
+harness = false
+required-features = ["rust_block_lsd", "rust_radsort"]
+
 [features]
 default = [
     "large_test_sizes",
