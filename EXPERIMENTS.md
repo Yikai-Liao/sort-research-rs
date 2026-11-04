@@ -195,45 +195,126 @@ one inside `block::sort_with_block_size`. `sort_with_variation` lets the front
 end hand its scan over. Small nodes stopped losing 3-8 % against the baseline;
 the 100k rows that used to read 1.1-1.25 are now at parity.
 
+### 9. Ordered input: probe instead of passes
+
+An ordered array needs no digit passes at all. A monotone probe that stops at the
+first inversion costs two comparisons on random data, one read on an ascending
+array, and on a descending array a reversal plus a repair of the equal-key runs
+(reversal alone would move equal keys past each other).
+
+The probe is kept *out* of the variation scan. Fusing the two cost 5 % on
+clustered inputs: the order flags defeat the vectorisation of a scan that has to
+run to the end, and on that data the flags never pay. A strided gate answers
+first — at most 4096 spread pairs, both directions — so "sorted, then a few
+appends" (the common shape, and what `random_sorted(99)` builds) rejects in a
+handful of comparisons instead of reading the array once more. The gate can only
+reject, never accept; acceptance always comes from the exact pass.
+
+| u64 1M | before | after |
+| --- | --- | --- |
+| ascending | 46.3 | 2.9 |
+| descending | 42.6 | 5.5 |
+| 99 % sorted | 51.1 | 25.0 (passes, no fast path) |
+
+### 10. Splitting only divides if the digit does
+
+The model assumed a split turns one cold pass into a hot one. On skewed input
+that is false: if the top varying digit puts 99 % of the records in one bucket,
+the recursion pays a pass and the large child still streams. Sampling the top
+digit's occupancy (1024 keys in 32-record runs, so a repeating input pattern
+cannot alias with the sample) gave the model the missing term: the split is
+charged for the passes on its *largest* child, at that child's working set.
+
+The split's own passes were also charged 2x too much: they read sequentially and
+write nothing, which on a wide node moves bytes about twice as fast as a scatter
+pass. With the read-bandwidth term (`6 GB/s`, `1.5 ns/record` floor) the model
+picked the right route at every measured size, including the two cases it had
+wrong before: u128 zipf at 10M (was 37.2, now 24.2, baseline 24.5) and u64
+random at 1M (was 43.4, now 24.9).
+
+### 11. 16-bit cursors
+
+A tile is at most `MAX_TILE_RECORDS = 65535` records (a constant, 1 MiB even for
+16-byte records, so the space bound is untouched), so the bucket cursors fit in
+`u16`. The cursor table is what stays hot in a tile pass; halving it is a few per
+cent on wide keys, and it removes 2048 bytes of the leaf's stack frame.
+
+### 12. Measuring: pin, interleave, and distrust a single fast round
+
+Two of the runs here disagreed by 6x on one cell. The cause was a single
+anomalous round: the harness reports the minimum, and one round had measured
+something else. Since then every table is produced with `taskset` pinning, 5-7
+rounds, interleaved variant order, and the median next to the minimum; a cell
+that moves more than 10 % against its neighbours is re-run before it is believed.
+The `ascending= descending= distinct=` fields on each cell line are there to
+catch a harness pattern that is not the shape its name claims (u128 "ascending"
+was a hashed random array until the type mapping was fixed).
+
 ## Where the candidate stands
 
-ns per record, uniform random keys (min of 3-5 rounds, interleaved):
+ns per record, one root each, pinned, min of 5 interleaved rounds.
+Distribution matrix at n = 1M (`logs/calib6.log`):
 
-| type, n | tessera | block LSD | msd_radix | ipnsort | std stable |
+| type | pattern | tessera | block LSD | ipnsort | std stable |
 | --- | --- | --- | --- | --- | --- |
-| u32 100k | 11.4 | 12.1 | 25.1 | 19.7 | 30.2 |
-| u32 1M | 10.2 | 11.6 | 35.4 | 23.4 | 39.5 |
-| u32 10M | 15.6 | 18.5 | 42.0 | 26.9 | 45.5 |
-| u64 100k | 22.8 | 25.2 | 26.0 | 19.7 | 29.3 |
-| u64 1M | 24.4 | 43.4 | 42.6 | 27.4 | 43.9 |
-| u64 10M | 31.7 | 60.6 | 51.2 | 32.5 | 63.0 |
-| u128 100k | 75.9 | 79.5 | 95.0 | 32.4 | 50.3 |
-| u128 1M | 77.5 | 168.9 | 95.0 | 47.1 | 80.4 |
-| record128 1M | 231 | 446 | — | 190 | 574 |
+| u64 | random | 24.9 | 39.1 | 27.0 | 40.5 |
+| u64 | zipf20 | 12.0 | 25.5 | 4.5 | 9.7 |
+| u64 | 99 % sorted | 25.0 | 51.1 | 28.6 | 5.6 |
+| u64 | sparse (8 values) | 10.3 | 29.3 | 5.4 | 12.6 |
+| u64 | 8 narrow bands | 21.0 | 35.3 | 25.6 | 40.2 |
+| u64 | ascending | 2.9 | 37.7 | 1.1 | 1.1 |
+| u64 | descending | 5.5 | 35.6 | 1.7 | 2.0 |
+| u64 | 95 % reverse sorted | 24.5 | 39.3 | 25.9 | 17.4 |
+| u128 | random | 79.1 | 160.8 | 44.8 | 79.2 |
+| u128 | zipf20 | 25.5 | 25.3 | 10.0 | 30.8 |
+| u128 | 99 % sorted | 31.3 | 41.7 | 47.6 | 9.1 |
+| u128 | sparse (8 values) | 18.8 | 32.0 | 10.3 | 33.0 |
+| u128 | 8 narrow bands | 29.5 | 29.7 | 46.8 | 73.7 |
+| u128 | ascending | 6.4 | 29.4 | 2.6 | 2.9 |
+| u128 | descending | 13.6 | 31.8 | 4.6 | 4.7 |
+| u128 | 95 % reverse sorted | 26.6 | 32.5 | 45.9 | 29.4 |
+| u32 | random | 9.9 | 10.9 | 24.6 | 31.5 |
+| u32 | zipf20 | 8.8 | 7.8 | 3.0 | 4.4 |
+| u32 | 99 % sorted | 10.3 | 11.3 | 24.4 | 4.6 |
+| u32 | 8 narrow bands | 8.4 | 8.7 | 24.3 | 32.7 |
+| u32 | ascending | 1.8 | 8.1 | — | — |
+
+Scaling with size, uniform random (§logs/matrix5.log§, §logs/matrix4.log§):
+
+| type, n | tessera | block LSD | ipnsort | std stable |
+| --- | --- | --- | --- | --- |
+| u32 1M | 9.9 | 10.9 | 24.6 | 31.5 |
+| u32 10M | 17.3 | 18.9 | 29.5 | — |
+| u64 1M | 24.9 | 39.1 | 27.0 | 40.5 |
+| u64 10M | 32.8 | 60.6 | 33.4 | 63.0 |
+| u64 100M | — | — | — | — |
+| u128 1M | 79.1 | 160.8 | 44.8 | 79.2 |
+| record128 1M | 231 | 446 | 190 | 574 |
 
 All sixteen pattern × type × size families are in `logs/matrix5.log`; the
 summary of that sweep:
 
-- Against the stable sorts it replaces, the candidate wins everywhere it
-  applies: 1.7x over `std` on u64 1M, 1.9x over block LSD on u32 1M, 2.2x on
-  u128 1M, 1.9x on 128-byte records.
-- Against `ipnsort` it is ahead on u64 (24.4 vs 27.4, 31.7 vs 32.5) and behind on
-  u32 1M (10.2 vs 23.4 — ahead, actually), on u128 (77.5 vs 47.1) and on
-  128-byte records (231 vs 190). `ipnsort` is in-place and unstable; on 16-byte
-  keys it compares in registers and never moves 16 bytes per pass. A stable
-  radix sort cannot match that on wide keys; the gap is structural.
-- The pure-MSD ceiling is slower than the tiled sort at every size measured,
-  which is the expected result (in-place cycle-following writes are random over
-  the whole node, while the tiled sort's writes stay in cache).
-- Skew: u64 zipf13 1M 24.8 (block LSD 34.5, ipnsort 10.0). The comparison sort
-  wins on duplicate-heavy input because 3-way partitioning collapses equal keys,
-  which no digit pass can; the candidate still beats the stable baseline by 1.4x.
-- Already-sorted input: u64 ascending 1M 24.4 vs block LSD 48.4. Nothing to do —
-  LSD cannot see order, but the split still pays for itself, and constant digits
-  are dropped.
-- Rows where the candidate is 3-8 % behind block LSD are all at 100k, where the
-  model says "do not split" and the work is the same as the baseline plus one
-  scan; the residual is within the measured noise floor (below).
+- Against the stable sort it replaces (`std`) it wins on every u64 and u128
+  row, 1.6x to 13x, and on u32 by 1.0-1.1x where u32 never splits: a 32-bit node
+  at 1M is 4 MiB, and the model prices a split's pass at more than the cold
+  passes it would avoid.
+- Against `ipnsort` it is ahead on u64 random (24.9 vs 27.0), u64 10M (32.8 vs
+  33.4), u64/zebra-ish shapes (narrow bands 21.0 vs 25.6, 99 % sorted 25.0 vs
+  28.6, reverse-sorted 24.5 vs 25.9) and u128 99 % sorted / narrow bands, and
+  behind on u32 (a 4 MiB node never splits, so u32 just gets a slightly better
+  LSD), and on u128 random (79.1 vs 44.8) and u128 duplicate-heavy input.
+- The u128 gap is structural: 16 bytes per record per pass, 16 passes at cold
+  bandwidth. `ipnsort` compares a 16-byte key in two registers and moves nothing
+  until it partitions, and its partitioning sees duplicates. This was measured
+  from both sides: the cache-resident leaf does 11 passes at 4.1 ns on u128 and
+  the split only buys 1.6x because the scatter of 16-byte records is bandwidth.
+- Skew and few-distinct-values is where comparison sorts are unbeatable: 8
+  distinct u128 values have 31 varying bits, so a digit sort needs 3 passes while
+  a comparison sort needs 8 key comparisons and collapses the rest. Tessera still
+  beats the stable baseline there (18.8 vs 32.0) because narrowing drops the 97
+  constant bits.
+- Ordered input used to be the worst row (LSD cannot see order) and is now the
+  best: 2.9 ns on ascending u64, 13x over the baseline.
 
 ### Noise floor
 

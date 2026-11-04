@@ -72,6 +72,42 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             v
         }
         "random_sorted95" => patterns::random_sorted(len, 95.0),
+        "random_sorted99" => patterns::random_sorted(len, 99.0),
+        // Nearly reverse ordered: descending, then 5 % of the positions swapped,
+        // which is what a sort sees after a few appends and a reversal.
+        "random_reverse95" => {
+            let mut v = patterns::descending(len);
+            let step = (len / 20).max(1);
+            let mut i = 0;
+            while i + step < v.len() {
+                v.swap(i, i + step);
+                i += 2 * step;
+            }
+            v
+        }
+        // Few distinct values spread over the whole type range: the digits are
+        // sparse, which is the case a fixed digit grid handles worst.
+        "sparse8" => {
+            let mut rng = patterns::random(8);
+            let mut v = Vec::with_capacity(len);
+            for index in 0..len {
+                v.push(rng[index % 8]);
+            }
+            v
+        }
+        // Eight narrow bands far apart. The band index sits in the top three
+        // bits and the offset in the low sixteen, so the widening mappings (which
+        // shift the pattern into the type's high half) keep them apart: within a
+        // band only the low bits vary, between bands only the top three do.
+        "bands8" => {
+            let offsets = patterns::random_uniform(len, 0..(1 << 16));
+            let mut v = Vec::with_capacity(len);
+            for index in 0..len {
+                let band = (index % 8) as i32;
+                v.push((band << 28) | offsets[index]);
+            }
+            v
+        }
         "ascending" => patterns::ascending(len),
         "descending" => patterns::descending(len),
         "all_equal" => patterns::all_equal(len),
@@ -131,13 +167,19 @@ fn keys_u64(pattern: &str, len: usize) -> Vec<u64> {
 }
 
 fn keys_u128(pattern: &str, len: usize) -> Vec<u128> {
-    let keys = if pattern == "random_wide" {
-        wide_keys(pattern, len)
-    } else {
-        base_keys(pattern, len)
-    };
-    keys.into_iter()
-        .map(|x| ((wide_u64(x) as u128) << 64) | narrow_u64(x) as u128)
+    if pattern == "random_wide" {
+        // Full width: both halves hashed, every bit position varies.
+        return wide_keys(pattern, len)
+            .into_iter()
+            .map(|x| ((wide_u64(x) as u128) << 64) | narrow_u64(x) as u128)
+            .collect();
+    }
+    // Named patterns keep their shape and their order: the pattern lands in the
+    // top 32 bits and the low half is constant. A hashed high half would turn
+    // "ascending" into a random array, which is not what the row claims.
+    base_keys(pattern, len)
+        .into_iter()
+        .map(|x| (narrow_u32(x) as u128) << 96)
         .collect()
 }
 
@@ -283,10 +325,13 @@ fn run<T: Clone + Ord + std::fmt::Debug>(
     let results = tournament(&input, &variants, cfg.rounds);
     let best = results.iter().map(|r| r.1.min).min().unwrap();
     let bytes = std::mem::size_of::<T>();
+    let ascending = input.windows(2).all(|w| w[0] <= w[1]);
+    let descending = input.windows(2).all(|w| w[0] >= w[1]);
     println!(
-        "\n{label} {pattern} n={} ({:.1} MiB)",
+        "\n{label} {pattern} n={} ({:.1} MiB) ascending={ascending} descending={descending} distinct={}",
         input.len(),
-        (input.len() * bytes) as f64 / (1024.0 * 1024.0)
+        (input.len() * bytes) as f64 / (1024.0 * 1024.0),
+        distinct_count(&input),
     );
     println!(
         "{:<30} {:>11} {:>11} {:>8} {:>10}",
@@ -302,6 +347,13 @@ fn run<T: Clone + Ord + std::fmt::Debug>(
             s.min.as_secs_f64() * 1e9 / input.len() as f64
         );
     }
+}
+
+fn distinct_count<T: Ord>(input: &[T]) -> usize {
+    let mut seen: Vec<&T> = input.iter().collect();
+    seen.sort_unstable();
+    seen.dedup();
+    seen.len()
 }
 
 // ---------------------------------------------------------------------------
@@ -353,7 +405,9 @@ macro_rules! radix_variants {
                 v.push(("tile_32k", tessera_tile::<32768, $ty>));
                 v.push(("tile_48k", tessera_tile::<49152, $ty>));
                 v.push(("tile_96k", tessera_tile::<98304, $ty>));
-                v.push(("tessera_256k", tessera_tile::<262144, $ty>));
+                v.push(("tile_128k", tessera_tile::<131072, $ty>));
+                v.push(("tile_256k", tessera_tile::<262144, $ty>));
+                v.push(("tile_512k", tessera_tile::<524288, $ty>));
                 v.push(("leaf_count_only", tessera_leaf::<0, 0, $ty>));
                 v.push(("leaf_ins48", tessera_leaf::<0, 48, $ty>));
                 v.push(("leaf_merge32", tessera_leaf::<32, 48, $ty>));

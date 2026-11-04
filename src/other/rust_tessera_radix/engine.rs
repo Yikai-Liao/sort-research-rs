@@ -51,6 +51,9 @@ const INSERTION_MAX: usize = 48;
 /// Tiles at or below this many records are finished with a merge sort. Placed by
 /// measurement; see EXPERIMENTS.md.
 const MERGE_MAX: usize = 384;
+/// Cursors are `u16`, which caps a tile at 65535 records. That is a constant
+/// (1 MiB even for 16-byte records), so the auxiliary space stays O(sqrt n).
+const MAX_TILE_RECORDS: usize = u16::MAX as usize;
 /// Bucket capacity of a leaf pass. The literal appears in the array type:
 /// rustc's layout computation hits an ICE on a const-generic bound spelled
 /// through an inner associated constant here.
@@ -181,11 +184,24 @@ pub fn sort_with_policy<T: Key>(
     if arr.len() < 2 || record_bytes == 0 {
         return;
     }
-    let tile_bytes = tile_bytes.max(record_bytes);
+    let tile_bytes = tile_bytes
+        .max(record_bytes)
+        .min(MAX_TILE_RECORDS * record_bytes);
     let (union, intersection) = block::varying_key_bits(arr);
     let variation = Variation { union, intersection };
     if variation.varying() == 0 {
         return;
+    }
+    // An ordered input needs no passes at all. The probe gives up at the first
+    // inversion, so a random array pays two comparisons, while an ascending one
+    // pays a single read and returns.
+    match probe_order(arr) {
+        Order::Ascending => return,
+        Order::Descending => {
+            reverse_stably(arr);
+            return;
+        },
+        Order::Unsorted => {},
     }
     let mut context = Context {
         scratch: Vec::new(),
@@ -225,6 +241,58 @@ const COLD_BANDWIDTH_REFERENCE: f64 = 2_097_152.0;
 const COLD_BANDWIDTH_EXPONENT: f64 = 0.30;
 const COLD_NS_PER_RECORD_FLOOR: f64 = 3.0;
 
+/// How well a split on the top varying bits would divide the node: up to
+/// `SPLIT_SAMPLES` keys spread over the node, bucketed exactly as the split
+/// would bucket them. Returns how many buckets are occupied and the largest
+/// bucket's share.
+///
+/// This is what tells the model whether a split would actually shrink the
+/// working set. A digit that puts everything in one bucket divides nothing: the
+/// recursion would pay a pass and gain none, and the input's own locality (a
+/// scatter into one stream is nearly sequential) already made that pass cheap.
+fn sample_split_shape<T: Key>(arr: &[T], varying: u128) -> (usize, f64) {
+    let top = (u128::BITS - varying.leading_zeros()) as usize;
+    let width = RADIX.min(top);
+    let shift = top - width;
+    let mask = ((1u128 << width) - 1) << shift;
+    let mut buckets = [0u32; 1 << RADIX];
+    let mut sampled = 0u32;
+    let mut largest = 0u32;
+    // Contiguous runs of `SPLIT_RUN` records, spread over the node. A strided
+    // sample is cheaper but can alias with a repeating input pattern (a stride
+    // that is a multiple of the pattern period sees a single bucket and calls a
+    // well-spread digit narrow); runs cannot.
+    let step = (arr.len() / SPLIT_SAMPLES).max(1);
+    let mut block = 0;
+    while block < SPLIT_SAMPLES {
+        let start = block * step;
+        let end = (start + SPLIT_RUN).min(arr.len());
+        let mut index = start;
+        while index < end {
+            let key = arr[index].key().to_u128();
+            let bucket = ((key & mask) >> shift) as usize;
+            buckets[bucket] += 1;
+            largest = largest.max(buckets[bucket]);
+            sampled += 1;
+            index += 1;
+        }
+        block += SPLIT_RUN;
+    }
+    let distinct = buckets.iter().filter(|&&count| count > 0).count();
+    (distinct, largest as f64 / sampled.max(1) as f64)
+}
+
+/// Keys the split-shape sample may look at.
+const SPLIT_SAMPLES: usize = 1024;
+/// Records read back to back in each sample run.
+const SPLIT_RUN: usize = 32;
+/// Reading a node sequentially moves bytes faster than `hot` assumes, because
+/// nothing is written: the split's read pass is the only one that does not
+/// scatter. 6 GB/s is what a wide node gave on this VM.
+const SPLIT_READ_BYTES_PER_NS: f64 = 6.0;
+/// Floor for one split pass, in ns per record.
+const SPLIT_NS_PER_RECORD_MIN: f64 = 1.5;
+
 fn hot_ns_per_record(record_bytes: usize) -> f64 {
     HOT_NS_PER_RECORD.max(record_bytes as f64 / HOT_BYTES_PER_NS)
 }
@@ -252,13 +320,37 @@ const SPLIT_HOT_PASSES: f64 = 4.0;
 /// `hot_passes` cache-resident passes for the whole node. Both pass counts are
 /// what this node would really run, so a wide key with sixteen digits and a
 /// narrow one with two are compared on their own work.
-fn split_pays(node_bytes: usize, records: usize, cold_passes: usize, hot_passes: usize) -> bool {
+fn split_pays(
+    node_bytes: usize,
+    records: usize,
+    tile_bytes: usize,
+    cold_passes: usize,
+    hot_passes: usize,
+    largest_child: f64,
+) -> bool {
     if cold_passes < 2 || records == 0 {
         return false;
     }
     let hot = hot_ns_per_record(node_bytes / records);
     let streamed = cold_passes as f64 * cold_ns_per_record(node_bytes, records);
-    let split = SPLIT_HOT_PASSES * hot + hot_passes as f64 * hot;
+    // The child that carries most of the records is what the recursion has to
+    // keep working on; the split only pays if moving that work into a smaller
+    // working set is cheaper than the split itself. A child that fits the tile
+    // runs its passes in cache, one that does not is still streaming.
+    let share = largest_child.clamp(1.0 / 256.0, 1.0);
+    let child_bytes = ((node_bytes as f64 * share) as usize).max(1);
+    let child_records = ((records as f64 * share) as usize).max(1);
+    let child_pass = if child_bytes <= tile_bytes {
+        hot
+    } else {
+        cold_ns_per_record(child_bytes, child_records)
+    };
+    // The split reads the node sequentially `SPLIT_HOT_PASSES` times and writes
+    // nothing until the fan-out; charging it the scatter bandwidth of a pass
+    // overestimated it by about 2x.
+    let split_pass =
+        SPLIT_NS_PER_RECORD_MIN.max(node_bytes as f64 / records as f64 / SPLIT_READ_BYTES_PER_NS);
+    let split = SPLIT_HOT_PASSES as f64 * split_pass + hot_passes as f64 * child_pass;
     split < streamed
 }
 
@@ -310,6 +402,79 @@ unsafe fn merge_runs<T: Key>(
     }
 }
 
+enum Order {
+    Ascending,
+    Descending,
+    Unsorted,
+}
+
+/// Spread-out pairs the strided gate may look at before the full order pass.
+const ORDER_SAMPLES: usize = 4096;
+
+/// Whether the input is already ordered.
+///
+/// A strided sample answers first: at most `ORDER_SAMPLES` spread-out adjacent
+/// pairs, tracking both directions. If the sample is monotone in neither
+/// direction the array cannot be ordered, so the full pass is skipped. That
+/// matters for the common "sorted, then a few appends" shape, where a full pass
+/// would run to the end before finding the inversion. The sample can only
+/// *reject*, never accept, so the answer stays exact.
+///
+/// Keeping this separate from the variation scan also keeps that scan
+/// vectorizable; fusing the two cost 5 % on clustered inputs, where the scan
+/// runs to the end and the order flags never pay off.
+fn probe_order<T: Key>(arr: &[T]) -> Order {
+    let stride = (arr.len() / ORDER_SAMPLES).max(1);
+    let mut ascending = true;
+    let mut descending = true;
+    let mut index = stride;
+    while index < arr.len() {
+        let before = arr[index - 1].key();
+        let after = arr[index].key();
+        ascending &= before <= after;
+        descending &= before >= after;
+        if !ascending && !descending {
+            return Order::Unsorted;
+        }
+        index += stride;
+    }
+    let mut ascending = true;
+    let mut descending = true;
+    let mut previous = arr[0].key();
+    for item in &arr[1..] {
+        let key = item.key();
+        ascending &= previous <= key;
+        descending &= previous >= key;
+        previous = key;
+        if !ascending && !descending {
+            return Order::Unsorted;
+        }
+    }
+    if ascending {
+        Order::Ascending
+    } else if descending {
+        Order::Descending
+    } else {
+        Order::Unsorted
+    }
+}
+
+/// Sorts a descending array, stably, by reversing it and then reversing each
+/// run of equal keys back. Reversal alone would swap equal keys past each other.
+fn reverse_stably<T: Key>(arr: &mut [T]) {
+    arr.reverse();
+    let mut start = 0;
+    while start < arr.len() {
+        let key = arr[start].key();
+        let mut end = start + 1;
+        while end < arr.len() && arr[end].key() == key {
+            end += 1;
+        }
+        arr[start..end].reverse();
+        start = end;
+    }
+}
+
 /// Stable insertion sort on converted keys.
 fn insertion_leaf<T: Key>(arr: &mut [T]) {
     for i in 1..arr.len() {
@@ -336,7 +501,7 @@ unsafe fn counting_pass<T: Key>(
     destination: *mut T,
     len: usize,
     digit: Digit,
-    counts: &mut [u32],
+    counts: &mut [u16],
 ) {
     let mask = digit.mask::<T>();
     let shift = T::Value::from_usize(digit.shift);
@@ -350,10 +515,11 @@ unsafe fn counting_pass<T: Key>(
         // SAFETY: the caller guarantees `len` initialized records.
         let key = (*source.add(index)).key();
         let bucket = ((key & mask) >> shift).to_usize();
-        // SAFETY: the digit mask keeps the index below `buckets`.
+        // SAFETY: the digit mask keeps the index below `buckets`, and no bucket
+        // can hold more than `len <= u16::MAX` records.
         *cursor.add(bucket) += 1;
     }
-    let mut offset = 0u32;
+    let mut offset = 0u16;
     for slot in 0..buckets {
         // SAFETY: as above.
         let count = *cursor.add(slot);
@@ -423,7 +589,21 @@ impl<T: Key> Context<T> {
         let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
         let cold_passes = plan_digits::<T>(RADIX, variation, &mut scratch_digits);
         let hot_passes = plan_digits::<T>(leaf_radix(records), variation, &mut scratch_digits);
-        if !split_pays(node_bytes, records, cold_passes, hot_passes) {
+        let (distinct, largest_child) = sample_split_shape(arr, varying);
+        if trace() {
+            eprintln!(
+                "shape len={} distinct={} largest={:.4} cold={} hot={}",
+                records, distinct, largest_child, cold_passes, hot_passes
+            );
+        }
+        if !split_pays(
+            node_bytes,
+            records,
+            self.tile_bytes,
+            cold_passes,
+            hot_passes,
+            largest_child,
+        ) {
             if trace() {
                 eprintln!(
                     "block len={} bytes={} cold_passes={} hot_passes={}",
@@ -570,16 +750,18 @@ impl<T: Key> Context<T> {
         let passes = plan_digits::<T>(leaf_radix(len), variation, &mut digits);
         self.set_scratch_len(len);
         let scratch_ptr = self.scratch.as_mut_ptr().cast::<T>();
-        // A tile is far smaller than 2^32 records, so 32-bit cursors are enough
-        // and halve the counter traffic of the hot pass.
-        let mut counts = [0u32; MAX_BUCKETS];
+        // A tile is at most `MAX_TILE_RECORDS` records, so 16-bit cursors are
+        // enough, and they are the difference between a cursor table that stays
+        // in one L1 set and one that does not.
+        debug_assert!(len <= MAX_TILE_RECORDS);
+        let mut counts = [0u16; MAX_BUCKETS];
 
         // The record set lives in `source` for the whole pass. A panic from the
         // key extractor therefore never loses or duplicates a record: if the
         // source is the tile, the tile is untouched; if it is the scratch
         // buffer, the buffer still holds every record and is copied back.
         let mut live_in_scratch = false;
-        let mut run = |live_in_scratch: &mut bool, counts: &mut [u32]| {
+        let mut run = |live_in_scratch: &mut bool, counts: &mut [u16]| {
             let mut source: *mut T = arr.as_mut_ptr();
             let mut destination: *mut T = scratch_ptr;
             let mut source_is_tile = true;
