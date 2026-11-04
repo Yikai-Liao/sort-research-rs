@@ -21,6 +21,13 @@ Most functionality is by default disabled via cargo features, see the
 Cargo.toml. Some functionality can be enabled or switched by setting environment
 variables. See for example benches/bench.rs.
 
+The [stable radix sort adapters](src/other/rust_block_lsd/README.md) include the
+vendored Voracious Sort Block LSD candidate from
+[issue #35](https://github.com/Voultapher/sort-research-rs/issues/35), full-buffer
+LSD/MSD and cached-key controls, and a separate
+[archived PA adapter](src/other/rust_pa/README.md). Their documentation covers
+supported keys, ownership and panic behavior, tests, and peak extra-heap measurement.
+
 ## Research results
 
 * [The unreasonable effectiveness of modern sort algorithms](writeup/unreasonable/text.md)

@@ -10,7 +10,7 @@ use std::rc::Rc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
-use crate::ffi_types::{FFIOneKibiByte, FFIString, F128};
+use crate::ffi_types::{DynTrait, FFIOneKibiByte, FFIString, F128};
 use crate::patterns;
 use crate::Sort;
 
@@ -104,10 +104,6 @@ fn test_is_sorted<T: Ord + Clone + Debug, S: Sort>(
     check_is_sorted::<T, S>(test_data.as_mut_slice());
 }
 
-trait DynTrait: Debug {
-    fn get_val(&self) -> i32;
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct DynValA {
     value: i32,
@@ -129,26 +125,6 @@ impl DynTrait for DynValB {
         i32::from_ne_bytes([bytes[0], bytes[1], bytes[6], bytes[7]])
     }
 }
-
-impl PartialOrd for dyn DynTrait {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for dyn DynTrait {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.get_val().cmp(&other.get_val())
-    }
-}
-
-impl PartialEq for dyn DynTrait {
-    fn eq(&self, other: &Self) -> bool {
-        self.get_val() == other.get_val()
-    }
-}
-
-impl Eq for dyn DynTrait {}
 
 fn shift_i32_to_u32(val: i32) -> u32 {
     (val as i64 + (i32::MAX as i64 + 1)) as u32

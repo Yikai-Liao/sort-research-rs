@@ -105,6 +105,11 @@ pub fn bench<T: Ord + std::fmt::Debug>(
 
     // --- Stable sorts ---
 
+    #[cfg(feature = "rust_pa")]
+    if other::rust_pa::supports_type::<T>() {
+        bench_inst!(other::rust_pa);
+    }
+
     bench_inst!(stable::rust_std);
 
     #[cfg(feature = "rust_std_vendored")]
@@ -213,6 +218,32 @@ pub fn bench<T: Ord + std::fmt::Debug>(
     bench_inst!(unstable::golang_std);
 
     // --- Other sorts ---
+    #[cfg(feature = "rust_lsd11")]
+    if other::rust_lsd11::supports_type::<T>() {
+        bench_inst!(other::rust_lsd11);
+    }
+    #[cfg(feature = "rust_radsort_cached")]
+    if other::rust_radsort_cached::supports_type::<T>() {
+        bench_inst!(other::rust_radsort_cached);
+    }
+    #[cfg(feature = "rust_radsort_unopt")]
+    if other::rust_radsort_unopt::supports_type::<T>() {
+        bench_inst!(other::rust_radsort_unopt);
+    }
+
+    #[cfg(feature = "rust_basic_lsd")]
+    if other::rust_basic_lsd::supports_type::<T>() {
+        bench_inst!(other::rust_basic_lsd);
+    }
+    #[cfg(feature = "rust_basic_msd")]
+    if other::rust_basic_msd::supports_type::<T>() {
+        bench_inst!(other::rust_basic_msd);
+    }
+
+    #[cfg(feature = "rust_block_lsd")]
+    if other::rust_block_lsd::supports_type::<T>() {
+        bench_inst!(other::rust_block_lsd);
+    }
 
     #[cfg(feature = "rust_radsort")]
     bench_inst!(other::rust_radsort);

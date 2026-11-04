@@ -1,0 +1,61 @@
+{
+  "commit": "2b15e461842343721599b38c25883adbc96fabe3",
+  "path": "experiments/block_msd/src/frontier",
+  "adaptations": [
+    "RadixKey/Radixable imports use a local conversion-only bridge",
+    "diagnostic/portable feature names are scoped to rust_pa",
+    "archived top-level policy test driver omitted; adapter has separate integration tests",
+    "relative NativeKey import for an archived inline test",
+    "rustfmt formatting; no PA policy or distribution logic changes"
+  ],
+  "files": [
+    {
+      "path": "mod.rs",
+      "archive_sha256": "c717351ea238690e4699daa19761e040183e57ab362c8593928c5999fd9cc442",
+      "integration_sha256": "3a299d84467735b0153dec010b080d19281629b6315e439b093a2452150a61c5",
+      "matches_archive_after_listed_adaptations_and_formatting": true
+    },
+    {
+      "path": "pa.rs",
+      "archive_sha256": "62403961f287e58c2d544d4e6beb029d8f357f073eb0a15b408094e87bc4ee2c",
+      "integration_sha256": "190b90fceca8004d99f01d0ad4187d4a39c8ae9ef6859298f7f96f655fd0f7e9",
+      "matches_archive_after_listed_adaptations_and_formatting": true
+    },
+    {
+      "path": "block.rs",
+      "archive_sha256": "d25e1f40cf30a501cb19289322934497da826e4cc7cd43e37f4a1512d737ada2",
+      "integration_sha256": "df47dd3437d2b2eb388b31606cbbc1fef564b27e99a65cb3d41f0cc1208fea92",
+      "matches_archive_after_listed_adaptations_and_formatting": true
+    },
+    {
+      "path": "labeler.rs",
+      "archive_sha256": "1467febc4ca5bed11e1b9fbc3223ed2198fdbd3c1fc06306f79a4dc17a0bf27a",
+      "integration_sha256": "0939b641065b8fa1c26ba735391f011066608aa23f98d81ae257adb9692ddd0e",
+      "matches_archive_after_listed_adaptations_and_formatting": true
+    },
+    {
+      "path": "local_distribution.rs",
+      "archive_sha256": "33c80b58105ff64d385cc4b9d117cae7f9247c0fb981d7b71bb99cd85e1733db",
+      "integration_sha256": "09575c512774da1618bb6ceb8d70dac8045f8fdadf26acf9766d4f7fdea1467e",
+      "matches_archive_after_listed_adaptations_and_formatting": true
+    },
+    {
+      "path": "ordered_tiled.rs",
+      "archive_sha256": "65866126c11233dafec538129aa97a9d05e58979a9be3950eb6ca6dde98d7d6b",
+      "integration_sha256": "2ed113841d3a53a174428158c1dc1ab2790658d44b8f2d22c22df35027fd6b4d",
+      "matches_archive_after_listed_adaptations_and_formatting": true
+    },
+    {
+      "path": "packed_projection.rs",
+      "archive_sha256": "4f39a7b849cf94bc9d5b49ca6f085d7ab29578b71b3d43e301ebcb0a171a9717",
+      "integration_sha256": "d3949859fea79e975cb010332125d46aefe0aad5fb1cd9232e5cdbdaaefea6f0",
+      "matches_archive_after_listed_adaptations_and_formatting": true
+    },
+    {
+      "path": "prefix_band.rs",
+      "archive_sha256": "5f498b8d33b8a49b421130a9da09ba0c93373a5d6d28a23bb5344c3e469e36ca",
+      "integration_sha256": "dab5b82087a42cf07050635ccb0fda1b93d498950c2aa9324d8ff0d09ac2ea61",
+      "matches_archive_after_listed_adaptations_and_formatting": true
+    }
+  ]
+}
