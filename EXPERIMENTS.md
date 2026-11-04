@@ -482,15 +482,21 @@ records cost 800 bytes rather than half a megabyte.
 
 ## Validation
 
-- `cargo test --release --features rust_tessera_radix --lib` — 7 engine tests
+- `cargo test --release --features rust_tessera_radix --lib` — 8 engine tests
   (stability with payload identity, every key width × every tile budget,
-  duplicates, skew, all-equal, empty/single).
+  duplicates, skew, all-equal, empty/single, and a randomized differential test:
+  2000 random shapes — sparse masks, one varying byte, two clusters, few distinct
+  values, descending ranges — crossed with five tile budgets from 4 KiB to 1 MiB,
+  compared record by record against the standard library's stable sort with the
+  input index in the payload, so a stability break fails the same assertion).
 - `cargo test --release --features rust_tessera_radix --test tessera_functionality`
   — the repository's standard 233-case suite, same one block LSD runs.
-- `cargo +nightly miri test --features rust_tessera_radix --lib -- duplicates_stay_stable`
-  — no UB reported (the test drives the raw-pointer kernel, the `u16` cursors and
-  the packed windows over a four-value key space, so it covers every unsafe block
-  in the leaf).
+- Miri, no UB reported: `duplicates_stay_stable` (drives the raw-pointer kernel,
+  the `u16` cursors and the packed windows over a four-value key space, so it
+  covers every unsafe block in the leaf), `constant_keys_are_no_ops` and
+  `skewed_keys_sort`. The randomized differential test and the width × tile sweep
+  do not fit in Miri's time budget (2000 configurations at 100x slowdown) and run
+  in release mode instead.
 - `RUSTFLAGS=-Zsanitizer=address cargo test -Zbuild-std ...` — see logs/asan.log.
 
 ## Reproduce

@@ -997,6 +997,76 @@ mod tests {
     }
 
     #[test]
+    fn random_configurations_match_a_stable_reference() {
+        // Random key shapes crossed with random tile budgets, checked against the
+        // standard library's stable sort. The payload is the input index, so an
+        // equal-key pair out of order fails the comparison: this is the one test
+        // that exercises stability and correctness together over shapes no
+        // hand-written case names (sparse masks, one varying byte, two clusters).
+        #[derive(Clone, Copy, Debug)]
+        struct Item {
+            key: u32,
+            index: u32,
+        }
+        impl PartialEq for Item {
+            fn eq(&self, other: &Self) -> bool {
+                self.key == other.key && self.index == other.index
+            }
+        }
+        impl Eq for Item {}
+        impl PartialOrd for Item {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+        impl Ord for Item {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                self.key.cmp(&other.key)
+            }
+        }
+        impl Key for Item {
+            type Value = u32;
+            fn key(&self) -> u32 {
+                self.key
+            }
+        }
+
+        let mut rng = Rng(0x2545_f491_4f6c_dd1d);
+        let tiles = [4 * 1024usize, 16 * 1024, 64 * 1024, 256 * 1024, 1 << 20];
+        for round in 0..2000 {
+            let len = (rng.next() % 8000) as usize;
+            let shape = rng.next() % 6;
+            let mut input: Vec<Item> = Vec::with_capacity(len);
+            for index in 0..len {
+                let roll = rng.next();
+                let key = match shape {
+                    0 => roll as u32,
+                    1 => (roll % 4) as u32,
+                    2 => ((roll % 64) << 26) as u32,
+                    3 => (((roll % 256) << 8) | (roll % 256)) as u32,
+                    4 => u32::MAX.wrapping_sub(roll as u32),
+                    _ => ((roll % 8) * 0x0101_0101) as u32,
+                };
+                input.push(Item {
+                    key,
+                    index: index as u32,
+                });
+            }
+            let mut expected = input.clone();
+            expected.sort();
+            let mut actual = input;
+            sort_with_tile_bytes(&mut actual, tiles[(round % tiles.len() as u64) as usize]);
+            for (position, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
+                assert_eq!(
+                    (a.key, a.index),
+                    (e.key, e.index),
+                    "round {round} shape {shape} len {len} at {position}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn constant_keys_are_no_ops() {
         let mut input = vec![42u64; 10_000];
         let expected = input.clone();
