@@ -13,19 +13,32 @@
 //! cost a third as much each, which is why this sort improves with n where
 //! block LSD degrades.
 //!
-//! Three decisions use measured costs instead of thresholds:
+//! Four decisions use measured costs instead of thresholds:
 //!
+//! - **Sort at all**: a monotone input is answered by one probe (`probe_order`),
+//!   ascending immediately and descending by a reversal with its equal-key runs
+//!   repaired. Nothing else in the sort can see order, and the probe costs two
+//!   comparisons on random data because it gives up at the first inversion.
 //! - **Split or stream**: compare streaming the node cold against the split plus
-//!   its cache-resident passes (`split_pays`).
-//! - **Leaf digit width**: wider digits mean fewer passes but a bigger bucket
-//!   table, so the width follows the tile size (`leaf_radix`).
+//!   its cache-resident passes, charging the split for the passes on the largest
+//!   child it would actually create (`split_pays`, `sample_split_shape`).
+//! - **Leaf digit width and placement**: wider digits mean fewer passes but a
+//!   bigger bucket table, so the width follows the tile size (`leaf_radix`), and
+//!   the windows are placed on the varying bits rather than on a fixed grid
+//!   (`plan_digits_packed`).
 //! - **How a leaf finishes**: counting passes, a merge sort or an insertion
 //!   sort, whichever is cheapest at that size.
 //!
-//! Constant bits are dropped everywhere (`plan_digits`), including in the
-//! split's fan-out: a digit that cannot divide the data would otherwise buy 256
-//! empty buckets, and a node whose keys differ only in their low byte pays one
-//! pass instead of `key width / digit width`.
+//! Constant bits are dropped everywhere, including in the split's fan-out: a
+//! digit that cannot divide the data would otherwise buy 256 empty buckets, and
+//! a node whose keys differ only in their low byte pays one pass instead of
+//! `key width / digit width`.
+//!
+//! Records are never lost or duplicated, including through a panic: a leaf's
+//! record set lives in one of the two buffers at every point of every pass, and
+//! a panic from the key extractor copies the scratch buffer back before it
+//! resumes (`lsd_leaf`). `sort` is stable: equal keys keep their input order
+//! through the block engine's permutation and through every leaf.
 
 use std::mem::MaybeUninit;
 
