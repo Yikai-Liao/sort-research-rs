@@ -654,6 +654,12 @@ fn for_each_bucket<T: Key>(
     }
 }
 
+fn old_msd_scan() -> bool {
+    use std::sync::OnceLock;
+    static OLD: OnceLock<bool> = OnceLock::new();
+    *OLD.get_or_init(|| std::env::var_os("RADIX_OLD_MSD_SCAN").is_some())
+}
+
 fn old_equality_scan() -> bool {
     use std::sync::OnceLock;
     static OLD: OnceLock<bool> = OnceLock::new();
@@ -1551,7 +1557,7 @@ impl<T: Key> Context<T> {
     /// Traffic, in units of one tile traversal: the histogram is one, the scatter
     /// is two, the copy back is two. A flat pass is two, so this pays off from
     /// three flat passes upwards, which is what the caller checks.
-    fn msd_leaf(&mut self, arr: &mut [T], digit: Digit) {
+    fn msd_leaf(&mut self, arr: &mut [T], digit: Digit, variation: Variation<T>) {
         let len = arr.len();
         self.set_scratch_len(len);
         let scratch = self.scratch.as_mut_ptr().cast::<T>();
@@ -1598,6 +1604,7 @@ impl<T: Key> Context<T> {
         // already computed. A bucket of one record is done; a larger one has its
         // variation re-read, and a flat plan on equal keys returns immediately.
         let buckets = 1usize << digit.width;
+        let candidate = variation.varying() & !digit.mask::<T>().to_u128();
         let mut start = 0;
         for bucket in 0..buckets {
             // SAFETY: the pass filled every entry below buckets, and cumulative
@@ -1608,14 +1615,17 @@ impl<T: Key> Context<T> {
             // the scan would only be thrown away, and a leaf-sized bucket is where
             // that scan is a measurable share of the bucket's own work.
             if end - start > self.insertion_max {
-                let (union, intersection) = block::varying_key_bits(&arr[start..end]);
-                self.lsd_leaf(
-                    &mut arr[start..end],
+                let child = &arr[start..end];
+                let variation = if old_msd_scan() {
+                    let (union, intersection) = block::varying_key_bits(child);
                     Variation {
                         union,
                         intersection,
-                    },
-                );
+                    }
+                } else {
+                    scan_variation(child, candidate)
+                };
+                self.lsd_leaf(&mut arr[start..end], variation);
             } else if end > start + 1 {
                 insertion_leaf(&mut arr[start..end]);
             }
@@ -1681,7 +1691,7 @@ impl<T: Key> Context<T> {
                 );
             }
             if level_cost < passes {
-                self.msd_leaf(arr, digits[0]);
+                self.msd_leaf(arr, digits[0], variation);
                 return;
             }
         }
