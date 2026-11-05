@@ -1882,6 +1882,19 @@ improves while its wall clock gets worse, which is now the strongest single conc
 this notebook has: **for this design, at these sizes, nothing that adds working-set
 pressure per record can pay, however few instructions it saves.**
 
+### 62. N2-B: the measurement hook was doing an environment lookup per node
+
+The revised brainstorm caught this correctly: RADIX_BLOCK_SCALE was read from the
+environment inside default_block_size, which the split calls for every node. An env
+lookup is a lock plus a scan; a value that cannot change while the process runs does not
+need either. Now a OnceLock, initialised once, with the same validation (finite and
+positive) it had inline.
+
+Not a performance result and not claimed as one -- it is one lock fewer per split node
+and one fewer thing to explain in the hot path. It is also the only item from the round-2
+backlog that could be landed without a measurement that this machine can resolve: the
+rest are either withdrawn (N1), partial by nature (N2-A), or architectural (N3, N6).
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

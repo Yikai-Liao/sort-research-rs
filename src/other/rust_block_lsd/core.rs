@@ -158,6 +158,24 @@ pub(crate) fn sort_with_variation<T>(
 /// Ablation over the benchmark types found this policy faster than the fixed
 /// size at every length below ~4M records and equal above it, while the
 /// auxiliary space now follows sqrt(n).
+/// Measurement hook: RADIX_BLOCK_SCALE multiplies the square-root optimum so a
+/// block-size sweep costs one build.
+///
+/// Read once per process, not once per node: the block size is recomputed for every
+/// split, and an environment lookup there is a lock and a scan of the environment for a
+/// number that cannot change while the process runs. Unset in every shipped run.
+fn block_scale() -> f64 {
+    use std::sync::OnceLock;
+    static SCALE: OnceLock<f64> = OnceLock::new();
+    *SCALE.get_or_init(|| {
+        std::env::var("RADIX_BLOCK_SCALE")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|s| *s > 0.0 && s.is_finite())
+            .unwrap_or(1.0)
+    })
+}
+
 pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) -> usize {
     const SQRT_SCALE: f64 = 4.0;
     const BLOCK_BYTES_FLOOR: usize = 1024;
@@ -171,12 +189,7 @@ pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) 
     // records larger than that still need at least one element per block.
     let scaled = (SQRT_SCALE * balanced).ceil() as usize;
     let natural = scaled.max(BLOCK_BYTES_FLOOR / record_bytes).max(1);
-    // Measurement hook: RADIX_BLOCK_SCALE multiplies the square-root optimum so a
-    // block-size sweep costs one build. Unset in every shipped run.
-    let scale = std::env::var("RADIX_BLOCK_SCALE")
-        .ok()
-        .and_then(|v| v.parse::<f64>().ok())
-        .unwrap_or(1.0);
+    let scale = block_scale();
     ((natural as f64 * scale).round() as usize).max(1)
 }
 
