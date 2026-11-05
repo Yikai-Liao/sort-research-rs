@@ -357,61 +357,6 @@ pub fn sort_with_policy<T: Key>(arr: &mut [T], policy: Policy) {
 // threshold. The constants are machine facts about moving record bytes, not
 // properties of a data distribution.
 
-/// What one MSD split costs, in full passes over the same node.
-///
-/// The split runs four passes -- count, block boundaries, permute, materialize --
-/// and every one of them only reads the node, so together they move half the
-/// bytes two read-write passes would: two passes is the structural price, and it
-/// is the same on any machine, because it counts passes rather than pricing them.
-const SPLIT_PASSES: f64 = 2.0;
-
-/// One pass over a cache-resident child, as a share of one pass over the node it
-/// came from. This is the only machine fact the routing has left: it says how
-/// much a working set that fits the cache is worth. 0.5 is what a 64 KiB tile
-/// against an 8-80 MiB node measures on Skylake; a core with a weaker cache or a
-/// slower memory path moves it toward 1, and the rule then asks for a split only
-/// when it saves real passes -- the safe direction, and the reason this is a
-/// ratio rather than a bandwidth: no byte rate, latency or cache size enters the
-/// decision, so the same code makes the same kind of choice on AArch64 or RV64.
-const CHILD_PASS_SHARE: f64 = 0.5;
-
-/// How well the split's digit would divide the node: up to
-/// `SPLIT_SAMPLES` keys spread over the node, bucketed exactly as the split
-/// would bucket them. Returns the largest bucket's share.
-///
-/// This is what tells the model whether a split would actually shrink the
-/// working set. A digit that puts everything in one bucket divides nothing: the
-/// recursion would pay a pass and gain none, and the input's own locality (a
-/// scatter into one stream is nearly sequential) already made that pass cheap.
-fn sample_split_shape<T: Key>(arr: &[T], digit: Digit) -> f64 {
-    let mask = digit.mask::<T>();
-    let shift = T::Value::from_usize(digit.shift);
-    let mut buckets = [0u16; 1 << RADIX];
-    let mut sampled = 0u32;
-    let mut largest = 0u16;
-    // Contiguous runs of `SPLIT_RUN` records, spread over the node. A strided
-    // sample is cheaper but can alias with a repeating input pattern (a stride
-    // that is a multiple of the pattern period sees a single bucket and calls a
-    // well-spread digit narrow); runs cannot.
-    let step = (arr.len() / SPLIT_SAMPLES).max(1);
-    let mut block = 0;
-    while block < SPLIT_SAMPLES {
-        let start = block * step;
-        let end = (start + SPLIT_RUN).min(arr.len());
-        let mut index = start;
-        while index < end {
-            let key = arr[index].key();
-            let bucket = ((key & mask) >> shift).to_usize();
-            buckets[bucket] += 1;
-            largest = largest.max(buckets[bucket]);
-            sampled += 1;
-            index += 1;
-        }
-        block += SPLIT_RUN;
-    }
-    largest as f64 / sampled.max(1) as f64
-}
-
 /// The passes a tile-sized range really costs: the flat plan, or one MSD level
 /// per level of shrinking when that is cheaper.
 ///
@@ -437,10 +382,14 @@ fn tile_cost(
     (MSD_LEVEL_PASSES * depth).min(flat_passes)
 }
 
-/// Keys the split-shape sample may look at.
-const SPLIT_SAMPLES: usize = 1024;
-/// Records read back to back in each sample run.
-const SPLIT_RUN: usize = 32;
+/// What one MSD split costs, in full passes over the same node.
+///
+/// The split runs four passes -- count, block boundaries, permute, materialize --
+/// and every one of them only reads the node, so together they move half the
+/// bytes two read-write passes would: two passes is the structural price, and it
+/// is the same on any machine, because it counts passes rather than pricing them.
+const SPLIT_PASSES: usize = 2;
+
 /// Whether an MSD split costs less than running the passes level by level.
 ///
 /// Both sides are counted in passes over the node, so nothing about bandwidth,
@@ -449,12 +398,8 @@ const SPLIT_RUN: usize = 32;
 /// work, each discounted by what a cache-resident working set is worth. A child
 /// too large for the tile earns no discount, which is what makes the rule stop
 /// splitting once the children are still large.
-fn split_pays(cold_passes: usize, hot_passes: usize, child_fits_tile: bool) -> bool {
-    if cold_passes < 2 {
-        return false;
-    }
-    let share = if child_fits_tile { CHILD_PASS_SHARE } else { 1.0 };
-    SPLIT_PASSES + hot_passes as f64 * share < cold_passes as f64
+fn split_pays(cold_passes: usize, hot_passes: usize) -> bool {
+    cold_passes >= 2 && hot_passes + SPLIT_PASSES < cold_passes
 }
 
 enum Order {
@@ -702,7 +647,6 @@ impl<T: Key> Context<T> {
             shift: top - radix,
             width: radix,
         };
-        let largest_child = sample_split_shape(arr, digit);
         // What finishing the largest child costs: the best case the leaf can reach,
         // one level in cache, because that is what the recursion will pay when the
         // child is a tile. The router cannot sample the child's own window (its top
@@ -714,12 +658,11 @@ impl<T: Key> Context<T> {
         let hot_passes = flat_hot.min(MSD_LEVEL_PASSES);
         // One line per node says everything the routing decided, so a trace diff
         // between two builds is a decision diff.
-        let child_bytes = (node_bytes as f64 * largest_child.clamp(0.0, 1.0)) as usize;
-        let routed = split_pays(cold_passes, hot_passes, child_bytes <= self.tile_bytes);
+        let routed = split_pays(cold_passes, hot_passes);
         if trace() {
             eprintln!(
-                "route len={} bytes={} passes={} hot={} largest={:.4} split={}",
-                records, node_bytes, cold_passes, hot_passes, largest_child, routed
+                "route len={} bytes={} passes={} hot={} split={}",
+                records, node_bytes, cold_passes, hot_passes, routed
             );
         }
         if !routed {

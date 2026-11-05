@@ -1003,16 +1003,20 @@ What the router actually needs is which of two totals is smaller, and both total
 are passes over the same node. So the model is now pass arithmetic:
 
 ```
-split iff  2 passes + hot_passes * (0.5 if the child fits the tile else 1) < cold_passes
+split iff  2 + hot_passes < cold_passes
 ```
 
 `SPLIT_PASSES = 2` counts what the split runs -- four read-only passes move half the
-bytes of two read-write passes -- and `CHILD_PASS_SHARE = 0.5` is the only machine
-fact left: what a cache-resident working set is worth. No byte rate, no latency, no
-cache size, no reference size. On a core whose cache helps less, the share moves
-toward 1 and the rule degrades to "split only when it saves a real pass", which is
-the conservative direction; on one where it helps more, the rule under-splits by at
-most one level. There is no calibration that can make it explode.
+bytes of two read-write passes -- and `hot_passes` is the leaf plan for the child,
+currently one MSD level in cache. There is no other term: no byte rate, no latency,
+no cache size, no reference size, and no ratio standing in for one. An earlier
+draft kept a cache-benefit ratio here; deleting it entirely cost 1-2 % on the
+sparse-value shapes and 0 % on the other forty cells, which is not worth a number
+that has to be re-measured on every new core.
+
+The rule is also conservative in the right direction: it splits only when the split
+plus the child is cheaper than streaming, so a machine where the cache matters less
+does not cause it to thrash -- the child gets more expensive and the split stops.
 
 That is also how pdqsort and ipnsort stay portable, and it is worth stating because
 neither has a bandwidth model to port: pdqsort's decisions are element counts
@@ -1059,24 +1063,30 @@ cache-sized tiles, which is the shape of the trade rather than a bug.
 
 ### 34. What is still about a machine, and what a port has to re-pick
 
-After §32 no *rate* is baked in: nothing in the kernel reads a clock, a CPU
-feature, a cache size or a timer, and there is no `target_arch` or intrinsic
-anywhere in the module. Digit extraction works on values, not memory layout, so
-the code is endian-independent. What remains are five numbers about cache
-geometry. They are listed here because a port to AArch64 or RV64 should change
-them and nothing else.
+No *rate* is baked in: nothing in the kernel reads a clock, a CPU feature, a cache
+size or a timer, and there is no `target_arch` or intrinsic anywhere in the module.
+Digit extraction works on values, not memory layout, so the code is
+endian-independent.
 
-| constant | what it encodes | why it is safe off-plateau | how to re-pick it |
-| --- | --- | --- | --- |
-| `CHILD_PASS_SHARE = 0.5` | what a cache-resident pass is worth | monotone: toward 1 the rule splits only when it saves a pass | time a tile pass against a node pass |
-| `TILE_BYTES = 64 KiB` | the working set a leaf keeps resident | smaller cache: leaves stream a little; larger: one level more than needed | tile sweep 16-256 KiB, take the plateau |
-| `INSERTION_MAX = 48` | where counting stops beating insertion | plateau is wide (16-96 measured on two shapes) | set `Policy::insertion_max`, no rebuild |
-| `RADIX = 8` | streams per pass; cursors are 4 KiB of u32 | 6-10 all work; 12 measured worse here | rebuild with 6/7/9 and trace |
-| `MSD_LEVEL_PASSES = 3`, `MODEL_LEAF_RADIX = 11` | what one MSD level and one leaf plan cost, in passes | they only compare against each other | `route_table` pins both; re-trace |
+Algorithmic counts -- `RADIX = 8` (256 streams, 4 KiB of cursors),
+`INSERTION_MAX = 48`, `LEAF_RADIX_MIN/MAX`, `PLAN_DIGITS`, `MSD_LEVEL_PASSES`,
+`MODEL_LEAF_RADIX` -- are not porting items: they count streams, records, digits and
+passes, and every one of them behaves the same on a core with a different clock,
+cache or ISA. `RADIX = 8` is the clearest case: 256 output streams is an algorithm
+shape, and the only way it could fail to be portable is if a machine could not
+hold a 4 KiB cursor table, which no core running this code can. Tuning them
+*better* per machine is a different question, and the plateau widths in §5, §13
+and §24 say there is little to win.
+
+What is actually machine-shaped, and stays in the code:
+
+| constant | what it encodes | why it is safe off-plateau |
+| --- | --- | --- |
+| `TILE_BYTES = 64 KiB` | the working set a leaf keeps resident | it is a *size*, not a rate; on a bigger cache it costs one level more than needed, on a smaller one the leaf streams a little. 64 KiB sits inside L2 on every core this targets |
 
 Byte-level assumptions that are not machine facts: 8-bit bytes, IEEE-754 floats
-(via the existing total order), `u16` cursors (a tile holds at most 65535
-records), `u32` descriptors. None of them depend on the core.
+(via the existing total order), `u16` cursors (a tile holds at most 65535 records),
+`u32` descriptors. None of them depend on the core.
 
 ## Open items
 
