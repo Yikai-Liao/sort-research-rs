@@ -1136,6 +1136,34 @@ the review could not match belong to the artifact branch `block-lsd-artifacts`
 (`NUMBERS.md` there maps each old number to its raw log); every number quoted in
 *this* file was produced on this branch by the commands in §0.
 
+### 36. The leaf level moves records once, in place
+
+The tile's MSD level used to scatter into the leaf buffer and copy the whole set
+back: histogram, scatter (read + write), copy back (read + write). The copy back
+existed only because the scatter needed a destination. The permutation is stable
+budgeted by construction -- a record's destination is its bucket start plus the
+number of equal keys before it -- so it can be applied in place: rank pass, then
+one cycle walk that pushes each held record to its own destination and closes
+with the record that started the cycle.
+
+That is two reads instead of four traversals, one write per record, and no
+record-sized buffer for the level: the leaf now needs two bytes per record for
+the destinations and one bit for the visited map, where it needed a full tile
+copy. The O(sqrt n) story gets strictly better, not worse.
+
+Cycles, paired runs, 5 rounds, same process shape (instructions moved by <0.3 %,
+which is what a traffic change and not an instruction change looks like):
+
+| cell | cycles | | cell | cycles |
+| --- | --- | --- | --- | --- |
+| u64 1M random | -7.0 % | | u64 10M random | -3.6 % |
+| u128 1M random | -5.5 % | | u128 10M random | -1.4 % |
+| u64 sparse8 1M | -2.0 % | | u64 mixed_runs 1M | -1.2 % |
+
+Same commit: a bucket that goes straight to insertion no longer has its
+variation scanned first (the scan was thrown away), which is where the -6.7 % on
+u128 sparse8's instructions came from.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
