@@ -839,7 +839,9 @@ impl<T: Key> Context<T> {
             eprintln!("  split radix={} shift={}", radix, top - radix);
         }
         block::partition_digit(arr, digit.width, digit.shift);
-        self.descend(arr, digit);
+        // Within a bucket every key shares the digits above the split, so they fall
+        // out of the child's variation on their own.
+        for_each_bucket(arr, digit, |child, variation| self.sort_node(child, variation));
     }
 
     /// Walks the freshly partitioned node, and sorts each bucket as a separate
@@ -850,11 +852,6 @@ impl<T: Key> Context<T> {
         stream_node(arr, variation, self.stream_mode);
     }
 
-    fn descend(&mut self, arr: &mut [T], digit: Digit) {
-        // Within a bucket every key shares the digits above the split, so they
-        // fall out of the child's variation on their own.
-        for_each_bucket(arr, digit, |child, variation| self.sort_node(child, variation));
-    }
 
     fn set_scratch_len(&mut self, len: usize) {
         if self.scratch.len() < len {
