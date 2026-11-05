@@ -731,6 +731,68 @@ The u128 row is the interesting one: on the repository's narrower key the radix
 sorts are twice as fast as on full-width keys, which is exactly what narrowing
 buys, and tessera lands at ipnsort's level instead of 1.6x behind it.
 
+### 25. Cleanup pass: one path removed, three merged, two rejections
+
+Three independent reviews of the implementation (engine, block engine,
+experiment surface) and the rules above converged on the same target: fewer
+mechanisms. What actually changed, with the evidence for each:
+
+- **The merge leaf is gone.** A/B in one process at 1M: u64 random 19.03 ns
+  without it against 19.21-19.87 with it, u128 random 34.58 against 32.67 (6 %),
+  u64 zipf 11.75 against 13.49 at merge_max 128 (15 % *worse*). A path that buys
+  6 % on one cell and loses 15 % on another is not a path. Removed with its
+  recoverability branch, its constant and its two policy parameters.
+- **Five entry points became one `Policy`.** `sort` and `sort_with_policy(arr,
+  Policy)` are the whole surface; the knobs measurement needs are fields, so a
+  new combination no longer costs a function, an adapter wrapper and a doc
+  paragraph.
+- **`plan_digits` became `stream_passes`.** It built `Digit`s that its only
+  caller discarded to read the count. Same grid, same numbers, no out-parameter.
+- **One bucket walk.** `descend` and the tile's MSD level now share
+  `for_each_bucket`, which extracts every key once and accumulates the child's
+  variation while the boundary is open. The MSD level keeps cursor-based ends:
+  comparing digits there was one unpredictable branch per record when buckets
+  hold one record each, and measured 48 % slower (19.4 -> 28.8 on u64 1M).
+  Sharing the walk was right for the split; sharing the *boundary source* was
+  not.
+- **Dead work removed**: an unused `variation` parameter, a `distinct` count
+  that only fed a trace line, a 2 KiB zero-fill per leaf in the sampler (the
+  cursor table's 14 % lesson did not generalise itself), and a plan buffer
+  sized for 128 windows when the narrowest real digit needs 43.
+
+Size: `engine.rs` 1442 -> 1331 lines, adapter 38 -> 31, and one fewer
+algorithmic path. The 233-case differential suite, the panic sweep and the
+1M/10M cells all still pass, and no cell moved beyond the 5 % floor.
+
+Left undone on purpose, because they cost more concepts than they remove:
+merging the two occupancy samplers (one asks "how spread is this window", the
+other "how many distinct digits", at different sizes and disciplines),
+deriving `Copy` for `Variation` (would change the type's parameter from the
+record to the key at every use site), and folding `trace()` behind a feature.
+
+Full matrix after the cleanup, 1M, ns per record, one root, three interleaved
+rounds at load 2.5 — ratios matter here, the absolute column is inflated by the
+neighbours:
+
+| cell | tessera | block LSD | ipnsort | vs block LSD | vs ipnsort |
+| --- | --- | --- | --- | --- | --- |
+| u64 random | 18.1 | 36.2 | 25.1 | 2.00x | 1.39x |
+| u64 bands8 | 18.0 | 36.7 | 24.5 | 2.03x | 1.36x |
+| u64 random_local | 22.6 | 32.9 | 27.4 | 1.46x | 1.22x |
+| u64 blocks_desc | 20.1 | 29.7 | 23.1 | 1.48x | 1.15x |
+| u128 random | 35.6 | 144.5 | 43.3 | 4.07x | 1.22x |
+| u128 random_local | 26.3 | 35.3 | 44.4 | 1.34x | 1.69x |
+| u128 bands8 | 29.0 | 26.8 | 42.4 | 0.92x | 1.46x |
+| u32 bands8 | 6.5 | 7.0 | 22.4 | 1.08x | 3.47x |
+| u32 blocks_desc | 9.5 | 9.9 | 23.4 | 1.04x | 2.46x |
+| u64 zipf20 | 10.7 | 24.1 | 3.8 | 2.26x | 0.35x |
+| u64 ascending | 2.9 | 45.1 | 1.5 | 15.5x | 0.50x |
+
+The u32 rows in the full sweep read 9.5-14.8 ns for the same code across three
+runs (10.2, 10.6, 10.2 on re-measurement) because a 7 ms cell is at the mercy of
+the neighbours; small types and small sizes need more rounds than the sweep
+gives them before a single number means anything.
+
 ## Open items
 
 1. u32 10M: the model predicts "do not split" where splitting is 12 % faster.
