@@ -881,6 +881,36 @@ against the previous binary, u64 zipf -8.5 %, u32 sparse8 -7.4 %, u64 sparse8
 6-9 % losses on `random` cells in the same run are noise: their decisions did not
 change, and the paired spread at that moment was of the same size.
 
+### 29. One tile price, one dead branch, one knob less
+
+Round-3 review findings, applied:
+
+- The router priced a tile-sized child at a flat `MSD_LEVEL_PASSES` while the leaf
+  priced the same tile at `MSD_LEVEL_PASSES * depth`. Both feed a comparison
+  against the same flat count, so a note claiming they "can never drift apart" was
+  false. `tile_cost(flat, records, largest_share, insertion_max)` is now the only
+  arithmetic, and the router calls it for a child that fits the tile; a child that
+  does not fit is itself a node, and stays at the measured best case (one level in
+  cache, §24: 34.2 -> 27.6 ns on u64 10M).
+- The split's digit is chosen once, before the sample, and `sample_split_shape`
+  takes that `Digit`: the sample now measures the window the split will peel,
+  instead of recomputing `RADIX.min(top)` for itself.
+- `StreamMode` is gone: the block engine's own sort tied on every cell where our
+  loop was compared (§27), and the file's rule is that a path within noise is
+  removed. The knob, the variant and the second sort path in the binary go with
+  it; the evidence stays here.
+- `stream_node`'s `passes == 0` guard is gone: its only caller returns earlier when
+  nothing varies.
+
+Which cells this can move: only those whose largest child both fits a tile and is
+clustered, because that is the only branch where the two prices differ (depth > 1).
+For the common shapes the branch is inert by construction: a uniform split gives
+depth 1 (same 3 passes as before) or a child larger than a tile (best-case arm).
+Measured, paired, 1M: u32 cells moved 7-16 % faster (random 10.7 -> 9.2, near-sorted
+8.8 -> 7.3, random_local 11.2 -> 10.0, bands8 7.7 -> 7.0), u64/u128 cells within
++-6 % with the sign flipping between pairs, i.e. inside this machine's noise.
+The u32 direction matches open item 1 (the model under-splits there).
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

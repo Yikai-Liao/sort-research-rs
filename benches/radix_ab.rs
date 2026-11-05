@@ -186,16 +186,7 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             let rng = patterns::random(len);
             rng.into_iter().map(|x| (x & 0xff) << 23).collect()
         }
-        // Two values that are one bit apart, versus two_values above where they are
-        // thirty-two bits apart. A digit sort pays for the bit distance, a
-        // comparison sort pays for the number of distinct values; measuring both
-        // separates the two effects.
-        "two_values_far" => {
-            let rng = patterns::random(len);
-            rng.into_iter()
-                .map(|x| if x >= 0 { 0 } else { i32::MAX })
-                .collect()
-        }
+
         "two_values_near" => {
             let rng = patterns::random(len);
             rng.into_iter().map(|x| x & 1).collect()
@@ -532,20 +523,6 @@ fn block_lsd_radix<const R: usize, T: sort_research_rs::other::radix_support::Ke
 /// The flat counting leaf, with the MSD level inside the tile switched off:
 /// same process, same data, so the two leaf strategies are compared directly
 /// instead of across runs on a shared machine.
-/// The block engine's own level-by-level sort, used by the router for the same
-/// nodes: same process, same data, so the two stream implementations are
-/// compared directly.
-#[cfg(feature = "rust_tessera_radix")]
-fn tessera_engine<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    use sort_research_rs::other::rust_tessera_radix::{Policy, StreamMode, sort_with_policy};
-    sort_with_policy(
-        s,
-        Policy {
-            stream_mode: StreamMode::Engine,
-            ..Policy::default()
-        },
-    );
-}
 
 #[cfg(feature = "rust_tessera_radix")]
 fn tessera_counting<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
@@ -573,7 +550,7 @@ fn tessera_tile<const BYTES: usize, T: sort_research_rs::other::radix_support::K
     );
 }
 
-/// Leaf-policy sweep: (merge ceiling, insertion ceiling) in records.
+/// Insertion-crossover sweep, in records.
 #[cfg(feature = "rust_tessera_radix")]
 fn tessera_ins<const INS: usize, T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
     use sort_research_rs::other::rust_tessera_radix::{Policy, sort_with_policy};
@@ -606,7 +583,6 @@ macro_rules! radix_variants {
                 sort_research_rs::other::rust_tessera_radix::sort(s)
             }));
             v.push(("tessera_counting", tessera_counting::<$ty>));
-            v.push(("tessera_engine", tessera_engine::<$ty>));
             // The tile budget and the leaf crossovers are swept from here while
             // tuning; they cost a build matrix, so they stay opt-in.
             if std::env::var_os("RADIX_AB_LEAVES").is_some() {
@@ -620,7 +596,6 @@ macro_rules! radix_variants {
                 v.push(("tile_512k", tessera_tile::<524288, $ty>));
                 v.push(("leaf_ins0", tessera_ins::<0, $ty>));
                 v.push(("leaf_ins24", tessera_ins::<24, $ty>));
-                v.push(("leaf_ins48", tessera_ins::<48, $ty>));
                 v.push(("leaf_ins128", tessera_ins::<128, $ty>));
             }
         }

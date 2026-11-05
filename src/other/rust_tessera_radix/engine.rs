@@ -265,7 +265,6 @@ struct Context<T> {
     /// Tiles at or below this many records use an insertion sort.
     insertion_max: usize,
     leaf_mode: LeafMode,
-    stream_mode: StreamMode,
 }
 
 /// Which strategy a leaf uses once it is too big for insertion or merge.
@@ -290,20 +289,9 @@ pub struct Policy {
     pub insertion_max: usize,
     /// Which strategy a leaf uses beyond insertion.
     pub leaf_mode: LeafMode,
-    /// Which loop runs the level-by-level passes. Measurement surface: the two
-    /// differ only in who owns the loop, not in what the sort decides.
-    pub stream_mode: StreamMode,
+
 }
 
-/// Which loop runs the level-by-level passes.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum StreamMode {
-    /// This module's planner, driving the permutation engine directly.
-    #[default]
-    Digits,
-    /// The block engine's own sort, as a reference.
-    Engine,
-}
 
 
 impl Default for Policy {
@@ -312,7 +300,6 @@ impl Default for Policy {
             tile_bytes: TILE_BYTES,
             insertion_max: INSERTION_MAX,
             leaf_mode: LeafMode::Auto,
-            stream_mode: StreamMode::Digits,
         }
     }
 }
@@ -359,7 +346,6 @@ pub fn sort_with_policy<T: Key>(arr: &mut [T], policy: Policy) {
         tile_bytes,
         insertion_max: policy.insertion_max,
         leaf_mode: policy.leaf_mode,
-        stream_mode: policy.stream_mode,
     };
     context.sort_node(arr, variation);
 }
@@ -393,7 +379,7 @@ const COLD_BANDWIDTH_REFERENCE: f64 = 2_097_152.0;
 const COLD_BANDWIDTH_EXPONENT: f64 = 0.30;
 const COLD_NS_PER_RECORD_FLOOR: f64 = 3.0;
 
-/// How well a split on the top varying bits would divide the node: up to
+/// How well the split's digit would divide the node: up to
 /// `SPLIT_SAMPLES` keys spread over the node, bucketed exactly as the split
 /// would bucket them. Returns the largest bucket's share.
 ///
@@ -401,11 +387,9 @@ const COLD_NS_PER_RECORD_FLOOR: f64 = 3.0;
 /// working set. A digit that puts everything in one bucket divides nothing: the
 /// recursion would pay a pass and gain none, and the input's own locality (a
 /// scatter into one stream is nearly sequential) already made that pass cheap.
-fn sample_split_shape<T: Key>(arr: &[T], varying: u128) -> f64 {
-    let top = (u128::BITS - varying.leading_zeros()) as usize;
-    let width = RADIX.min(top);
-    let shift = top - width;
-    let mask = ((1u128 << width) - 1) << shift;
+fn sample_split_shape<T: Key>(arr: &[T], digit: Digit) -> f64 {
+    let mask = digit.mask::<T>();
+    let shift = T::Value::from_usize(digit.shift);
     let mut buckets = [0u16; 1 << RADIX];
     let mut sampled = 0u32;
     let mut largest = 0u16;
@@ -420,8 +404,8 @@ fn sample_split_shape<T: Key>(arr: &[T], varying: u128) -> f64 {
         let end = (start + SPLIT_RUN).min(arr.len());
         let mut index = start;
         while index < end {
-            let key = arr[index].key().to_u128();
-            let bucket = ((key & mask) >> shift) as usize;
+            let key = arr[index].key();
+            let bucket = ((key & mask) >> shift).to_usize();
             buckets[bucket] += 1;
             largest = largest.max(buckets[bucket]);
             sampled += 1;
@@ -430,6 +414,31 @@ fn sample_split_shape<T: Key>(arr: &[T], varying: u128) -> f64 {
         block += SPLIT_RUN;
     }
     largest as f64 / sampled.max(1) as f64
+}
+
+/// The passes a tile-sized range really costs: the flat plan, or one MSD level
+/// per level of shrinking when that is cheaper.
+///
+/// The router and the leaf both ask this, so they cannot price the same tile
+/// differently: a window that divides only a little leaves one child holding
+/// almost everything, and a level then buys nothing over the flat plan.
+fn tile_cost(
+    flat_passes: usize,
+    records: usize,
+    largest_share: f64,
+    insertion_max: usize,
+) -> usize {
+    if flat_passes <= MSD_LEVEL_PASSES {
+        return flat_passes;
+    }
+    let share = largest_share.clamp(f64::MIN_POSITIVE, 1.0);
+    let mut largest = records as f64;
+    let mut depth = 0;
+    while largest > insertion_max as f64 && depth < flat_passes {
+        depth += 1;
+        largest *= share;
+    }
+    (MSD_LEVEL_PASSES * depth).min(flat_passes)
 }
 
 /// Keys the split-shape sample may look at.
@@ -598,12 +607,9 @@ fn reverse_stably<T: Key>(arr: &mut [T]) {
 /// for the instruction cache.
 #[cold]
 #[inline(never)]
-fn stream_node<T: Key>(arr: &mut [T], variation: Variation<T>, mode: StreamMode) {
+fn stream_node<T: Key>(arr: &mut [T], variation: Variation<T>) {
     let mut digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
     let passes = plan_digits_packed(variation.varying(), RADIX, &mut digits);
-    if passes == 0 {
-        return;
-    }
     // Least significant window first. The engine is created once for all the
     // passes and compacts once, which is the difference between this and calling
     // the single-pass partition in a loop: that paid a full compaction per pass.
@@ -612,16 +618,7 @@ fn stream_node<T: Key>(arr: &mut [T], variation: Variation<T>, mode: StreamMode)
         let digit = digits[passes - 1 - pass];
         *slot = (digit.width, digit.shift);
     }
-    match mode {
-        StreamMode::Digits => block::sort_with_digits(arr, RADIX, &plan[..passes]),
-        StreamMode::Engine => block::sort_with_variation(
-            arr,
-            RADIX,
-            block::default_block_size(arr.len(), std::mem::size_of::<T>(), RADIX),
-            variation.union,
-            variation.intersection,
-        ),
-    }
+    block::sort_with_digits(arr, RADIX, &plan[..passes]);
 }
 
 /// Stable insertion sort on converted keys.
@@ -757,17 +754,29 @@ impl<T: Key> Context<T> {
         // move when the leaf width is tuned, or a wider leaf makes every node look
         // more worth splitting and the tuning cannot be measured at all.
         let flat_hot = plan_digits_packed(varying, MODEL_LEAF_RADIX, &mut scratch_digits);
-        // A child that would need three flat passes runs one MSD level inside the
-        // tile instead, which costs about MSD_LEVEL_PASSES. Pricing the child at
-        // the flat figure is what kept the model from splitting a node whose
-        // children would be leaves, and it is the reason the leaf got 2.4x faster
-        // at 1M while 10M did not move at all.
-        let hot_passes = if flat_hot > MSD_LEVEL_PASSES {
-            MSD_LEVEL_PASSES
-        } else {
-            flat_hot
+        // The digit the split would peel, decided once: the split runs it and the
+        // sample prices it, so there is no second answer to which digit that is.
+        let top = (u128::BITS - varying.leading_zeros()) as usize;
+        let radix = split_radix(records, record_bytes, self.tile_bytes)
+            .min(top)
+            .max(1);
+        let digit = Digit {
+            shift: top - radix,
+            width: radix,
         };
-        let largest_child = sample_split_shape(arr, varying);
+        let largest_child = sample_split_shape(arr, digit);
+        // What finishing the largest child costs. A child that fits the tile is priced
+        // by the function the leaf itself uses, so the two cannot disagree about a tile;
+        // a child that does not fit is itself a node, and its own split is what the
+        // recursion will pay, so it is priced at the best case the leaf can do -- one
+        // level in cache. Measured: pricing those children at their flat count instead
+        // kept the model from splitting, and cost 34.2 -> 27.6 ns on u64 10M.
+        let child_records = ((records as f64 * largest_child) as usize).max(1);
+        let hot_passes = if child_records.saturating_mul(record_bytes) <= self.tile_bytes {
+            tile_cost(flat_hot, child_records, largest_child, self.insertion_max)
+        } else {
+            flat_hot.min(MSD_LEVEL_PASSES)
+        };
         // One line per node says everything the routing decided, so a trace diff
         // between two builds is a decision diff.
         let routed = split_pays(
@@ -785,20 +794,9 @@ impl<T: Key> Context<T> {
             );
         }
         if !routed {
-            // Splitting would cost more than the passes it replaces. Finish the
-            // node with the block engine's LSD pass, which needs no buffer the
-            // size of the node. It gets the variation scan already done here.
-            self.stream(arr, variation);
-            return;
-        }
-        if !split_pays(
-            node_bytes,
-            records,
-            self.tile_bytes,
-            cold_passes,
-            hot_passes,
-            largest_child,
-        ) {
+            // Splitting would cost more than the passes it replaces. Finish the node
+            // with the radix passes it was priced at: no buffer the size of the node,
+            // and the variation scan is already done.
             self.stream(arr, variation);
             return;
         }
@@ -806,18 +804,6 @@ impl<T: Key> Context<T> {
         // The fan-out follows the node size. A node that is only slightly over
         // the tile budget must not pay for 256 output streams and the block
         // engine's per-bucket scratch floor.
-        // The split takes the topmost bits that can still differ. Anchoring it
-        // at the highest varying bit instead of at a digit boundary keeps every
-        // level useful and lets one level peel bits from several leaf digits: a
-        // level that peeled no varying bit would pay a pass to make one bucket.
-        let top = (u128::BITS - varying.leading_zeros()) as usize;
-        let radix = split_radix(records, record_bytes, self.tile_bytes)
-            .min(top)
-            .max(1);
-        let digit = Digit {
-            shift: top - radix,
-            width: radix,
-        };
         if trace() {
             eprintln!("  split radix={} shift={}", radix, top - radix);
         }
@@ -832,7 +818,7 @@ impl<T: Key> Context<T> {
     /// the child while the bucket boundary is still open, so a child does not
     /// pay for a second scan of its own keys.
     fn stream(&mut self, arr: &mut [T], variation: Variation<T>) {
-        stream_node(arr, variation, self.stream_mode);
+        stream_node(arr, variation);
     }
 
 
@@ -930,17 +916,11 @@ impl<T: Key> Context<T> {
             // Those keys also make a flat pass cheap, so the sample pays for
             // itself by keeping this decision honest.
             let distinct = sampled_buckets(arr, digits[0]).max(2);
-            let mut largest = len;
-            let mut depth = 0usize;
-            while largest > self.insertion_max && depth < passes {
-                depth += 1;
-                largest = largest.saturating_add(distinct - 1) / distinct;
-            }
-            let msd_cost = MSD_LEVEL_PASSES * depth;
+            let msd_cost = tile_cost(passes, len, 1.0 / distinct as f64, self.insertion_max);
             if trace() {
                 eprintln!(
-                    "leaf-msd? len={} flat={} distinct={} depth={} msd_cost={}",
-                    len, passes, distinct, depth, msd_cost
+                    "leaf-msd? len={} flat={} distinct={} msd_cost={}",
+                    len, passes, distinct, msd_cost
                 );
             }
             if msd_cost < passes {
