@@ -64,12 +64,10 @@ const LEAF_RADIX_MAX: usize = 14;
 const LEAF_RADIX_MIN: usize = 6;
 /// Largest tile finished with LSD passes, in bytes of record data.
 const TILE_BYTES: usize = 64 * 1024;
-/// Flat passes at which one MSD level inside the tile becomes the cheaper leaf.
-/// The level costs one histogram traversal, one scatter (two) and one copy back
-/// (two), so it ties at two and a half flat passes, which move two each.
-const MSD_BREAK_EVEN_PASSES: usize = 3;
-/// Flat passes, in tile traversals, that one MSD level costs: histogram one,
-/// scatter two, copy back two, over two per flat pass.
+/// Flat passes that one MSD level inside the tile costs: histogram one, scatter
+/// two, copy back two, over two traversals per flat pass. It is the leaf's
+/// break-even as well as its price in the routing model, so the two can never
+/// drift apart.
 const MSD_LEVEL_PASSES: usize = 3;
 /// Tiles at or below this many records are finished with an insertion sort
 /// instead of paying for a bucket table per remaining digit.
@@ -786,7 +784,7 @@ impl<T: Key> Context<T> {
         // the flat figure is what kept the model from splitting a node whose
         // children would be leaves, and it is the reason the leaf got 2.4x faster
         // at 1M while 10M did not move at all.
-        let hot_passes = if flat_hot >= MSD_BREAK_EVEN_PASSES {
+        let hot_passes = if flat_hot > MSD_LEVEL_PASSES {
             MSD_LEVEL_PASSES
         } else {
             flat_hot
@@ -1047,7 +1045,9 @@ impl<T: Key> Context<T> {
         // One MSD level costs about two and a half flat passes, so three is the
         // break-even; below that the flat plan is cheaper and touches no extra
         // buffer.
-        if self.leaf_mode == LeafMode::Auto && passes >= MSD_BREAK_EVEN_PASSES {
+        // Strictly cheaper only: a level that merely ties the flat plan costs a memcpy
+        // and a bucket walk for nothing, and measured 5 % worse on `bands8`.
+        if self.leaf_mode == LeafMode::Auto && passes > MSD_LEVEL_PASSES {
             // One level costs about two and a half flat passes, and the depth it
             // needs is set by how evenly its window divides the tile: a window
             // that only a few records distinguish leaves one child holding
@@ -1063,7 +1063,13 @@ impl<T: Key> Context<T> {
                 largest = largest.saturating_add(distinct - 1) / distinct;
             }
             let msd_cost = MSD_LEVEL_PASSES * depth;
-            if msd_cost <= passes {
+            if trace() {
+                eprintln!(
+                    "leaf-msd? len={} flat={} distinct={} depth={} msd_cost={}",
+                    len, passes, distinct, depth, msd_cost
+                );
+            }
+            if msd_cost < passes {
                 self.msd_leaf(arr, variation, digits[0]);
                 return;
             }

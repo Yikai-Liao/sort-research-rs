@@ -109,6 +109,23 @@ Leaf policy is placed by measurement too: `leaf_radix(records)` widens the digit
 from 8 to 11 bits as the tile grows (fewer passes, table still in L1), tiles of
 at most 48 records use an insertion sort, up to 384 a merge sort.
 
+## Design rules for this branch
+
+0. The same code measured twice in one process, interleaved, differs by up to
+   5 % per cell. Anything under that margin is not a result: `bands8` reads
+   4.5 % apart between two variants that take the identical path. Decisions are
+   taken on 1.2x and above, and a branch that only buys 5 % is not a branch.
+
+1. One mechanism beats several. A second algorithmic path is only carried when
+   it buys a measured gain on a mainstream shape; a path that is within noise,
+   or that only helps one narrow cell, is removed even if it once measured
+   faster. Every path is a branch that a future change has to keep correct.
+2. A constant that can be derived is not tuned. Widths, thresholds and
+   fan-outs are chosen by the same cost reasoning that decides routing, so a
+   change in one place cannot silently invalidate another.
+3. A measurement lives in this file with the cell it was taken on, and a path
+   that has no entry here has no defence.
+
 ## Log of experiments
 
 ### 1. Digit width, block LSD: wider is worse, every time
