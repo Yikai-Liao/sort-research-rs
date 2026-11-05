@@ -23,6 +23,12 @@ struct Config {
     sizes: Vec<usize>,
     rounds: usize,
     filter: Option<String>,
+    /// Exact variant names to keep, when `--filter`'s substring match would let a
+    /// second variant through (`tessera` also matches `tessera_counting`).
+    variants: Option<Vec<String>>,
+    /// Run the first retained variant once and return: the mode `RADIX_TRACE=1`
+    /// wants, one sort so the decision log has exactly one copy of each node.
+    trace_once: bool,
 }
 
 fn parse_config() -> Config {
@@ -32,6 +38,8 @@ fn parse_config() -> Config {
         sizes: vec![1_000_000],
         rounds: 7,
         filter: None,
+        variants: None,
+        trace_once: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -47,6 +55,10 @@ fn parse_config() -> Config {
             }
             "--rounds" => cfg.rounds = value().parse().expect("bad round count"),
             "--filter" => cfg.filter = Some(value()),
+            "--variants" => {
+                cfg.variants = Some(value().split(',').map(str::to_owned).collect())
+            }
+            "--trace-once" => cfg.trace_once = true,
             // Passed by the cargo harness for every bench target.
             "--bench" | "--nocapture" | "--test" => {}
             other => panic!("unknown argument: {other}"),
@@ -617,6 +629,15 @@ fn run<T: Clone + Ord + std::fmt::Debug>(
     }));
     if let Some(filter) = &cfg.filter {
         variants.retain(|(name, _)| name.contains(filter.as_str()));
+    }
+    if let Some(names) = &cfg.variants {
+        variants.retain(|(name, _)| names.iter().any(|wanted| wanted == name));
+    }
+    assert!(!variants.is_empty(), "no variant matched the filter");
+    if cfg.trace_once {
+        let mut probe = input.clone();
+        (variants[0].1)(&mut probe);
+        return;
     }
 
     let mut expected = input.clone();
