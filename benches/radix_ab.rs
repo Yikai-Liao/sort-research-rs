@@ -529,6 +529,17 @@ fn block_lsd_radix<const R: usize, T: sort_research_rs::other::radix_support::Ke
     sort_research_rs::other::rust_block_lsd::sort_with_radix(s, R);
 }
 
+/// The flat counting leaf, with the MSD level inside the tile switched off:
+/// same process, same data, so the two leaf strategies are compared directly
+/// instead of across runs on a shared machine.
+#[cfg(feature = "rust_tessera_radix")]
+fn tessera_counting<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
+    sort_research_rs::other::rust_tessera_radix::sort_with_leaf_mode(
+        s,
+        sort_research_rs::other::rust_tessera_radix::LeafMode::Counting,
+    );
+}
+
 #[cfg(feature = "rust_tessera_radix")]
 fn tessera_tile<const BYTES: usize, T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
     sort_research_rs::other::rust_tessera_radix::sort_with_tile_bytes(s, BYTES);
@@ -565,6 +576,7 @@ macro_rules! radix_variants {
             v.push(("tessera", |s: &mut [$ty]| {
                 sort_research_rs::other::rust_tessera_radix::sort(s)
             }));
+            v.push(("tessera_counting", tessera_counting::<$ty>));
             // The tile budget and the leaf crossovers are swept from here while
             // tuning; they cost a build matrix, so they stay opt-in.
             if std::env::var_os("RADIX_AB_LEAVES").is_some() {

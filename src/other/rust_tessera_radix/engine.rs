@@ -56,14 +56,21 @@ type SortKey<T> = <T as Key>::Value;
 /// Bits per digit for the MSD split and for the block engine's own LSD passes.
 /// The block engine's block-size coefficient is tuned for this width.
 const RADIX: usize = 8;
-/// Widest digit a cache-resident leaf may use. Wider digits mean fewer passes
-/// over the tile, which is the whole cost there; the price is a bucket table of
-/// `4 << LEAF_RADIX_MAX` bytes (8 KiB here) that has to fit next to the tile in
-/// L1. Past this width the table costs more than the pass it removes: 12 bits
-/// measured 1-2 % worse than 11 on 128-bit keys and made no difference on 64.
-const LEAF_RADIX_MAX: usize = 11;
+/// Widest digit a leaf may use. The cursor table is `2 << width` bytes of
+/// `u16`, so this is a 32 KiB stack array in the worst case; the leaf only
+/// clears and scans the part its own digit uses.
+const LEAF_RADIX_MAX: usize = 14;
+/// Narrowest digit a leaf may use.
+const LEAF_RADIX_MIN: usize = 6;
 /// Largest tile finished with LSD passes, in bytes of record data.
 const TILE_BYTES: usize = 64 * 1024;
+/// Flat passes at which one MSD level inside the tile becomes the cheaper leaf.
+/// The level costs one histogram traversal, one scatter (two) and one copy back
+/// (two), so it ties at two and a half flat passes, which move two each.
+const MSD_BREAK_EVEN_PASSES: usize = 3;
+/// Flat passes, in tile traversals, that one MSD level costs: histogram one,
+/// scatter two, copy back two, over two per flat pass.
+const MSD_LEVEL_PASSES: usize = 3;
 /// Tiles at or below this many records are finished with an insertion sort
 /// instead of paying for a bucket table per remaining digit.
 const INSERTION_MAX: usize = 48;
@@ -73,6 +80,40 @@ const MERGE_MAX: usize = 384;
 /// Cursors are `u16`, which caps a tile at 65535 records. That is a constant
 /// (1 MiB even for 16-byte records), so the auxiliary space stays O(sqrt n).
 const MAX_TILE_RECORDS: usize = u16::MAX as usize;
+/// Keys a leaf samples to judge whether its top window divides the tile.
+const MSD_SAMPLE: usize = 128;
+
+/// How many distinct digits an evenly spaced sample shows for one window.
+///
+/// The most significant window is the only one an MSD level may use -- a lower
+/// one would order the tile by the wrong bits -- and it can cover a single bit
+/// that few records set, which makes the partition divide nothing. The sample
+/// makes that visible for the price of one pass over 128 keys.
+fn sampled_buckets<T: Key>(arr: &[T], digit: Digit) -> usize {
+    let mask = digit.mask::<T>();
+    let shift = T::Value::from_usize(digit.shift);
+    let buckets = 1usize << digit.width;
+    let mut seen = [0u64; MAX_BUCKETS / 64];
+    let words = buckets.div_ceil(64);
+    let sample = MSD_SAMPLE.min(arr.len());
+    let step = (arr.len() / sample).max(1);
+    let mut distinct = 0;
+    for index in (0..arr.len()).step_by(step).take(sample) {
+        let bucket = ((arr[index].key() & mask) >> shift).to_usize();
+        let word = bucket / 64;
+        let bit = 1u64 << (bucket % 64);
+        if seen[word] & bit == 0 {
+            seen[word] |= bit;
+            distinct += 1;
+        }
+    }
+    // The bitmap is only cleared as far as it was written.
+    for word in 0..words {
+        seen[word] = 0;
+    }
+    distinct
+}
+
 /// Bucket capacity of a leaf pass. The literal appears in the array type:
 /// rustc's layout computation hits an ICE on a const-generic bound spelled
 /// through an inner associated constant here.
@@ -214,6 +255,18 @@ struct Context<T> {
     /// passes: past the insertion crossover the bucket table of a counting pass
     /// still costs more than a merge level while the tile is small.
     merge_max: usize,
+    leaf_mode: LeafMode,
+}
+
+/// Which strategy a leaf uses once it is too big for insertion or merge.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum LeafMode {
+    /// Partition the tile once on its top varying window and finish each bucket
+    /// on its own, when the flat LSD plan would need three passes or more.
+    Auto,
+    /// Always run the flat LSD plan. Kept so both can be measured interleaved
+    /// in one process.
+    Counting,
 }
 
 /// Sorts by converted radix key, stably, in O(n) time and O(sqrt(n)) auxiliary
@@ -237,6 +290,29 @@ pub fn sort_with_policy<T: Key>(
     tile_bytes: usize,
     merge_max: usize,
     insertion_max: usize,
+) {
+    sort_with_mode(
+        arr,
+        tile_bytes,
+        merge_max,
+        insertion_max,
+        LeafMode::Auto,
+    );
+}
+
+/// Sorts with an explicit leaf strategy. The MSD level and the flat counting
+/// plan differ by a factor of two in tile traffic, so they are measured against
+/// each other in one process rather than across runs.
+pub fn sort_with_leaf_mode<T: Key>(arr: &mut [T], mode: LeafMode) {
+    sort_with_mode(arr, TILE_BYTES, MERGE_MAX, INSERTION_MAX, mode);
+}
+
+fn sort_with_mode<T: Key>(
+    arr: &mut [T],
+    tile_bytes: usize,
+    merge_max: usize,
+    insertion_max: usize,
+    leaf_mode: LeafMode,
 ) {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
@@ -269,6 +345,7 @@ pub fn sort_with_policy<T: Key>(
         tile_bytes,
         insertion_max,
         merge_max,
+        leaf_mode,
     };
     context.sort_node(arr, variation);
 }
@@ -347,10 +424,10 @@ fn sample_split_shape<T: Key>(arr: &[T], varying: u128) -> (usize, f64) {
 const SPLIT_SAMPLES: usize = 1024;
 /// Records read back to back in each sample run.
 const SPLIT_RUN: usize = 32;
-/// Reading a node sequentially moves bytes faster than `hot` assumes, because
-/// nothing is written: the split's read pass is the only one that does not
-/// scatter. 6 GB/s is what a wide node gave on this VM.
-const SPLIT_READ_BYTES_PER_NS: f64 = 6.0;
+/// A split pass reads the node and writes nothing, so it moves half the bytes of
+/// a pass that reads and writes: measured 15.2 ns for four passes over 80 MiB
+/// (3.8 per pass) against 7.6 for a scatter pass there.
+const SPLIT_READ_SHARE: f64 = 0.5;
 /// Floor for one split pass, in ns per record.
 const SPLIT_NS_PER_RECORD_MIN: f64 = 1.5;
 
@@ -406,11 +483,17 @@ fn split_pays(
     } else {
         cold_ns_per_record(child_bytes, child_records)
     };
-    // The split reads the node sequentially `SPLIT_HOT_PASSES` times and writes
-    // nothing until the fan-out; charging it the scatter bandwidth of a pass
-    // overestimated it by about 2x.
-    let split_pass =
-        SPLIT_NS_PER_RECORD_MIN.max(node_bytes as f64 / records as f64 / SPLIT_READ_BYTES_PER_NS);
+    // A split pass only reads the node; the scatter goes into resident blocks.
+    // So it costs half of a pass that reads and writes, priced at the bandwidth
+    // this node's size actually gets. The old flat price charged an L2-resident
+    // 305 KiB node the same per pass as an 80 MiB one, which is why the model
+    // refused a second level at 10M that measures 18 % faster.
+    let pass_ns = if node_bytes <= tile_bytes {
+        hot
+    } else {
+        cold_ns_per_record(node_bytes, records)
+    };
+    let split_pass = SPLIT_NS_PER_RECORD_MIN.max(SPLIT_READ_SHARE * pass_ns);
     let split = SPLIT_HOT_PASSES as f64 * split_pass + hot_passes as f64 * child_pass;
     split < streamed
 }
@@ -577,24 +660,24 @@ fn insertion_leaf<T: Key>(arr: &mut [T]) {
 /// # Safety
 ///
 /// `source` must point at `len` initialized records and `destination` at
-/// `len` writable slots of a different allocation. `counts` must have at least
-/// `1 << digit.width` entries, and `len` must fit in `u32`. The array length is
-/// not in the signature on purpose: this toolchain ICEs on an array-typed
-/// parameter whose length is a path constant.
+/// `len` writable slots of a different allocation. `counts` must point at
+/// room for `1 << digit.width` entries that need not be initialised: this
+/// pass writes every entry it later reads. `len` must fit in `u32`. The array
+/// length is not in the signature on purpose: this toolchain ICEs on an
+/// array-typed parameter whose length is a path constant.
 #[inline]
 unsafe fn counting_pass<T: Key>(
     source: *const T,
     destination: *mut T,
     len: usize,
     digit: Digit,
-    counts: &mut [u16],
+    cursor: *mut u16,
 ) {
     let mask = digit.mask::<T>();
     let shift = T::Value::from_usize(digit.shift);
     let buckets = 1usize << digit.width;
-    let cursor = counts.as_mut_ptr();
     for slot in 0..buckets {
-        // SAFETY: `buckets <= MAX_BUCKETS`, the length of `counts`.
+        // SAFETY: the caller guarantees room for `buckets` entries.
         *cursor.add(slot) = 0;
     }
     for index in 0..len {
@@ -633,15 +716,25 @@ unsafe fn counting_pass<T: Key>(
 /// from streamed to split and lost 34 %.
 const MODEL_LEAF_RADIX: usize = 11;
 
-/// Digit width for a leaf that will run counting passes over `records`.
+/// Digit width for a leaf: the widest digit whose cursor table is no larger
+/// than the tile itself.
 ///
-/// A pass costs `records` moves plus `2^width` table entries, and the pass
-/// count falls roughly as `1/width`, so the best width grows with the tile. The
-/// rule keeps the table at or below one entry per record, which is where the
-/// measured crossovers sit, and never exceeds [`LEAF_RADIX_MAX`].
-fn leaf_radix(records: usize) -> usize {
-    let bits = usize::BITS as usize - records.leading_zeros() as usize;
-    bits.clamp(6, LEAF_RADIX_MAX)
+/// Wider digits mean fewer passes, and the table is only worth its footprint
+/// while it stays smaller than the records it is indexing. That single rule
+/// reproduces both measured optima exactly, which a pass-count-plus-table cost
+/// model did not: a 31 KiB tile of 8-byte records picks 13 bits (`2 << 13` is
+/// 16 KiB, `2 << 14` would be 32 KiB and measured 21 % slower, the table having
+/// become the working set), and a 61 KiB tile of 16-byte records picks 14
+/// (32 KiB table against 61 KiB of records, measured best at 1M).
+fn leaf_radix(records: usize, record_bytes: usize) -> usize {
+    let tile_bytes = records.saturating_mul(record_bytes);
+    let mut width = LEAF_RADIX_MIN;
+    for candidate in LEAF_RADIX_MIN..=LEAF_RADIX_MAX {
+        if (2usize << candidate) <= tile_bytes {
+            width = candidate;
+        }
+    }
+    width
 }
 
 /// Digit width for one MSD split.
@@ -687,7 +780,17 @@ impl<T: Key> Context<T> {
         // Priced at the reference width, not at the leaf's own: routing must not
         // move when the leaf width is tuned, or a wider leaf makes every node look
         // more worth splitting and the tuning cannot be measured at all.
-        let hot_passes = plan_digits_packed(varying, MODEL_LEAF_RADIX, &mut scratch_digits);
+        let flat_hot = plan_digits_packed(varying, MODEL_LEAF_RADIX, &mut scratch_digits);
+        // A child that would need three flat passes runs one MSD level inside the
+        // tile instead, which costs about MSD_LEVEL_PASSES. Pricing the child at
+        // the flat figure is what kept the model from splitting a node whose
+        // children would be leaves, and it is the reason the leaf got 2.4x faster
+        // at 1M while 10M did not move at all.
+        let hot_passes = if flat_hot >= MSD_BREAK_EVEN_PASSES {
+            MSD_LEVEL_PASSES
+        } else {
+            flat_hot
+        };
         let (distinct, largest_child) = sample_split_shape(arr, varying);
         if trace() {
             eprintln!(
@@ -864,6 +967,55 @@ impl<T: Key> Context<T> {
         }
     }
 
+    /// One stable MSD level over the tile, then each bucket finished on its own.
+    ///
+    /// The leaf's private buffer is enough for a stable partition into exact
+    /// positions: the counting pass writes every record at its bucket's start plus
+    /// its rank inside the bucket, which keeps equal keys in order and leaves the
+    /// buckets contiguous, so each one can be finished independently. The pass
+    /// count then follows how many records the tile holds instead of how many
+    /// digits the key has -- 3906 records of 64 bits need six flat passes and one
+    /// of these.
+    ///
+    /// Traffic, in units of one tile traversal: the histogram is one, the scatter
+    /// is two, the copy back is two. A flat pass is two, so this pays off from
+    /// three flat passes upwards, which is what the caller checks.
+    fn msd_leaf(&mut self, arr: &mut [T], variation: Variation<T>, digit: Digit) {
+        let len = arr.len();
+        self.set_scratch_len(len);
+        let scratch = self.scratch.as_mut_ptr().cast::<T>();
+        let mut counts = MaybeUninit::<[u16; MAX_BUCKETS]>::uninit();
+        let counts_ptr = counts.as_mut_ptr().cast::<u16>();
+        // SAFETY: the tile holds `len` initialized records, the scratch buffer has
+        // room for `len`, and they are distinct allocations. The tile is only read
+        // here, so a panic from the key extractor leaves the whole record set in
+        // the tile and nothing needs undoing -- unlike the flat plan, this level
+        // needs no recovery of its own.
+        unsafe { counting_pass(arr.as_ptr(), scratch, len, digit, counts_ptr) };
+        // The scatter wrote every record exactly once, so the scratch is a complete
+        // record set and the tile is stale. Copying back is therefore valid whether
+        // or not the pass finished, and it restores the invariant the rest of the
+        // leaf relies on: the tile always holds the set.
+        // SAFETY: as above, plus `len` records were written to the scratch.
+        unsafe { std::ptr::copy_nonoverlapping(scratch, arr.as_mut_ptr(), len) };
+        let buckets = 1usize << digit.width;
+        let mut start = 0;
+        for bucket in 0..buckets {
+            // SAFETY: the pass filled every entry below `buckets`, and cumulative
+            // counts never decrease, so `start <= end <= len`.
+            let end = unsafe { *counts_ptr.add(bucket) } as usize;
+            debug_assert!(start <= end && end <= len);
+            if end > start + 1 {
+                // A bucket of two or more records still shares the window that was
+                // just consumed, so it is only finished if what remains of its keys
+                // is ordered. Its own variation says whether that costs anything.
+                let (union, intersection) = block::varying_key_bits(&arr[start..end]);
+                self.lsd_leaf(&mut arr[start..end], Variation { union, intersection });
+            }
+            start = end;
+        }
+    }
+
     /// Stable LSD counting sort over the tile, driven by a private buffer. One
     /// pass per remaining digit, ping-ponging between the tile and the buffer.
     fn lsd_leaf(&mut self, arr: &mut [T], variation: Variation<T>) {
@@ -887,21 +1039,54 @@ impl<T: Key> Context<T> {
         // scales with it is the bucket table, so a wider digit buys fewer passes
         // while the table still fits in L1 next to the records.
         let mut digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
-        let passes = plan_digits_packed(variation.varying(), leaf_radix(len), &mut digits);
+        let passes = plan_digits_packed(
+            variation.varying(),
+            leaf_radix(len, std::mem::size_of::<T>()),
+            &mut digits,
+        );
+        // One MSD level costs about two and a half flat passes, so three is the
+        // break-even; below that the flat plan is cheaper and touches no extra
+        // buffer.
+        if self.leaf_mode == LeafMode::Auto && passes >= MSD_BREAK_EVEN_PASSES {
+            // One level costs about two and a half flat passes, and the depth it
+            // needs is set by how evenly its window divides the tile: a window
+            // that only a few records distinguish leaves one child holding
+            // almost everything and recurses until the child is small, which is
+            // how a locally-clustered tile ended up 3x slower than the flat plan.
+            // Those keys also make a flat pass cheap, so the sample pays for
+            // itself by keeping this decision honest.
+            let distinct = sampled_buckets(arr, digits[0]).max(2);
+            let mut largest = len;
+            let mut depth = 0usize;
+            while largest > self.insertion_max && depth < passes {
+                depth += 1;
+                largest = largest.saturating_add(distinct - 1) / distinct;
+            }
+            let msd_cost = MSD_LEVEL_PASSES * depth;
+            if msd_cost <= passes {
+                self.msd_leaf(arr, variation, digits[0]);
+                return;
+            }
+        }
         self.set_scratch_len(len);
         let scratch_ptr = self.scratch.as_mut_ptr().cast::<T>();
         // A tile is at most `MAX_TILE_RECORDS` records, so 16-bit cursors are
         // enough, and they are the difference between a cursor table that stays
         // in one L1 set and one that does not.
         debug_assert!(len <= MAX_TILE_RECORDS);
-        let mut counts = [0u16; MAX_BUCKETS];
+        // Deliberately uninitialised: the counting pass clears the digit's own
+        // prefix of this table before it reads it, so zeroing all
+        // MAX_BUCKETS entries on every leaf would be pure overhead -- 32 KiB of
+        // memset against a 31 KiB tile, which measured 14 % on u64 1M.
+        let mut counts = MaybeUninit::<[u16; MAX_BUCKETS]>::uninit();
+        let counts_ptr = counts.as_mut_ptr().cast::<u16>();
 
         // The record set lives in `source` for the whole pass. A panic from the
         // key extractor therefore never loses or duplicates a record: if the
         // source is the tile, the tile is untouched; if it is the scratch
         // buffer, the buffer still holds every record and is copied back.
         let mut live_in_scratch = false;
-        let mut run = |live_in_scratch: &mut bool, counts: &mut [u16]| {
+        let mut run = |live_in_scratch: &mut bool, counts_ptr: *mut u16| {
             let mut source: *mut T = arr.as_mut_ptr();
             let mut destination: *mut T = scratch_ptr;
             let mut source_is_tile = true;
@@ -911,7 +1096,7 @@ impl<T: Key> Context<T> {
                 // destination has room for `len` records, and both are distinct
                 // allocations that stay alive for the whole leaf.
                 unsafe {
-                    counting_pass(source, destination, len, digits[index], counts);
+                    counting_pass(source, destination, len, digits[index], counts_ptr);
                 }
                 std::mem::swap(&mut source, &mut destination);
                 source_is_tile = !source_is_tile;
@@ -921,7 +1106,7 @@ impl<T: Key> Context<T> {
 
         let ended_in_tile = if const { std::mem::needs_drop::<T>() } {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run(&mut live_in_scratch, &mut counts[..])
+                run(&mut live_in_scratch, counts_ptr)
             })) {
                 Ok(ended_in_tile) => ended_in_tile,
                 Err(payload) => {
@@ -937,7 +1122,7 @@ impl<T: Key> Context<T> {
                 }
             }
         } else {
-            run(&mut live_in_scratch, &mut counts[..])
+            run(&mut live_in_scratch, counts_ptr)
         };
 
         if !ended_in_tile {
@@ -1039,6 +1224,12 @@ mod tests {
         pub fn disarm() {
             PANIC_AT.store(usize::MAX, Ordering::Relaxed);
         }
+
+        /// How many key calls the last sort made; the sweep has to stay inside
+        /// that range or it arms a panic the sort never reaches.
+        pub fn calls() -> usize {
+            CALLS.load(Ordering::Relaxed)
+        }
     }
 
     /// The three leaves reach their keys at different points of a pass, so each
@@ -1049,18 +1240,34 @@ mod tests {
     fn a_key_panic_never_loses_or_duplicates_a_record() {
         // The interesting panics are the ones inside a level that is writing
         // into the live buffer, and where those sit in the call sequence depends
-        // on the leaf, so the whole sequence is swept instead of guessed.
-        let mut rng = Rng(0x2436_8f5c_1e97_b3d1);
+        // on the leaf, so the whole sequence is swept instead of guessed. The
+        // sweep is sized from the calls an unarmed sort really makes: the leaf
+        // changed shape since this test was written and a fixed upper bound
+        // started arming panics that never happen.
         for &len in &[20usize, 300, 2000] {
-            for step in 0..=40 {
-                let panic_at = 1 + step * len / 8;
-                tracked::reset();
-                let mut records: Vec<tracked::Tracked> = (0..len)
+            // Identical data for the probe and for every armed run: the number of
+            // key calls depends on the data (insertion is data dependent), and
+            // arming inside a range measured on other data skipped the panic.
+            let build = || -> Vec<tracked::Tracked> {
+                let mut rng = Rng(0x2436_8f5c_1e97_b3d1 ^ len as u64);
+                (0..len)
                     .map(|id| tracked::Tracked {
                         id: id as u64,
                         key: rng.next(),
                     })
-                    .collect();
+                    .collect()
+            };
+            tracked::reset();
+            let mut probe = build();
+            sort_with_tile_bytes(&mut probe, TILE_BYTES);
+            let calls = tracked::calls();
+            drop(probe);
+            // 0..40 exclusive: the last point must stay inside the measured call
+            // count, or it arms a panic the sort never reaches.
+            for step in 0..40 {
+                let panic_at = 1 + step * calls / 40;
+                tracked::reset();
+                let mut records = build();
                 let expected: Vec<u64> = (0..len as u64).collect();
                 tracked::arm(panic_at);
                 let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

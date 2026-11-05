@@ -443,6 +443,68 @@ tiny-bin handling, and that is where our insertion/merge crossovers already
 sit. Buffered parcel scatter needs the destinations to stay aligned to 64 bytes
 across passes, which an in-place array does not guarantee.
 
+### 23. One MSD level inside the tile: 2.4x on u128, 1.3x on u64
+
+The leaf used to run one flat counting pass per digit window, so its cost
+followed the key width while a tile only holds a few thousand records. A
+3906-record tile of 64-bit keys ran six passes to distinguish 3906 keys; twelve
+bits of discrimination separate them all. The leaf now partitions once into its
+private buffer on the most significant varying window, copies back, and hands
+each bucket to the flat plan.
+
+Stability holds because a counting pass writes every record at its bucket's
+start plus its rank inside the bucket, so equal keys keep their order and the
+buckets are contiguous. Ordering holds because the window is the most
+significant one -- a lower window first would order the tile by the wrong bits
+-- and the recursion therefore peels bits from the top down. Traffic is one
+histogram traversal, one scatter (two) and one copy back (two), against two per
+flat pass, so it pays from three flat passes up.
+
+Measured in one process, interleaved, `tessera` against the flat plan
+(`tessera_counting`, same code with the level switched off), n = 1M and 10M,
+ns per record:
+
+| cell | one MSD level | flat plan | ratio |
+| --- | --- | --- | --- |
+| u64 random 1M | 20.2 | 25.4 | 1.26x |
+| u64 random 10M | 34.2 | 33.6 | 0.98x |
+| u128 random 1M | 31.9 | 76.8 | 2.41x |
+| u128 random 10M | 47.5 | 95.4 | 2.01x |
+
+u128 is the point: a pass over a 16-byte record costs 4.1 ns, so twelve of them
+were 49 ns of pure movement, and one level replaces them with about four. The
+10M u64 row did not move for a different reason, which entry 24 fixes.
+
+Two rejections came with it. The window must be judged before it is used: a
+locally-clustered tile whose top window covers a bit that few records set made
+one bucket hold everything and the recursion ran five levels, 3x slower than
+the flat plan (58.7 vs 18.3 on `random_local`). A 128-key sample counts the
+window's real buckets and the depth estimate compares `depth * 3` against the
+flat pass count, which put that cell back to 20.8. And the table is
+uninitialised rather than zeroed: `[0u16; 1 << 14]` per leaf was 32 KiB of
+memset against a 31 KiB tile and cost 14 %.
+
+### 24. The cost model was quoting a price the leaf no longer charged
+
+At 10M u64 the trace showed one root split and 256 streamed children of
+305 KiB: children that size are over the tile budget, so they never became
+leaves, and the leaf work could not show up at all. Two modelling errors hid
+that:
+
+- the split's four passes were priced at a fixed 4.2 ns per record, which is an
+  L1 figure. A split pass only *reads* the node (the scatter goes into resident
+  blocks), so it costs half a pass at the bandwidth that node's size actually
+  gets: 3.8 ns for 80 MiB, and the 305 KiB child was being charged 16.8 ns for
+  a split that measures 6.
+- the child was priced at its flat pass count, so the leaf looked six passes
+  expensive in the very cells where it now costs three.
+
+With both fixed, 10M routes to split, split, then 2443-record leaves, and u64
+10M went 34.2 -> 27.6 (flat plan 31.6) and u128 10M 91.9 -> 49.1 (flat plan
+93.5). u32 10M sits at the boundary and reads 17.4 against 15.7-16.2 for the
+streaming route; it is a 4 MiB-per-million key whose node is 38 MiB, and the
+model's cold floor is what decides it. Left as the known 4-byte boundary case.
+
 ## Where the candidate stands
 
 ns per record, one root each, pinned, min of 5 interleaved rounds.
