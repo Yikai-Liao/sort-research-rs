@@ -266,6 +266,38 @@ fn narrow_u64(x: i32) -> u64 {
     (narrow_u32(x) as u64) * i32::MAX as u64
 }
 
+/// SplitMix64: the generator for patterns that claim full width. Drawing the key
+/// itself, rather than hashing a single i32 per record, is what makes the claim
+/// true: one i32 carries 32 bits of entropy, so a u64 drawn that way has at most
+/// 2^32 distinct values and produces about 1000 times more duplicates at 10M than
+/// an independent 64-bit draw -- which changes what the duplicate and bucket paths
+/// are asked to do.
+fn splitmix64(state: &mut u64) -> u64 {
+    *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    let mut z = *state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    z ^ (z >> 31)
+}
+
+/// `len` independent 64-bit keys, uniform over the whole width.
+fn full_width_u64(len: usize) -> Vec<u64> {
+    let mut state = 0x243f_6a88_85a3_08d3u64 ^ len as u64;
+    (0..len).map(|_| splitmix64(&mut state)).collect()
+}
+
+/// `len` independent 128-bit keys, uniform over the whole width.
+fn full_width_u128(len: usize) -> Vec<u128> {
+    let mut state = 0x1319_8a2e_0370_7344u64 ^ len as u64;
+    (0..len)
+        .map(|_| {
+            let hi = splitmix64(&mut state) as u128;
+            let lo = splitmix64(&mut state) as u128;
+            (hi << 64) | lo
+        })
+        .collect()
+}
+
 fn wide_u64(x: i32) -> u64 {
     (x as u32 as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
 }
@@ -330,10 +362,7 @@ fn keys_u64(pattern: &str, len: usize) -> Vec<u64> {
         return keys.into_iter().map(|key| key as u64).collect();
     }
     if pattern == "random_wide" {
-        wide_keys(pattern, len)
-            .into_iter()
-            .map(|x| wide_u64(x) ^ ((x as u64) << 32))
-            .collect()
+        return full_width_u64(len);
     } else {
         base_keys(pattern, len)
             .into_iter()
@@ -347,11 +376,8 @@ fn keys_u128(pattern: &str, len: usize) -> Vec<u128> {
         return keys;
     }
     if pattern == "random_wide" {
-        // Full width: both halves hashed, every bit position varies.
-        return wide_keys(pattern, len)
-            .into_iter()
-            .map(|x| ((wide_u64(x) as u128) << 64) | narrow_u64(x) as u128)
-            .collect();
+        // Both halves drawn independently, so the width is the entropy.
+        return full_width_u128(len);
     }
     // Named patterns keep their shape and their order: the pattern lands in the
     // top 32 bits and the low half is constant. A hashed high half would turn

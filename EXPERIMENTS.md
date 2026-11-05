@@ -1088,6 +1088,54 @@ Byte-level assumptions that are not machine facts: 8-bit bytes, IEEE-754 floats
 (via the existing total order), `u16` cursors (a tile holds at most 65535 records),
 `u32` descriptors. None of them depend on the core.
 
+### 35. Review of 7da8daa, checked against this branch
+
+An outside review of the pre-branch build listed one soundness bug, two
+soundness suspicions and three reporting problems. Status on this branch:
+
+**The merge leaf's unwind hole: gone with the code.** `merge_leaf` no longer
+exists; the leaf is insertion, a flat counting plan, or one MSD level. The
+panic contract is checked both ways in the tests (owning records, plain
+records), and the flat plan's ping-pong carries a `Drop` guard that copies the
+live set back. `ptr::read` in `counting_pass` is a copy, so a panic mid-scatter
+leaves the tile holding every record and the scratch is never dropped; the
+`msd_leaf` comment now says so correctly.
+
+**Keys that are not functions of the record.** Real: `counting_pass` counts and
+scatters in two passes, so a lying `Key` could index past the tile. `Key` is a
+safe trait, so that must not be memory-unsafe. The scatter now clamps its
+destination (`min(len - 1)`), which is dead code for an honest key and one
+predictable compare otherwise; a liar gets a garbled order, not an out-of-bounds
+write. `# Safety` also now states `len <= u16::MAX` (it claimed `u32`, while the
+cursors are `u16`), and points at the clamp in `sort_with_policy` that enforces
+it.
+
+**Full-width random was not full width.** Correct, and it was the harness: the
+u64/u128 rows hashed one random `i32` per record, so the key had 32 bits of
+entropy and the 10M rows carried ~11k duplicates a true uniform draw would not
+have. The bench now draws keys directly with SplitMix64. Re-measured, ns per
+record, mean of 5 rounds:
+
+| cell | tessera | ipnsort | block LSD r8 |
+| --- | --- | --- | --- |
+| u64 1M | 18.4 | 24.5 | 40.3 |
+| u64 10M | 28.4 | 32.4 | 56.6 |
+| u128 1M | 32.2 | 45.1 | 173.2 |
+| u128 10M | 46.2 | 60.6 | 198.0 |
+
+So the honest wide-key picture is better than the review's build, not worse:
+the old 76.68 against ipnsort's 46.79 at u128 1M was measured before the leaf
+MSD level existed (§23). At the time of this writing the kernel is 1.40x ahead of
+ipnsort at u128 1M and 1.31x at 10M, with true 128-bit random keys, on a stable
+sort against an unstable one.
+
+**Reporting.** The tables in this file are criteria' means over the stated number
+of rounds unless a row says otherwise; the harness also prints min, median and
+max, and it is a shared VM, so cells within 5 % are ties (§0, §26). The log files
+the review could not match belong to the artifact branch `block-lsd-artifacts`
+(`NUMBERS.md` there maps each old number to its raw log); every number quoted in
+*this* file was produced on this branch by the commands in §0.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

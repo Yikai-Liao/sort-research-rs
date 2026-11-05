@@ -90,16 +90,9 @@ const MSD_SAMPLE: usize = 128;
 fn sampled_buckets<T: Key>(arr: &[T], digit: Digit) -> usize {
     let mask = digit.mask::<T>();
     let shift = T::Value::from_usize(digit.shift);
-    let buckets = 1usize << digit.width;
-    // Cleared only as far as the digit reaches: a 2 KiB zero-fill per leaf costs
-    // the same 14 % the cursor table did before it was made uninitialised.
-    let mut seen = MaybeUninit::<[u64; MAX_BUCKETS / 64]>::uninit();
-    let seen = seen.as_mut_ptr().cast::<u64>();
-    let words = buckets.div_ceil(64);
-    for word in 0..words {
-        // SAFETY: the array holds MAX_BUCKETS / 64 words and words <= that.
-        unsafe { *seen.add(word) = 0 };
-    }
+    // A plain array: 2 KiB of zero-fill is below what a 1024-key sample costs,
+    // and the bitmap is smaller than the 16 KiB cursor table it once mirrored.
+    let mut seen = [0u64; MAX_BUCKETS / 64];
     let sample = MSD_SAMPLE.min(arr.len());
     let step = (arr.len() / sample).max(1);
     let mut distinct = 0;
@@ -107,12 +100,9 @@ fn sampled_buckets<T: Key>(arr: &[T], digit: Digit) -> usize {
         let bucket = ((arr[index].key() & mask) >> shift).to_usize();
         let word = bucket / 64;
         let bit = 1u64 << (bucket % 64);
-        // SAFETY: bucket < buckets, so word < words, which was cleared above.
-        unsafe {
-            if *seen.add(word) & bit == 0 {
-                *seen.add(word) |= bit;
-                distinct += 1;
-            }
+        if seen[word] & bit == 0 {
+            seen[word] |= bit;
+            distinct += 1;
         }
     }
     distinct
@@ -522,7 +512,9 @@ fn insertion_leaf<T: Key>(arr: &mut [T]) {
 /// `source` must point at `len` initialized records and `destination` at
 /// `len` writable slots of a different allocation. `counts` must point at
 /// room for `1 << digit.width` entries that need not be initialised: this
-/// pass writes every entry it later reads. `len` must fit in `u32`. The array
+/// pass writes every entry it later reads. `len` must not exceed `u16::MAX`:
+/// the cursors are `u16`, and `sort_with_policy` clamps the tile to
+/// `MAX_TILE_RECORDS` for exactly this reason. The array
 /// length is not in the signature on purpose: this toolchain ICEs on an
 /// array-typed parameter whose length is a path constant.
 #[inline]
@@ -564,8 +556,13 @@ unsafe fn counting_pass<T: Key>(
             let key = (*record).key();
             let bucket = ((key & mask) >> shift).to_usize();
             let slot = *cursor.add(bucket);
-            *cursor.add(bucket) = slot + 1;
-            std::ptr::write(destination.add(slot as usize), std::ptr::read(record));
+            *cursor.add(bucket) = slot.wrapping_add(1);
+            // The clamp is dead for a key that is a function of the record, and it
+            // is what keeps a key that is not one from writing outside the tile:
+            // `Key` is a safe trait, so a wrong implementation may garble the order
+            // but must not be able to cause memory unsafety.
+            let target = (slot as usize).min(len - 1);
+            std::ptr::write(destination.add(target), std::ptr::read(record));
         }
     }
 }
