@@ -138,6 +138,7 @@
 | 73 | tile 内 MSD 叶子的大桶也用父 variation 的候选 mask 提前停止扫描 | 保留 | 1M u64（3 轮 × 7 次，中位数）：zipf13 16.16 → 15.67、p95zero 6.06 → 5.90 ns/记录；random_wide/two_values 持平。record16 zipf 30.3 → 约 27、record16 random 24.5 → 23.8；record128 random 持平，zipf 约 −2%（噪声内）。机制同 §72：tile 的 MSD digit 在桶内恒定，桶的候选 mask = tile varying 去掉 digit mask；旧代码对每个超过插入阈值的桶调用完整 varying_key_bits。 |
 | 74 | 众数切分阈值从 1/4 放宽到 1/3、1/6、1/8（B18） | 否决 | 1M（5 轮中位数，RADIX_MODE_SHARE）：u64 sparse8 8.03 @1/4 → 6.84 @1/6，但 zipf13 15.54 → 21.38；1/8 把 sparse8 推到 19.04。u128/record16 同样出现 sparse 改善、zipf 退化的交叉。没有单一阈值同时赢，保留 1/4。 |
 | 75 | 宽记录叶子的间接 tile 排序：key + u16 index 排好后 gather 一次（B09） | 否决 | 1M（7 轮中位数，强制 RADIX_INDIRECT=1）：record128 random 126.63 → 160.82 ns，zipf 170.58 → 170.71（持平）。16B pair 的 6 趟 counting pass 加 gather 仍不如现有 MSD 叶子；记录宽度不是唯一成本，pass 数与随机 gather 把收益吃掉。 |
+| 76 | 跨节点复用 block workspace（B06） | 否决（噪声内） | 1M 三周期交替（5 轮中位数）：u64 random 13.02 → 13.13、u128 random 23.11 → 24.13、u128 zipf 23.97 → 24.51；record128 zipf/sparse 约 −2%；u64 sparse 7.36 → 6.54 但一轮 5.26 离群。整体方向不一致，保留每节点分配。 |
 
 另有一次"拨乱反正"：§30 和 §36 里原有的 "(Superseded)" 段落（被推翻的旧结论、旧数字）在本次压缩中删除，
 对应的最终结论已写入上表。
