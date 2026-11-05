@@ -222,12 +222,9 @@ fn route_table() {
         (8_000_000, 1_000_000, 8, 0.9980, true),
     ];
     for (bytes, records, flat, largest, expected) in routes {
-        let child_records = ((records as f64 * largest) as usize).max(1);
-        let hot = if child_records.saturating_mul(bytes / records) <= TILE_BYTES {
-            tile_cost(flat, child_records, largest, INSERTION_MAX)
-        } else {
-            flat.min(MSD_LEVEL_PASSES)
-        };
+        // The router prices the child at the best case the leaf can reach; see the
+        // comment at the call site for the 25 % that assuming otherwise cost.
+        let hot = flat.min(MSD_LEVEL_PASSES);
         assert_eq!(
             split_pays(bytes, records, TILE_BYTES, flat, hot, largest),
             expected,

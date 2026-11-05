@@ -885,13 +885,17 @@ change, and the paired spread at that moment was of the same size.
 
 Round-3 review findings, applied:
 
-- The router priced a tile-sized child at a flat `MSD_LEVEL_PASSES` while the leaf
-  priced the same tile at `MSD_LEVEL_PASSES * depth`. Both feed a comparison
-  against the same flat count, so a note claiming they "can never drift apart" was
-  false. `tile_cost(flat, records, largest_share, insertion_max)` is now the only
-  arithmetic, and the router calls it for a child that fits the tile; a child that
-  does not fit is itself a node, and stays at the measured best case (one level in
-  cache, §24: 34.2 -> 27.6 ns on u64 10M).
+- The leaf priced a tile at `MSD_LEVEL_PASSES * depth` using its own sampled
+  window, while the router used a flat `MSD_LEVEL_PASSES`, and a note claimed the
+  two "can never drift apart". They were first merged into one `tile_cost` called
+  from both places -- and that was wrong: the router only knows the share of the
+  digit that *made* the child, which is far coarser than the child's own top
+  window, so every 312 KiB child at 10M looked clustered, was priced at six
+  passes instead of three, and flipped from splitting to streaming: u64 10M went
+  258 -> 323 ms. `tile_cost` now stays in the leaf, where the window is sampled,
+  and the router prices the child at the best case the leaf can reach (one level).
+  A row in `route_table` pins both sides, and the comment at the call site says
+  which question each answers instead of claiming they are one.
 - The split's digit is chosen once, before the sample, and `sample_split_shape`
   takes that `Digit`: the sample now measures the window the split will peel,
   instead of recomputing `RADIX.min(top)` for itself.
@@ -942,6 +946,27 @@ counters over runs of 32) would force one storage on both. The leaf needs only
 "how many distinct", the router needs "the largest share", and the leaf's zero-fill
 is already the reason its table is 512 bytes and not 32 KiB (§6). A shared shape
 with two configurations would be the same two answers with a branch in front.
+
+### 31. Larger inputs needed their own check, and the stream path lost its cold mark
+
+The 1M matrix said the round was free; a 10M cell did not. Two findings:
+
+- `stream_node` carried `#[cold] #[inline(never)]` from when it was rare. At 10M
+  every child of the root takes that path, so marking it cold armed the optimizer
+  against most of the data. The `#[cold]` is gone; the measured effect is inside
+  noise, but the attribute was simply untrue.
+- The `tile_cost` experiment above (reverted) was the actual 25 % regression. After
+  the revert the 10M routing is identical to the previous build node for node
+  (1028 splits, 16384 leaves, 8192 leaf-MSD decisions), and `perf stat` agrees:
+  18.6167 G instructions against 18.6196 G, 32.93 G cycles against 32.80 G, i.e.
+  0.02 % and 0.4 %. The wall-clock gap that remains on u64 10M random (+2.9 % in a
+  focused pairing, +7.7 % inside the full matrix) is therefore not work: it is
+  frequency and layout on this shared machine, and the instruction count is the
+  measurement that says so.
+
+Lesson for the next round, alongside §26's round-count rule: check 100k, 1M and
+10M before believing a routing change, and confirm with `perf stat` instructions
+before arguing about wall-clock percentages.
 
 ## Open items
 

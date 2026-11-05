@@ -213,7 +213,7 @@ fn for_each_bucket<T: Key>(
 /// because both a split's bucket count and a leaf's digit width follow the digit
 /// they are given.
 ///
-/// The windows pack, instead of following the fixed grid `stream_passes` counts.
+/// The windows pack, instead of following a fixed grid over the key width.
 /// The grid splits a cluster of varying bits that straddles a cell boundary into
 /// two passes and gives one pass to every other cell, which is why a key with 31
 /// varying bits scattered over 62 used to take six passes where three windows
@@ -602,10 +602,10 @@ fn reverse_stably<T: Key>(arr: &mut [T]) {
 /// and the digit windows come from the same planner the leaves use, so a node
 /// pays only for the bits that vary.
 ///
-/// Out of line and marked cold: the model expects this branch least often on
-/// large inputs, and keeping it out of line leaves the split's code in one piece
-/// for the instruction cache.
-#[cold]
+/// Out of line: at 1M the model rarely takes this branch and keeping it out of
+/// line leaves the split's code in one piece, but at 10M every child of the root
+/// takes it, so it must not be marked cold -- that arms the optimizer against the
+/// path that most of the data ends up on.
 #[inline(never)]
 fn stream_node<T: Key>(arr: &mut [T], variation: Variation<T>) {
     let mut digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
@@ -765,18 +765,15 @@ impl<T: Key> Context<T> {
             width: radix,
         };
         let largest_child = sample_split_shape(arr, digit);
-        // What finishing the largest child costs. A child that fits the tile is priced
-        // by the function the leaf itself uses, so the two cannot disagree about a tile;
-        // a child that does not fit is itself a node, and its own split is what the
-        // recursion will pay, so it is priced at the best case the leaf can do -- one
-        // level in cache. Measured: pricing those children at their flat count instead
-        // kept the model from splitting, and cost 34.2 -> 27.6 ns on u64 10M.
-        let child_records = ((records as f64 * largest_child) as usize).max(1);
-        let hot_passes = if child_records.saturating_mul(record_bytes) <= self.tile_bytes {
-            tile_cost(flat_hot, child_records, largest_child, self.insertion_max)
-        } else {
-            flat_hot.min(MSD_LEVEL_PASSES)
-        };
+        // What finishing the largest child costs: the best case the leaf can reach,
+        // one level in cache, because that is what the recursion will pay when the
+        // child is a tile. The router cannot sample the child's own window (its top
+        // window is finer than the digit that made it), and pricing it as if that
+        // window were as coarse as the parent's turned every 312 KiB child at 10M
+        // into a streamed node: 25 % slower on u64 10M, measured against the previous
+        // build. The leaf is where the real window is known, and there `tile_cost`
+        // decides with it.
+        let hot_passes = flat_hot.min(MSD_LEVEL_PASSES);
         // One line per node says everything the routing decided, so a trace diff
         // between two builds is a decision diff.
         let routed = split_pays(
@@ -797,7 +794,7 @@ impl<T: Key> Context<T> {
             // Splitting would cost more than the passes it replaces. Finish the node
             // with the radix passes it was priced at: no buffer the size of the node,
             // and the variation scan is already done.
-            self.stream(arr, variation);
+            stream_node(arr, variation);
             return;
         }
         // MSD split: one stable block-permutation pass over the whole node.
@@ -811,14 +808,6 @@ impl<T: Key> Context<T> {
         // Within a bucket every key shares the digits above the split, so they fall
         // out of the child's variation on their own.
         for_each_bucket(arr, digit, |child, variation| self.sort_node(child, variation));
-    }
-
-    /// Walks the freshly partitioned node, and sorts each bucket as a separate
-    /// child. The walk extracts every key once and accumulates the variation of
-    /// the child while the bucket boundary is still open, so a child does not
-    /// pay for a second scan of its own keys.
-    fn stream(&mut self, arr: &mut [T], variation: Variation<T>) {
-        stream_node(arr, variation);
     }
 
 
