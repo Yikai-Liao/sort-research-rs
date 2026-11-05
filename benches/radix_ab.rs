@@ -578,20 +578,13 @@ fn block_lsd_radix<const R: usize, T: sort_research_rs::other::radix_support::Ke
     sort_research_rs::other::rust_block_lsd::sort_with_radix(s, R);
 }
 
-/// The flat counting leaf, with the MSD level inside the tile switched off:
-/// same process, same data, so the two leaf strategies are compared directly
-/// instead of across runs on a shared machine.
+/// The flat counting leaf, with the MSD level inside the tile switched off: same
+/// process, same data, so the two leaf strategies are compared directly instead of
+/// across runs on a shared machine.
 
 #[cfg(feature = "rust_tessera_radix")]
 fn tessera_counting<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    use sort_research_rs::other::rust_tessera_radix::{Policy, sort_with_policy};
-    sort_with_policy(
-        s,
-        Policy {
-            leaf_mode: sort_research_rs::other::rust_tessera_radix::LeafMode::Counting,
-            ..Policy::default()
-        },
-    );
+    sort_research_rs::other::rust_tessera_radix::sort_with_leaf_plan(s);
 }
 
 

@@ -261,18 +261,9 @@ struct Context<T> {
     tile_bytes: usize,
     /// Tiles at or below this many records use an insertion sort.
     insertion_max: usize,
-    leaf_mode: LeafMode,
-}
-
-/// Which strategy a leaf uses once it is too big for insertion or merge.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum LeafMode {
-    /// Partition the tile once on its top varying window and finish each bucket
-    /// on its own, when the flat LSD plan would need three passes or more.
-    Auto,
-    /// Always run the flat LSD plan. Kept so both can be measured interleaved
-    /// in one process.
-    Counting,
+    /// Skip the tile's MSD level and run the flat plan: the measurement surface
+    /// for whether the level still earns its keep.
+    msd_only_test: bool,
 }
 
 /// The knobs a sort can be given. The defaults are the measured constants;
@@ -284,8 +275,6 @@ pub struct Policy {
     pub tile_bytes: usize,
     /// Tiles at or below this many records are finished with an insertion sort.
     pub insertion_max: usize,
-    /// Which strategy a leaf uses beyond insertion.
-    pub leaf_mode: LeafMode,
 
 }
 
@@ -296,21 +285,30 @@ impl Default for Policy {
         Policy {
             tile_bytes: TILE_BYTES,
             insertion_max: INSERTION_MAX,
-            leaf_mode: LeafMode::Auto,
         }
     }
 }
 
 /// Sorts by converted radix key, stably, in O(n) time and O(sqrt(n)) auxiliary
 /// space. See the module documentation for the shape of the algorithm.
-pub fn sort<T: Key>(arr: &mut [T]) {
+pub(super) fn sort<T: Key>(arr: &mut [T]) {
     sort_with_policy(arr, Policy::default());
+}
+
+/// Sorts without the tile's MSD level: the measurement surface for whether that
+/// level still earns its keep. Not part of the sort's contract.
+pub(super) fn sort_with_leaf_plan<T: Key>(arr: &mut [T]) {
+    run(arr, Policy::default(), true);
 }
 
 /// Sorts with an explicit policy. Every knob is a local cost decision: the tile
 /// caps the auxiliary space on its own, so which leaf finishes a tile never
 /// changes the O(sqrt n) bound.
-pub fn sort_with_policy<T: Key>(arr: &mut [T], policy: Policy) {
+pub(super) fn sort_with_policy<T: Key>(arr: &mut [T], policy: Policy) {
+    run(arr, policy, false);
+}
+
+fn run<T: Key>(arr: &mut [T], policy: Policy, msd_only_test: bool) {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
         return;
@@ -345,7 +343,7 @@ pub fn sort_with_policy<T: Key>(arr: &mut [T], policy: Policy) {
         starts: Vec::new(),
         tile_bytes,
         insertion_max: policy.insertion_max,
-        leaf_mode: policy.leaf_mode,
+        msd_only_test,
     };
     context.sort_node(arr, variation);
 }
@@ -860,7 +858,7 @@ impl<T: Key> Context<T> {
         );
         // Strictly cheaper only: a level that merely ties the flat plan costs a memcpy
         // and a bucket walk for nothing, and measured 5 % worse on `bands8`.
-        if self.leaf_mode == LeafMode::Auto && passes > MSD_LEVEL_PASSES {
+        if !self.msd_only_test && passes > MSD_LEVEL_PASSES {
             // One level costs about two and a half flat passes, and the depth it
             // needs is set by how evenly its window divides the tile: a window
             // that only a few records distinguish leaves one child holding
