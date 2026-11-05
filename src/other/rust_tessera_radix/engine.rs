@@ -282,6 +282,7 @@ struct Context<T> {
     /// Tiles at or below this many records use an insertion sort.
     insertion_max: usize,
     leaf_mode: LeafMode,
+    stream_mode: StreamMode,
 }
 
 /// Which strategy a leaf uses once it is too big for insertion or merge.
@@ -306,6 +307,19 @@ pub struct Policy {
     pub insertion_max: usize,
     /// Which strategy a leaf uses beyond insertion.
     pub leaf_mode: LeafMode,
+    /// Which loop runs the level-by-level passes. Measurement surface: the two
+    /// differ only in who owns the loop, not in what the sort decides.
+    pub stream_mode: StreamMode,
+}
+
+/// Which loop runs the level-by-level passes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum StreamMode {
+    /// This module's planner, driving the permutation engine directly.
+    #[default]
+    Digits,
+    /// The block engine's own sort, as a reference.
+    Engine,
 }
 
 
@@ -315,6 +329,7 @@ impl Default for Policy {
             tile_bytes: TILE_BYTES,
             insertion_max: INSERTION_MAX,
             leaf_mode: LeafMode::Auto,
+            stream_mode: StreamMode::Digits,
         }
     }
 }
@@ -361,6 +376,7 @@ pub fn sort_with_policy<T: Key>(arr: &mut [T], policy: Policy) {
         tile_bytes,
         insertion_max: policy.insertion_max,
         leaf_mode: policy.leaf_mode,
+        stream_mode: policy.stream_mode,
     };
     context.sort_node(arr, variation);
 }
@@ -584,22 +600,45 @@ fn reverse_stably<T: Key>(arr: &mut [T]) {
     }
 }
 
-/// Streams one node through the block engine's cold passes.
+/// Sorts one node level by level over the whole array, least significant digit
+/// first: the radix algorithm itself, without the recursion.
 ///
-/// Out of line and marked cold: this is the branch the routing model expects to
-/// take least often on large inputs, and keeping it out of line leaves the split
-/// path's code in one piece for the instruction cache.
+/// This is what a node gets when the model finds that splitting it costs more
+/// than the passes it replaces -- a node with one or two varying digits, or one
+/// whose keys pile into a single bucket. Each pass is the same stable block
+/// permutation the split uses, so the code is the split without its children,
+/// and the digit windows come from the same planner the leaves use, so a node
+/// pays only for the bits that vary.
+///
+/// Out of line and marked cold: the model expects this branch least often on
+/// large inputs, and keeping it out of line leaves the split's code in one piece
+/// for the instruction cache.
 #[cold]
 #[inline(never)]
-fn stream_node<T: Key>(arr: &mut [T], variation: Variation<T>) {
-    let block_size = block::default_block_size(arr.len(), std::mem::size_of::<T>(), RADIX);
-    block::sort_with_variation(
-        arr,
-        RADIX,
-        block_size,
-        variation.union,
-        variation.intersection,
-    );
+fn stream_node<T: Key>(arr: &mut [T], variation: Variation<T>, mode: StreamMode) {
+    let mut digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
+    let passes = plan_digits_packed(variation.varying(), RADIX, &mut digits);
+    if passes == 0 {
+        return;
+    }
+    // Least significant window first. The engine is created once for all the
+    // passes and compacts once, which is the difference between this and calling
+    // the single-pass partition in a loop: that paid a full compaction per pass.
+    let mut plan = [(0usize, 0usize); PLAN_DIGITS];
+    for (pass, slot) in plan[..passes].iter_mut().enumerate() {
+        let digit = digits[passes - 1 - pass];
+        *slot = (digit.width, digit.shift);
+    }
+    match mode {
+        StreamMode::Digits => block::sort_with_digits(arr, RADIX, &plan[..passes]),
+        StreamMode::Engine => block::sort_with_variation(
+            arr,
+            RADIX,
+            block::default_block_size(arr.len(), std::mem::size_of::<T>(), RADIX),
+            variation.union,
+            variation.intersection,
+        ),
+    }
 }
 
 /// Stable insertion sort on converted keys.
@@ -773,7 +812,7 @@ impl<T: Key> Context<T> {
             // Splitting would cost more than the passes it replaces. Finish the
             // node with the block engine's LSD pass, which needs no buffer the
             // size of the node. It gets the variation scan already done here.
-            stream_node(arr, variation);
+            self.stream(arr, variation);
             return;
         }
         if !split_pays(
@@ -784,7 +823,7 @@ impl<T: Key> Context<T> {
             hot_passes,
             largest_child,
         ) {
-            stream_node(arr, variation);
+            self.stream(arr, variation);
             return;
         }
         // MSD split: one stable block-permutation pass over the whole node.
@@ -817,6 +856,10 @@ impl<T: Key> Context<T> {
     /// child. The walk extracts every key once and accumulates the variation of
     /// the child while the bucket boundary is still open, so a child does not
     /// pay for a second scan of its own keys.
+    fn stream(&mut self, arr: &mut [T], variation: Variation<T>) {
+        stream_node(arr, variation, self.stream_mode);
+    }
+
     fn descend(&mut self, arr: &mut [T], digit: Digit) {
         // Within a bucket every key shares the digits above the split, so they
         // fall out of the child's variation on their own.

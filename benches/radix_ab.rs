@@ -532,6 +532,21 @@ fn block_lsd_radix<const R: usize, T: sort_research_rs::other::radix_support::Ke
 /// The flat counting leaf, with the MSD level inside the tile switched off:
 /// same process, same data, so the two leaf strategies are compared directly
 /// instead of across runs on a shared machine.
+/// The block engine's own level-by-level sort, used by the router for the same
+/// nodes: same process, same data, so the two stream implementations are
+/// compared directly.
+#[cfg(feature = "rust_tessera_radix")]
+fn tessera_engine<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
+    use sort_research_rs::other::rust_tessera_radix::{Policy, StreamMode, sort_with_policy};
+    sort_with_policy(
+        s,
+        Policy {
+            stream_mode: StreamMode::Engine,
+            ..Policy::default()
+        },
+    );
+}
+
 #[cfg(feature = "rust_tessera_radix")]
 fn tessera_counting<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
     use sort_research_rs::other::rust_tessera_radix::{Policy, sort_with_policy};
@@ -583,6 +598,7 @@ macro_rules! radix_variants {
                 sort_research_rs::other::rust_tessera_radix::sort(s)
             }));
             v.push(("tessera_counting", tessera_counting::<$ty>));
+            v.push(("tessera_engine", tessera_engine::<$ty>));
             // The tile budget and the leaf crossovers are swept from here while
             // tuning; they cost a build matrix, so they stay opt-in.
             if std::env::var_os("RADIX_AB_LEAVES").is_some() {

@@ -9,7 +9,7 @@ pub use super::radix_support::{Key, Unsigned};
 
 radix_adapter!("rust_tessera_stable_radix", |data| engine::sort(data));
 
-pub use engine::{LeafMode, Policy};
+pub use engine::{LeafMode, Policy, StreamMode};
 
 /// Sorts with an explicit policy. Measurement code pins one knob here instead of
 /// the library growing an entry point per combination of them.
