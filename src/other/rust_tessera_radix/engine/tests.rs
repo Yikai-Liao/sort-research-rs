@@ -202,6 +202,51 @@ fn a_key_panic_never_loses_or_duplicates_a_record() {
     }
 }
 
+/// Routing and leaf choices are arithmetic on sampled shapes, so they can be
+/// pinned instead of measured: a change here is a decision change, and this table
+/// is what tells a simplification apart from a regression.
+#[test]
+fn route_table() {
+    // (node bytes, records, flat passes, largest child share, split?)
+    let routes = [
+        // uniform u64 at 1M: 8 passes, a well-divided first digit
+        (8_000_000usize, 1_000_000usize, 8usize, 0.0107f64, true),
+        // two values: one pass cannot pay for a split
+        (8_000_000, 1_000_000, 1, 0.5303, false),
+        // keys piled into one bucket: the split still wins on the child price,
+        // because a child over a tile is priced at one level, not at its flat count
+        (8_000_000, 1_000_000, 7, 0.9980, true),
+        // a node only just over the tile with a narrow digit
+        (65_552, 8_194, 2, 0.0100, false),
+        // 99 % sorted: the top digit separates the stragglers
+        (8_000_000, 1_000_000, 8, 0.9980, true),
+    ];
+    for (bytes, records, flat, largest, expected) in routes {
+        let child_records = ((records as f64 * largest) as usize).max(1);
+        let hot = if child_records.saturating_mul(bytes / records) <= TILE_BYTES {
+            tile_cost(flat, child_records, largest, INSERTION_MAX)
+        } else {
+            flat.min(MSD_LEVEL_PASSES)
+        };
+        assert_eq!(
+            split_pays(bytes, records, TILE_BYTES, flat, hot, largest),
+            expected,
+            "{records} records of {} bytes, {flat} passes, largest {largest}",
+            bytes / records
+        );
+    }
+
+    // A well-divided tile is one level; a clustered one is its flat plan.
+    assert_eq!(tile_cost(8, 3_906, 1.0 / 128.0, INSERTION_MAX), MSD_LEVEL_PASSES);
+    assert_eq!(tile_cost(8, 3_906, 0.99, INSERTION_MAX), 8);
+    assert_eq!(tile_cost(2, 3_906, 1.0 / 128.0, INSERTION_MAX), 2);
+
+    // The tile's digit width is the widest table that still fits the tile.
+    assert_eq!(leaf_radix(3_906, 8), 13);
+    assert_eq!(leaf_radix(200, 8), 9);
+    assert_eq!(leaf_radix(4, 8), LEAF_RADIX_MIN);
+}
+
 #[test]
 fn every_width_and_tile_rounds_to_zero() {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
