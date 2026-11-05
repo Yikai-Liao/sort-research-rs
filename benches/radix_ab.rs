@@ -298,9 +298,6 @@ fn full_width_u128(len: usize) -> Vec<u128> {
         .collect()
 }
 
-fn wide_u64(x: i32) -> u64 {
-    (x as u32 as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
-}
 
 /// Swaps \`swaps\` evenly spread adjacent pairs: an ordered array with that many
 /// displaced elements, which is the shape "sorted, then a few edits" produces.

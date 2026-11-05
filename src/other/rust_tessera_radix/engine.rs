@@ -240,7 +240,6 @@ fn plan_digits_packed(varying: u128, width: usize, digits: &mut [Digit]) -> usiz
     len
 }
 
-
 /// Set `RADIX_TRACE=1` to print every routing decision. The trace costs one
 /// atomic read per node and is the only way to see why an input took a path.
 fn trace() -> bool {
@@ -270,7 +269,6 @@ pub struct Policy {
     pub insertion_max: usize,
 
 }
-
 
 
 impl Default for Policy {
@@ -376,13 +374,6 @@ fn tile_cost(
     (MSD_LEVEL_PASSES * depth).min(flat_passes)
 }
 
-/// What one MSD split costs, in full passes over the same node.
-///
-/// The split runs four passes -- count, block boundaries, permute, materialize --
-/// and every one of them only reads the node, so together they move half the
-/// bytes two read-write passes would: two passes is the structural price, and it
-/// is the same on any machine, because it counts passes rather than pricing them.
-const SPLIT_PASSES: usize = 2;
 
 /// Whether an MSD split costs less than running the passes level by level.
 ///
@@ -713,7 +704,6 @@ impl<T: Key> Context<T> {
         // out of the child's variation on their own.
         for_each_bucket(arr, digit, |child, variation| self.sort_node(child, variation));
     }
-
 
     fn set_scratch_len(&mut self, len: usize) {
         if self.scratch.len() < len {

@@ -1401,6 +1401,21 @@ memcpy. Two facts fall out of it:
    scan, the leaf's own level) dominates a 4-pass sort. That is where the remaining
    headroom is concentrated, and it is a *pass overhead* problem, not a bandwidth one.
 
+### 43. Iteration 3 (simplification): the pass-arithmetic constants left behind
+
+The structural router (section 41) made two things dead, and the compiler found them:
+SPLIT_PASSES can no longer be reached from any decision, and the harness still carried
+wide_u64, the 32-bit-entropy hash that full_width_u64 replaced. Both deleted.
+
+Behaviour is unchanged by construction -- no branch reads either symbol -- and the tests
+agree (6 targets green). Paired wall clock moved by the machine's usual noise: u64 1M
+18.7 against 19.6, u32 1M 10.3 against 9.7; no claim is made from a 5 % cell.
+
+What is *not* dead and stays: tile_cost and sampled_buckets are still what the leaf
+uses to choose between the flat plan and its MSD level; hot_passes is still read by the
+routing trace. The next simplification round has to decide whether the trace line and
+the leaf's cost estimate are worth their keep, rather than the compiler's leftovers.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
