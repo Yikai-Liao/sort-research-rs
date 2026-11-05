@@ -221,6 +221,38 @@ pub(crate) fn partition_digit<T: Key>(arr: &mut [T], radix: usize, shift: usize)
 }
 
 
+/// One stable partition pass by an arbitrary classifier, for the sorts whose
+/// split is a comparison rather than a digit window.
+///
+/// `buckets` must be a power of two in 2..=4096: the engine names buckets with
+/// `u16` and sizes its scratch by the bucket count. A classifier that returns
+/// an index outside that range is clamped, because `Key` is a safe trait.
+#[cfg(feature = "rust_tessera_radix")]
+pub(crate) fn partition_by<T: Key>(
+    arr: &mut [T],
+    buckets: usize,
+    classify: impl Fn(&T) -> usize,
+) {
+    let record_bytes = std::mem::size_of::<T>();
+    if arr.len() < 2 || record_bytes == 0 {
+        return;
+    }
+    assert!(
+        buckets.is_power_of_two() && (2..=4096).contains(&buckets),
+        "bucket count must be a power of two in 2..=4096"
+    );
+    let radix = buckets.trailing_zeros() as usize;
+    let block_size = default_block_size(arr.len(), record_bytes, radix);
+    let mut sorter = Sorter::new(arr, buckets, block_size);
+    let last = buckets - 1;
+    if let Some(payload) = sorter.step_with(|record| classify(record).min(last)) {
+        // Same recovery contract as `partition_digit`.
+        sorter.compact();
+        std::panic::resume_unwind(payload);
+    }
+    sorter.compact();
+}
+
 pub(crate) fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
     let dummy = &arr[0];
     // The C reference always scatters every digit. Sparse and repeated keys
@@ -457,17 +489,27 @@ impl<'a, T> Sorter<'a, T> {
     where
         T: Key,
     {
+        let shift_bits = T::Value::from_usize(shift);
+        self.step_with(|record| ((record.key() & mask) >> shift_bits).to_usize())
+    }
+
+    /// One pass with an arbitrary classifier: every record goes to the bucket
+    /// the classifier names, stably. The digit pass is this with a mask.
+    fn step_with<F: FnMut(&T) -> usize>(&mut self, classify: F) -> Option<PanicPayload>
+    where
+        T: Key,
+    {
         let (mut buckets, mut counts) = self.begin_pass();
         let mut position = ScatterPosition {
             input: self.bucket_count,
             offset: 0,
             output: self.bucket_count,
         };
+        // The classifier is moved into the closure, not borrowed: a digit closure
+        // keeps its mask and shift in registers only when the scatter owns it. A
+        // &mut here cost 40 % on a digit-only sort (sparse8, 10M).
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let shift_bits = T::Value::from_usize(shift);
-            self.scatter(&mut buckets, &mut counts, &mut position, |value| {
-                ((value.key() & mask) >> shift_bits).to_usize()
-            });
+            self.scatter(&mut buckets, &mut counts, &mut position, classify);
         }))
         .err();
         if panic.is_some() {

@@ -127,6 +127,64 @@ fn sampled_buckets<T: Key>(arr: &[T], digit: Digit) -> usize {
     distinct
 }
 
+/// Keys a node samples to look for one value that a large share of it repeats.
+const MODE_SAMPLE: usize = 64;
+
+/// The share of the sample one value needs before an equality split pays: a
+/// quarter. Below that the split still moves the whole node once while
+/// finishing only that value, which is what an ordinary digit level does for a
+/// whole window of values.
+const MODE_SHARE: usize = 4;
+
+/// Keys read back to back at each sampled position. Long enough that a value
+/// repeating on a short period (an enum cycling through its cases) shows up as
+/// its real share instead of aliasing with the sample stride.
+const MODE_RUN: usize = 8;
+
+/// The value a quarter or more of the sample shares, if there is one.
+///
+/// A digit window can never separate equal keys: every level moves them again,
+/// and only the level that happens to put them in one bucket retires them. A
+/// sampled value is the one split that can retire them on the first pass. The
+/// sample sorts 64 keys, about a thousand comparisons against a node of
+/// thousands of records, and finds nothing on random data because no value
+/// repeats there.
+fn sampled_mode<T: Key>(arr: &[T]) -> Option<SortKey<T>> {
+    // Short runs, not one key per stride: a single stride aliases with data that
+    // repeats on a period dividing it (the benchmark's sparse8 does, and a fake
+    // 25 % share turned every level into one peeled value).
+    let runs = MODE_SAMPLE / MODE_RUN;
+    let step = (arr.len() / runs).max(1);
+    let mut keys = [arr[0].key(); MODE_SAMPLE];
+    let mut len = 0;
+    for run in 0..runs {
+        let start = run * step;
+        for offset in 0..MODE_RUN {
+            let index = start + offset;
+            if index >= arr.len() {
+                break;
+            }
+            keys[len] = arr[index].key();
+            len += 1;
+        }
+    }
+    keys[..len].sort_unstable();
+    let (mut best, mut count) = (keys[0], 1);
+    let mut run = 1;
+    for index in 1..len {
+        if keys[index] == keys[index - 1] {
+            run += 1;
+        } else {
+            run = 1;
+        }
+        if run > count {
+            best = keys[index];
+            count = run;
+        }
+    }
+    (count * MODE_SHARE >= len).then_some(best)
+}
+
 /// Bucket capacity of a leaf pass. The literal appears in the array type:
 /// rustc's layout computation hits an ICE on a const-generic bound spelled
 /// through an inner associated constant here.
@@ -675,6 +733,37 @@ impl<T: Key> Context<T> {
         let low = varying.trailing_zeros() as usize;
         let top = (u128::BITS - varying.leading_zeros()) as usize;
         let span = top - low;
+        // nothing left to price: the rule reads one number.
+        let routed = split_pays(span);
+        // One line per node says everything the routing decided, so a trace diff
+        // between two builds is a decision diff.
+        if trace() {
+            // The old rule, kept only under the trace: the pass count the planner
+            // would need, next to the span the new rule reads. Every node prints both,
+            // so a run of the whole suite proves the two agree wherever it looks.
+            let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
+            let cold_passes = plan_digits_packed(varying, RADIX, &mut scratch_digits);
+            eprintln!(
+                "route len={} bytes={} passes={} span={} split={}",
+                records, node_bytes, cold_passes, span, routed
+            );
+        }
+        if !routed {
+            // One digit covers every varying bit, so one stable permutation finishes
+            // the node: no recursion, no plan array, no second engine. The fan-out
+            // stays at RADIX because the block engine sizes its working set from it.
+            block::partition_digit(arr, RADIX, low);
+            return;
+        }
+        // A value that a large share of the node repeats cannot be separated by
+        // any digit window: every level moves the duplicates again, and only the
+        // level that happens to land them all in one bucket retires them. A
+        // sampled value splits them out on the first pass and the band is
+        // finished by that same pass.
+        if let Some(equal) = sampled_mode(arr) {
+            self.equality_split(arr, equal);
+            return;
+        }
         let mut radix = split_radix(records, record_bytes, self.tile_bytes)
             .min(top)
             .max(1);
@@ -717,28 +806,6 @@ impl<T: Key> Context<T> {
             shift: top - radix,
             width: radix,
         };
-        // nothing left to price: the rule reads one number.
-        // One line per node says everything the routing decided, so a trace diff
-        // between two builds is a decision diff.
-        let routed = split_pays(span);
-        if trace() {
-            // The old rule, kept only under the trace: the pass count the planner
-            // would need, next to the span the new rule reads. Every node prints both,
-            // so a run of the whole suite proves the two agree wherever it looks.
-            let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
-            let cold_passes = plan_digits_packed(varying, RADIX, &mut scratch_digits);
-            eprintln!(
-                "route len={} bytes={} passes={} span={} split={}",
-                records, node_bytes, cold_passes, span, routed
-            );
-        }
-        if !routed {
-            // One digit covers every varying bit, so one stable permutation finishes
-            // the node: no recursion, no plan array, no second engine. The fan-out
-            // stays at RADIX because the block engine sizes its working set from it.
-            block::partition_digit(arr, RADIX, low);
-            return;
-        }
         // MSD split: one stable block-permutation pass over the whole node.
         // The fan-out follows the node size. A node that is only slightly over
         // the tile budget must not pay for 256 output streams and the block
@@ -750,6 +817,70 @@ impl<T: Key> Context<T> {
         // Within a bucket every key shares the digits above the split, so they fall
         // out of the child's variation on their own.
         for_each_bucket(arr, digit, |child, variation| self.sort_node(child, variation));
+    }
+
+    /// A split around one value: below, equal, above. The equal band needs no
+    /// further work -- it is the shape a radix level keeps paying for and can
+    /// never finish in one pass.
+    ///
+    /// The children's variation comes from scans that walk in from both ends
+    /// and stop at the band, so the records the split just retired are never
+    /// read again: the scan costs the non-equal share, which is the other half
+    /// of the trade.
+    fn equality_split(&mut self, arr: &mut [T], equal: SortKey<T>) {
+        if trace() {
+            eprintln!("  eq key={:#x}", equal.to_u128());
+        }
+        block::partition_by(arr, 4, |record| {
+            use std::cmp::Ordering::{Equal, Greater, Less};
+            match record.key().cmp(&equal) {
+                Less => 0,
+                Equal => 1,
+                Greater => 2,
+            }
+        });
+        let mut left = 0;
+        let mut left_variation = Variation {
+            union: equal,
+            intersection: equal,
+        };
+        if arr[0].key() < equal {
+            let mut union = arr[0].key();
+            let mut intersection = union;
+            left = 1;
+            while left < arr.len() && arr[left].key() < equal {
+                let key = arr[left].key();
+                union |= key;
+                intersection = intersection & key;
+                left += 1;
+            }
+            left_variation = Variation { union, intersection };
+        }
+        let mut right = arr.len();
+        let mut right_variation = Variation {
+            union: equal,
+            intersection: equal,
+        };
+        if arr[right - 1].key() > equal {
+            let mut union = arr[right - 1].key();
+            let mut intersection = union;
+            right -= 1;
+            while right > left && arr[right - 1].key() > equal {
+                let key = arr[right - 1].key();
+                union |= key;
+                intersection = intersection & key;
+                right -= 1;
+            }
+            right_variation = Variation { union, intersection };
+        }
+        // The sampled value exists in the array, so the band cannot be empty.
+        debug_assert!(right > left, "the sampled key left no equal band");
+        if left > 1 {
+            self.sort_node(&mut arr[..left], left_variation);
+        }
+        if arr.len() - right > 1 {
+            self.sort_node(&mut arr[right..], right_variation);
+        }
     }
 
     fn set_scratch_len(&mut self, len: usize) {
