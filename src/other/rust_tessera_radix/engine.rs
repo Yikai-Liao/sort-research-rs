@@ -327,6 +327,21 @@ fn run<T: Key>(arr: &mut [T], policy: Policy, leaf_mode_test: u8) {
         .tile_bytes
         .max(record_bytes)
         .min(MAX_TILE_RECORDS * record_bytes);
+    // An ordered input needs no passes at all, so the probe runs before anything
+    // that touches every key: ascending returns after one pass, descending after
+    // one reversal. The probe gives up at the first inversion, so a random array
+    // pays two comparisons of the strided sample and the variation scan below
+    // stays the first full pass. Running the scan first made every ordered input
+    // pay both.
+    let sampled = probe_order(arr);
+    match sampled {
+        Order::Ascending => return,
+        Order::Descending => {
+            reverse_stably(arr);
+            return;
+        }
+        Order::Flat | Order::Unsorted => {}
+    }
     let (union, intersection) = block::varying_key_bits(arr);
     let variation = Variation {
         union,
@@ -335,16 +350,20 @@ fn run<T: Key>(arr: &mut [T], policy: Policy, leaf_mode_test: u8) {
     if variation.varying() == 0 {
         return;
     }
-    // An ordered input needs no passes at all. The probe gives up at the first
-    // inversion, so a random array pays two comparisons, while an ascending one
-    // pays a single read and returns.
-    match probe_order(arr) {
-        Order::Ascending => return,
-        Order::Descending => {
-            reverse_stably(arr);
-            return;
+    // A flat sample saw only equal pairs; the strided gaps may still hold a
+    // change, which the scan above has now confirmed there is. The full order
+    // pass is the only thing left that a constant array would not need, so it
+    // runs here and not inside the probe: a constant input answers with the scan
+    // alone, which is the vectorizable one.
+    if sampled == Order::Flat {
+        match confirm_order(arr) {
+            Order::Ascending => return,
+            Order::Descending => {
+                reverse_stably(arr);
+                return;
+            }
+            _ => {}
         }
-        Order::Unsorted => {}
     }
     let mut context = Context {
         scratch: Vec::new(),
@@ -386,9 +405,15 @@ fn split_pays(span: usize) -> bool {
     span > RADIX
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Order {
     Ascending,
     Descending,
+    /// Every sampled pair was equal. A strided sample cannot distinguish a
+    /// constant array from one that varies between the samples, so this answer
+    /// is not an order: the caller pays the variation scan it needs anyway and
+    /// only then asks for the full pass.
+    Flat,
     Unsorted,
 }
 
@@ -403,6 +428,11 @@ const ORDER_SAMPLES: usize = 4096;
 /// matters for the common "sorted, then a few appends" shape, where a full pass
 /// would run to the end before finding the inversion. The sample can only
 /// *reject*, never accept, so the answer stays exact.
+///
+/// A sample that saw only equal pairs is the one case the sample cannot decide:
+/// the array may be constant or may vary between the samples. It returns
+/// `Order::Flat` and the caller chooses which full pass to pay -- the variation
+/// scan if the array is constant, the confirmation pass if it is not.
 ///
 /// Keeping this separate from the variation scan also keeps that scan
 /// vectorizable; fusing the two cost 5 % on clustered inputs, where the scan
@@ -422,6 +452,16 @@ fn probe_order<T: Key>(arr: &[T]) -> Order {
         }
         index += stride;
     }
+    if ascending && descending {
+        return Order::Flat;
+    }
+    confirm_order(arr)
+}
+
+/// The full order pass, after the sample has shown that the array may be
+/// ordered. One comparison per record and an exit at the first inversion.
+#[inline]
+fn confirm_order<T: Key>(arr: &[T]) -> Order {
     let mut ascending = true;
     let mut descending = true;
     let mut previous = arr[0].key();
