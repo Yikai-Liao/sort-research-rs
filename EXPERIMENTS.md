@@ -855,6 +855,32 @@ phase, before any record moves), so that change is a simplification and a remove
 untested branch, not a bug fix. A new sweep with a plain record type covers the
 branch that previously did not exist.
 
+### 28. One planner prices the route it will run
+
+The model priced the level-by-level route with a fixed 8-bit grid (`stream_passes`)
+while the route itself already ran packed windows (`plan_digits_packed`). Two
+answers to one question, and the grid one was the pessimistic of the two: it
+charged a node passes it would never run, which biased every decision toward
+splitting. The counter is gone; both routes are now priced by the planner that
+will run them.
+
+What changed, and what did not -- the routing trace makes this deterministic, no
+timing needed. For the common shapes the decisions are identical node for node,
+because uniform and near-uniform keys vary in every bit, where the two planners
+agree by construction:
+
+| 1M, all three widths | stream nodes before | after |
+| --- | --- | --- |
+| random | 6 | 6 |
+| 99 % sorted | 12 | 12 |
+| two values | 18 | 18 |
+
+Shapes with clustered bits flip the other way and mostly gain: in one process
+against the previous binary, u64 zipf -8.5 %, u32 sparse8 -7.4 %, u64 sparse8
+-7.2 %, u64 two values -6.7 %, u32 bands8 +0.6 %, u64 bands8 +3.0 %. The apparent
+6-9 % losses on `random` cells in the same run are noise: their decisions did not
+change, and the paired spread at that moment was of the same size.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

@@ -250,23 +250,6 @@ fn plan_digits_packed(varying: u128, width: usize, digits: &mut [Digit]) -> usiz
     len
 }
 
-/// The passes the block engine would run: a fixed `width`-bit grid, which is what
-/// the streaming route really costs. Only the count is used, so only the count is
-/// returned; the leaf plans its own windows and needs the digits themselves.
-fn stream_passes<T: Key>(width: usize, variation: Variation<T>) -> usize {
-    let varying_bits = variation.varying();
-    let mut passes = 0;
-    let mut shift = T::Value::BITS;
-    while shift > 0 {
-        let step = width.min(shift);
-        shift -= step;
-        let span = ((1u128 << step) - 1) << shift;
-        if varying_bits & span != 0 {
-            passes += 1;
-        }
-    }
-    passes
-}
 
 /// Set `RADIX_TRACE=1` to print every routing decision. The trace costs one
 /// atomic read per node and is the only way to see why an input took a path.
@@ -765,11 +748,11 @@ impl<T: Key> Context<T> {
             self.lsd_leaf(arr, variation);
             return;
         }
-        // Two predicted totals: stream the node through cold passes the way the
-        // block engine would, or pay for one split and finish the children in
-        // cache. The pass counts are the ones each route would really run.
-        let cold_passes = stream_passes::<T>(RADIX, variation);
+        // Two predicted totals: run the radix passes over the node, or pay for one
+        // split and finish the children in cache. Each route is priced with the
+        // planner it will really run, so the estimate cannot drift from the code.
         let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
+        let cold_passes = plan_digits_packed(varying, RADIX, &mut scratch_digits);
         // Priced at the reference width, not at the leaf's own: routing must not
         // move when the leaf width is tuned, or a wider leaf makes every node look
         // more worth splitting and the tuning cannot be measured at all.
