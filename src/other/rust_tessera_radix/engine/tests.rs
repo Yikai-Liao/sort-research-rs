@@ -420,3 +420,63 @@ fn a_short_run_above_the_body_is_lifted_out_and_rotated_off_the_front() {
     check(input, tile);
 }
 
+
+#[test]
+fn pricing_a_pass_counts_the_moves_and_stops_at_the_budget() {
+    // Sorted keys need nothing; a single displaced pair costs one move; the
+    // budget stops the count instead of walking the array.
+    let mut keys: Vec<u64> = (0..64).collect();
+    assert_eq!(priced_insertion(&mut keys, 64), Some(0));
+    assert_eq!(keys, (0..64).collect::<Vec<u64>>());
+
+    keys.swap(10, 11);
+    assert_eq!(priced_insertion(&mut keys, 64), Some(1));
+    assert_eq!(keys, (0..64).collect::<Vec<u64>>());
+
+    let mut reversed: Vec<u64> = (0..64).rev().collect();
+    assert_eq!(priced_insertion(&mut reversed, 8), None);
+}
+
+#[test]
+fn a_budgeted_insertion_pass_keeps_equal_keys_in_order_and_bails_when_spent() {
+    let items = |keys: &[u64]| -> Vec<Item<u64>> {
+        keys.iter()
+            .enumerate()
+            .map(|(index, &key)| Item {
+                key,
+                index: index as u32,
+            })
+            .collect()
+    };
+    // Near-sorted: finishes, and payloads stay in input order inside equal keys.
+    let mut records = items(&[0, 1, 1, 2, 3, 3, 4, 5]);
+    let len = records.len();
+    assert_eq!(adaptive_insertion(&mut records, len), Some(0));
+    assert!(records.windows(2).all(|pair| pair[0].key <= pair[1].key));
+    let ones: Vec<u32> = records.iter().filter(|r| r.key == 1).map(|r| r.index).collect();
+    assert_eq!(ones, vec![1, 2]);
+
+    // A reversed body spends far more than one move per record: the pass stops
+    // with only swaps behind it, so the records are a permutation of the input.
+    let input: Vec<u64> = (0..32).rev().collect();
+    let mut records = items(&input);
+    assert_eq!(adaptive_insertion(&mut records, 4), None);
+    let mut keys: Vec<u64> = records.iter().map(|r| r.key).collect();
+    keys.sort();
+    assert_eq!(keys, (0..32).collect::<Vec<u64>>());
+}
+
+#[test]
+fn a_nearly_sorted_array_is_finished_by_the_adaptive_pass() {
+    // One displaced pair in a hundred: the radix path used to spend a level on
+    // each of them. The adaptive pass prices one tile and then finishes.
+    let (len, tile) = if cfg!(miri) { (2_048, 256) } else { (32_768, 1_024) };
+    let mut input: Vec<u64> = (0..len as u64).collect();
+    let mut index = 0;
+    while index + 1 < input.len() {
+        input.swap(index, index + 1);
+        index += 100;
+    }
+    check(input, tile);
+}
+

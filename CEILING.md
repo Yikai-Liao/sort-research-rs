@@ -6,12 +6,15 @@ harness, **medians** of interleaved rounds, raw rounds archived in `raw_runs.csv
 
 ## 1. The design in one paragraph
 
-One stable MSD level partitions the array by the digit the sampler says divides it; a
-child that fits a ~31 KiB tile is finished in cache by one MSD level over the tile (or by
-flat counting passes, chosen by two counted quantities); constant key bits are dropped
-everywhere; the block-permutation engine from `rust_block_lsd` keeps auxiliary space at
-O(sqrt n). Nothing in the router or the leaf is a magic threshold: each decision reads one
-or two counted facts (passes needed, distinct buckets sampled, tile bytes).
+One stable MSD level partitions the array by the digit the sampler says divides it. A node
+whose sample is dominated by one value is split around that value instead (s67); a short run
+that disagrees with the node's top bit is lifted out (s68); and an array whose keys one
+insertion pass can finish for the price of one pass is finished by it (s70). A child that
+fits a ~31 KiB tile is finished in cache by one MSD level over the tile (or by flat counting
+passes, chosen by two counted quantities); constant key bits are dropped everywhere; the
+block-permutation engine from `rust_block_lsd` keeps auxiliary space at O(sqrt n). Nothing
+in the router or the leaf is a magic threshold: each decision reads counted facts -- passes
+needed, distinct buckets sampled, tile bytes, moves per record.
 
 ## 2. Gates that must hold (all verified at HEAD)
 
@@ -20,12 +23,13 @@ or two counted facts (passes needed, distinct buckets sampled, tile bytes).
 | O(n) time | one permutation per level, levels bounded by key width / digit width |
 | stable | `tessera_functionality` (233 cases), `radix_owned`, `radix_views` |
 | O(sqrt n) extra space | block engine + one tile buffer; no n-sized buffer exists |
-| 7 test targets green | lib 13, block_lsd 8, block_lsd_functionality 233, main 233, radix_owned 2, radix_views 6, tessera_functionality 233 |
-| Miri 13/13 | `cargo +nightly miri test --features rust_tessera_radix --lib` |
+| 7 test targets green | lib 16, block_lsd 8, block_lsd_functionality 233, main 233, radix_owned 2, radix_views 6, tessera_functionality 233 |
+| Miri 16/16 | `cargo +nightly miri test --features rust_tessera_radix --lib` |
 
 ## 3. Distance to the physical floor (1M, medians)
 
-Measured at s68 (`bad4f09`) with the current harness; the pattern behind each row is in
+Measured at s70 with the current harness, two sweeps, the lower median reported (the machine is
+shared and single sweeps move by 5-10 %); the pattern behind each row is in
 parentheses. The 2026-11 baseline this table replaced (before s64–s68) is in the ledger's
 §1 table, and its raw rounds stay in `raw_runs.csv` under their own commit. The two are
 not directly comparable where the harness pattern names changed.
@@ -37,43 +41,46 @@ which is the design's whole claim.
 
 | cell | ns/rec | x memcpy | pass floor | x floor | ipnsort (context) |
 | --- | --- | --- | --- | --- | --- |
-| u32 random | 11.22 | 14.0 | 4 | 3.51 | 23.37 |
-| u32 99% sorted | 8.28 | 10.3 | 4 | 2.59 | 20.39 |
-| u32 few values (sparse8) | 4.50 | 5.6 | 4 | 1.41 | 3.57 |
-| u32 zipf (zipf13) | 12.65 | 15.8 | 4 | 3.95 | 7.81 |
-| u32 mixed_runs | 10.99 | 13.7 | 4 | 3.43 | 23.97 |
-| u32 one value 95% (p95zero) | 5.01 | 6.3 | 4 | 1.57 | 5.05 |
-| u64 random | 15.43 | 9.6 | 8 | 1.21 | 26.32 |
-| u64 99% sorted | 17.11 | 10.7 | 8 | 1.34 | 23.01 |
-| u64 few values (sparse8) | 6.99 | 4.4 | 8 | 0.55 | 4.80 |
-| u64 zipf (zipf13) | 16.84 | 10.5 | 8 | 1.32 | 8.89 |
-| u64 mixed_runs | 16.55 | 10.3 | 8 | 1.29 | 27.16 |
-| u64 one value 95% (p95zero) | 6.02 | 3.8 | 8 | 0.47 | 5.18 |
-| u128 random | 29.61 | 9.3 | 16 | 0.58 | 46.94 |
-| u128 99% sorted | 20.04 | 6.3 | 16 | 0.39 | 36.56 |
-| u128 few values (sparse8) | 17.74 | 5.5 | 16 | 0.35 | 10.38 |
-| u128 zipf (zipf13) | 27.89 | 8.7 | 16 | 0.54 | 17.22 |
-| u128 mixed_runs | 29.93 | 9.4 | 16 | 0.58 | 47.14 |
-| u128 one value 95% (p95zero) | 10.50 | 3.3 | 16 | 0.21 | 9.96 |
+| u32 random | 10.85 | 13.6 | 4 | 3.39 | 23.81 |
+| u32 99% sorted | 0.97 | 1.2 | 4 | 0.30 | 20.18 |
+| u32 few values (sparse8) | 4.33 | 5.4 | 4 | 1.35 | 3.67 |
+| u32 zipf (zipf13) | 12.50 | 15.6 | 4 | 3.91 | 7.73 |
+| u32 mixed_runs | 11.60 | 14.5 | 4 | 3.63 | 23.91 |
+| u32 one value 95% (p95zero) | 4.50 | 5.6 | 4 | 1.41 | 3.18 |
+| u64 random | 14.40 | 9.0 | 8 | 1.13 | 25.95 |
+| u64 99% sorted | 1.67 | 1.0 | 8 | 0.13 | 22.31 |
+| u64 few values (sparse8) | 7.55 | 4.7 | 8 | 0.59 | 4.79 |
+| u64 zipf (zipf13) | 15.97 | 10.0 | 8 | 1.25 | 8.92 |
+| u64 mixed_runs | 15.81 | 9.9 | 8 | 1.24 | 26.56 |
+| u64 one value 95% (p95zero) | 5.90 | 3.7 | 8 | 0.46 | 4.84 |
+| u128 random | 27.97 | 8.7 | 16 | 0.55 | 45.13 |
+| u128 99% sorted | 2.82 | 0.9 | 16 | 0.06 | 35.28 |
+| u128 few values (sparse8) | 16.83 | 5.3 | 16 | 0.33 | 9.83 |
+| u128 zipf (zipf13) | 28.74 | 9.0 | 16 | 0.56 | 17.34 |
+| u128 mixed_runs | 27.77 | 8.7 | 16 | 0.54 | 46.91 |
+| u128 one value 95% (p95zero) | 10.94 | 3.4 | 16 | 0.21 | 9.85 |
 
 Reading it:
 
-- **Wide records are where this design wins**: u128 runs at 0.25-0.63x of its pass floor,
+- **Wide records are where this design wins**: u128 runs at 0.06-0.56x of its pass floor,
   moving the array fewer times than an LSD sort must, because after one split the work
   happens in cache.
-- **u32 has the least headroom** (1.4-3.7x of floor): four passes over 4 MB leaves no cold
+- **u32 has the least headroom** (0.3-3.9x of floor): four passes over 4 MB leaves no cold
   traffic to amortise against, so per-pass machinery dominates. A property of small keys,
   not something more tuning removes.
 - **Skew is where a comparison sort still beats us** (ipnsort 1.6-1.9x faster on zipf13):
   forty thousand distinct values, none of them dominant, so every radix level moves the
   whole node again. A *dominant* value is no longer a loss: one value at 95 % (p95zero) is
-  at parity with ipnsort (u64 6.02 vs 5.18) since s67 finishes the band in one pass.
-- **Near-sorted is no longer a loss either**: 99 % sorted used to pay a whole extra level
-  for its two sentinel keys (s68 lifts them out); u64 is now 17.11 against ipnsort's 23.01.
+  at parity with ipnsort (u64 5.90 vs 4.84) since s67 finishes the band in one pass.
+- **Near-sorted is now the cheapest thing this sort does**, and the only cell where it beats
+  a memcpy by a factor smaller than one: 99 % sorted is 1.67 ns/rec (s68 lifted the sentinel
+  keys out, s70 finishes the displaced pairs with one insertion pass priced in moves). The
+  same code gives 10.15 ns/rec when the same 1 % of positions are displaced *far* instead of
+  adjacent -- the pass prices itself, gives up, and the radix levels take over.
 
-10M, medians at s68, ns per record: u32 random 16.10 (ipnsort 28.07), u64 random 22.62
-(32.69), u128 random 40.96 (56.82), u32 zipf13 14.33 (8.34), u64 zipf13 20.45 (11.93),
-u128 zipf13 36.00 (21.04), u64 99% sorted 22.15 (29.73), u64 one value 95% 6.33 (6.02).
+10M, medians at s70, ns per record: u32 random 16.10 (ipnsort 28.07), u64 random 22.8
+(32.7), u128 random 40.5 (56.8), u64 zipf13 20.5 (11.9), u128 zipf13 36.0 (21.0),
+u64 99% sorted 1.7 (29.7), u128 99% sorted 3.0, u64 one value 95% 6.5 (6.0).
 
 ## 4. What was tried and what it said
 
@@ -95,8 +102,9 @@ Every row is one mechanism, with the metric that decided it.
 | split a node around a value a quarter of its sample shares | **kept** | two values 8.5 -> 6.6 ns, one value 95 % 16.5 -> 6.0 at 1M (s67) |
 | lift out a short run that disagrees with the node's top bit | **kept** | 99 % sorted 21.35 -> 16.16 at 1M (s68) |
 | stream the compact / double-buffer the engine | rejected | the compact is 10-14 % of cycles, so half of it bounds the win at 5-7 % (s69) |
+| one insertion pass for a nearly ordered array, priced in moves on a key copy | **kept** | 99 % sorted 15.4 -> 1.4 ns at 1M and 21.7 -> 1.7 at 10M; the same shape displaced far does not win (s70) |
 
-Eight of fourteen survived. That ratio is the honest summary of how much room was left.
+Nine of sixteen survived. That ratio is the honest summary of how much room was left.
 
 ## 5. Why the remaining gap is not algorithmic
 
@@ -110,7 +118,7 @@ constant per pass, not a structural term.
 
 **The one shape where this ceiling is not ours**: many distinct values with a skew, none
 dominant (zipf). The dominant-value and near-sorted shapes were budget problems this
-router could see (s67, s68); a distribution with 40 000 distinct values and a long tail is
+router could see (s67, s68, s70); a distribution with 40 000 distinct values and a long tail is
 not, and closing it needs a comparison-based partition (backlog E12/B14) rather than
 another radix decision.
 

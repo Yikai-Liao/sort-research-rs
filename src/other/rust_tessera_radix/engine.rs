@@ -289,6 +289,60 @@ fn insertion_by_key<T: Key>(arr: &mut [T]) {
     }
 }
 
+
+/// The moves an insertion pass over `keys` would make, or `None` once the
+/// budget is spent.
+///
+/// This runs on keys alone so that pricing a pass cannot disturb the records:
+/// insertion sort leaves a partly sorted prefix behind when it gives up, and
+/// every sampler below reads records by position, so a failed trial on the
+/// array changes the decisions that follow (it made the equality split fire on
+/// zipf13's second level and cost a level).
+///
+/// The move count depends only on the key sequence, so the price measured here
+/// is the price the record pass pays.
+fn priced_insertion<V: Unsigned>(keys: &mut [V], budget: usize) -> Option<usize> {
+    let mut moves = 0;
+    for index in 1..keys.len() {
+        let mut hole = index;
+        while hole > 0 && keys[hole - 1] > keys[hole] {
+            keys.swap(hole - 1, hole);
+            hole -= 1;
+            moves += 1;
+            if moves > budget {
+                return None;
+            }
+        }
+    }
+    Some(moves)
+}
+
+/// Stable insertion sort of records with a move budget.
+///
+/// The budget is spent in moves -- one adjacent swap, one record move -- so one
+/// move per record is the write traffic of one radix pass: a pass that runs out
+/// has not cost more than the level it replaces.
+///
+/// Returns the moves made, or `None` once the budget is spent. Only swaps have
+/// happened either way, so the array is still a permutation of the input and the
+/// radix path can take it as it is; insertion sort keeps equal keys in order, so
+/// the result stays stable whichever way it goes.
+fn adaptive_insertion<T: Key>(arr: &mut [T], budget: usize) -> Option<usize> {
+    let mut moves = 0;
+    for index in 1..arr.len() {
+        let mut hole = index;
+        while hole > 0 && arr[hole - 1].key() > arr[hole].key() {
+            arr.swap(hole - 1, hole);
+            hole -= 1;
+            moves += 1;
+            if moves > budget {
+                return None;
+            }
+        }
+    }
+    Some(moves)
+}
+
 /// Bucket capacity of a leaf pass. The literal appears in the array type:
 /// rustc's layout computation hits an ICE on a const-generic bound spelled
 /// through an inner associated constant here.
@@ -503,6 +557,65 @@ fn run<T: Key>(arr: &mut [T], policy: Policy, leaf_mode_test: u8) {
             return;
         }
         Order::Flat | Order::Unsorted => {}
+    }
+    // A strided probe rejects an almost-ascending array at its first displaced
+    // pair, and every such pair costs the radix path a whole level: the level
+    // moves all n records to separate the handful that moved. One insertion pass
+    // finishes them for the moves they make.
+    //
+    // The pass is priced on one tile, the engine's unit of resident work, and
+    // the budget on that tile is one move per record -- the write traffic of one
+    // radix pass. A tile that runs out means the move rate is above one per
+    // record, so the attempt stops having touched one tile, and the radix path
+    // below takes over a permutation. A tile that finishes measures the rate the
+    // array will pay, and that rate becomes the budget: an input whose head is
+    // ordered while its tail is not then stops at once instead of walking the
+    // tail, and an input that is displaced throughout pays what its own rate
+    // says.
+    //
+    // Only for `Unsorted`: `Flat` is the constant-array sample, and a constant
+    // array is cheaper to answer with the scan below than with a comparison pass.
+    if sampled == Order::Unsorted {
+        let probe = (tile_bytes / record_bytes).max(2).min(arr.len());
+        let mut keys: Vec<SortKey<T>> = arr[..probe].iter().map(|record| record.key()).collect();
+        match priced_insertion(&mut keys, probe) {
+            None => {
+                if trace() {
+                    eprintln!("adaptive probe len={} gave up", probe);
+                }
+            }
+            Some(0) => {
+                // No moves over the tile. If the tile was the array, its keys
+                // are sorted, and so is the array: nothing to do.
+                if probe == arr.len() {
+                    return;
+                }
+                // Otherwise an ordered tile in an array the probe called
+                // unordered means the disorder is later, and a pass that walks
+                // the whole ordered prefix to find it reads a full pass without
+                // knowing what it will find. p95zero is that shape -- a long
+                // equal head and a random tail -- and a zero rate is where this
+                // has to stop.
+                if trace() {
+                    eprintln!("adaptive probe len={} ordered", probe);
+                }
+            }
+            Some(moves) => {
+                // The tile's rate, priced over the array; when the tile was the
+                // array the price is exact.
+                let budget = moves * arr.len() / probe;
+                let finished = adaptive_insertion(arr, budget).is_some();
+                if trace() {
+                    eprintln!(
+                        "adaptive probe len={} moves={} budget={} finished={}",
+                        probe, moves, budget, finished
+                    );
+                }
+                if finished {
+                    return;
+                }
+            }
+        }
     }
     let (union, intersection) = block::varying_key_bits(arr);
     let variation = Variation {
