@@ -1070,7 +1070,7 @@ them and nothing else.
 | --- | --- | --- | --- |
 | `CHILD_PASS_SHARE = 0.5` | what a cache-resident pass is worth | monotone: toward 1 the rule splits only when it saves a pass | time a tile pass against a node pass |
 | `TILE_BYTES = 64 KiB` | the working set a leaf keeps resident | smaller cache: leaves stream a little; larger: one level more than needed | tile sweep 16-256 KiB, take the plateau |
-| `INSERTION_MAX = 48` | where counting stops beating insertion | plateau is wide (16-96 measured on two shapes) | `Policy::with_insertion_max` |
+| `INSERTION_MAX = 48` | where counting stops beating insertion | plateau is wide (16-96 measured on two shapes) | set `Policy::insertion_max`, no rebuild |
 | `RADIX = 8` | streams per pass; cursors are 4 KiB of u32 | 6-10 all work; 12 measured worse here | rebuild with 6/7/9 and trace |
 | `MSD_LEVEL_PASSES = 3`, `MODEL_LEAF_RADIX = 11` | what one MSD level and one leaf plan cost, in passes | they only compare against each other | `route_table` pins both; re-trace |
 
