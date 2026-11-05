@@ -1289,6 +1289,11 @@ still slightly ahead (6.0 against 6.6), which is the 5 %-ish case the cost
 estimate already resolves in favour of flat -- the ablation confirms the
 estimate rather than finding a gap.
 
+Both halves are now bench variants, and the harness gained the type it was missing
+(u16 had no row at all). u16 at 1M, ns per record: shipped 5.45, flat only 4.85,
+MSD only 5.09, ipnsort 21.8 -- a 16-bit key is four flat passes at most, so the
+estimate keeps the flat plan and all three numbers sit inside this machine's noise.
+
 The number worth staring at is the last row: on 8 distinct values spread over a
 128-bit key we are **2.9x behind ipnsort**. A comparison sort finishes that shape
 in a few partitions because comparisons throw away six bits per compare, while an

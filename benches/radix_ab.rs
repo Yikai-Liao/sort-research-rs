@@ -357,6 +357,16 @@ fn keys_u32(pattern: &str, len: usize) -> Vec<u32> {
     }
 }
 
+fn keys_u16(pattern: &str, len: usize) -> Vec<u16> {
+    if pattern == "random_wide" {
+        return full_width_u64(len).into_iter().map(|x| x as u16).collect();
+    }
+    base_keys(pattern, len)
+        .into_iter()
+        .map(|x| (narrow_u32(x) >> 16) as u16)
+        .collect()
+}
+
 fn keys_u64(pattern: &str, len: usize) -> Vec<u64> {
     if let Some(keys) = type_space_keys(pattern, len) {
         return keys.into_iter().map(|key| key as u64).collect();
@@ -646,6 +656,7 @@ macro_rules! radix_variants {
                 sort_research_rs::other::rust_tessera_radix::sort(s)
             }));
             v.push(("tessera_counting", tessera_counting::<$ty>));
+            v.push(("tessera_msd_only", tessera_msd_only::<$ty>));
             // The tile budget and the leaf crossovers are swept from here while
             // tuning; they cost a build matrix, so they stay opt-in.
             if std::env::var_os("RADIX_AB_LEAVES").is_some() {
@@ -683,6 +694,7 @@ fn main() {
                 }
                 match type_name.as_str() {
                     "u32" => dispatch!(u32, keys_u32, "u32"),
+                    "u16" => dispatch!(u16, keys_u16, "u16"),
                     "u64" => dispatch!(u64, keys_u64, "u64"),
                     "u128" => dispatch!(u128, keys_u128, "u128"),
                     "record16" => dispatch!(Record16, keys_record16, "record16"),
