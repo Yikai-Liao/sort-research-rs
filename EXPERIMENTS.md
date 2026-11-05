@@ -1670,6 +1670,39 @@ Equivalence is evidence, not algebra alone:
   work, so this is a decision-identity change and is reported as one, not as a speedup.
 - 7 test targets and Miri 7/7 pass on the new rule.
 
+### 53. The leaf's cost model decided nothing the counts did not
+
+Open item 0 asked whether the flat counting plan still earns its place. The bench
+already carries both halves as variants, so the ablation was one command, 1M, medians
+of 7 rounds, 15 cells (ns per record, cells that matter shown):
+
+| cell | auto (shipped) | flat only | MSD only |
+| --- | --- | --- | --- |
+| u64 random | 18.28 | 28.76 | 18.85 |
+| u128 random | 32.47 | 82.10 | 31.22 |
+| u32 zipf | 8.31 | 7.49 | 7.04 |
+| u64 zipf | 12.09 | 12.09 | 11.46 |
+| u32 few values | 4.83 | 4.96 | 5.09 |
+| u64 99 % sorted | 21.67 | 21.89 | 21.84 |
+
+Two facts: the flat plan is catastrophic on wide records (u128 random 82 against 31),
+and the *automatic* choice already lands on the MSD level almost everywhere -- the
+auto column and the MSD column agree to within the noise band on 14 of 15 cells.
+
+So the f64 cost model that made the choice (tile_cost: flat passes versus an estimated
+depth from a 1/distinct share estimate) was deciding nothing the two counted quantities
+do not, and it is deleted. The leaf now takes its MSD level when the flat plan would
+need more than one pass **and** the sampled window has more than one non-empty bucket
+-- the second condition is what stops a window one value fills from recursing into the
+tile it just made.
+
+Decision neutrality is checked in instructions rather than wall clock, six cells, 1M:
+u32 zipf -0.1 %, u64 zipf -0.2 %, u64 random -0.0 %, u128 random +0.1 %, u128 mixed
++0.2 %, u32 few values 0.0 %. The wall-clock swings in the same run (+19 % on u32
+zipf, -17 % on u64 zipf) are the machine, not the change, and are not claimed.
+
+Engine: -23 code lines, one f64 model and one sampling-derived share gone.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

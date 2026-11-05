@@ -368,25 +368,6 @@ fn run<T: Key>(arr: &mut [T], policy: Policy, leaf_mode_test: u8) {
 /// The router and the leaf both ask this, so they cannot price the same tile
 /// differently: a window that divides only a little leaves one child holding
 /// almost everything, and a level then buys nothing over the flat plan.
-fn tile_cost(
-    flat_passes: usize,
-    records: usize,
-    largest_share: f64,
-    insertion_max: usize,
-) -> usize {
-    if flat_passes <= MSD_LEVEL_PASSES {
-        return flat_passes;
-    }
-    let share = largest_share.clamp(f64::MIN_POSITIVE, 1.0);
-    let mut largest = records as f64;
-    let mut depth = 0;
-    while largest > insertion_max as f64 && depth < flat_passes {
-        depth += 1;
-        largest *= share;
-    }
-    (MSD_LEVEL_PASSES * depth).min(flat_passes)
-}
-
 
 /// Whether an MSD split costs less than running the passes level by level.
 ///
@@ -834,30 +815,18 @@ impl<T: Key> Context<T> {
         // Strictly cheaper only: a level that merely ties the flat plan costs a memcpy
         // and a bucket walk for nothing, and measured 5 % worse on `bands8`.
         if self.leaf_mode_test != 1 && passes > MSD_LEVEL_PASSES {
-            // One level costs about two and a half flat passes, and the depth it
-            // needs is set by how evenly its window divides the tile: a window
-            // that only a few records distinguish leaves one child holding
-            // almost everything and recurses until the child is small, which is
-            // how a locally-clustered tile ended up 3x slower than the flat plan.
-            // Those keys also make a flat pass cheap, so the sample pays for
-            // itself by keeping this decision honest.
-            let distinct = sampled_buckets(arr, digits[0]).max(2);
-            let msd_cost = tile_cost(passes, len, 1.0 / distinct as f64, self.insertion_max);
+            // The level replaces the flat plan with one partition plus a recursion
+            // over its buckets, so it is taken whenever the flat plan needs more than
+            // one pass -- but only if its window divides the tile at all, because a
+            // window that one value fills would recurse into the same tile it started
+            // with. That is the whole rule: two counted quantities, no cost model and
+            // no share estimate (section 53 has the ablation showing a model here
+            // decides nothing that the counts do not).
+            let distinct = sampled_buckets(arr, digits[0]);
             if trace() {
-                eprintln!(
-                    "leaf-msd? len={} flat={} distinct={} msd_cost={}",
-                    len, passes, distinct, msd_cost
-                );
+                eprintln!("leaf-msd? len={} flat={} distinct={}", len, passes, distinct);
             }
-            // Mode 2 asks the other ablation question: without the flat plan, is the
-            // level plus its bucket recursion enough? Only a window that actually
-            // splits is allowed, so the forced mode cannot recurse forever.
-            let take = if self.leaf_mode_test == 2 {
-                distinct > 1
-            } else {
-                msd_cost < passes
-            };
-            if take {
+            if distinct > 1 {
                 self.msd_leaf(arr, digits[0]);
                 return;
             }
