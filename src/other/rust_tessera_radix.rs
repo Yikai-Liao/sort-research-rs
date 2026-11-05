@@ -22,3 +22,8 @@ pub fn sort_with_leaf_plan<T: Key>(data: &mut [T]) {
     engine::sort_with_leaf_plan(data);
 }
 
+/// Sorts with the tile's MSD level and no flat plan. Measurement only.
+pub fn sort_with_msd_only<T: Key>(data: &mut [T]) {
+    engine::sort_with_msd_only(data);
+}
+

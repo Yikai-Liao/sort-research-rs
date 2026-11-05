@@ -592,6 +592,13 @@ fn tessera_counting<T: sort_research_rs::other::radix_support::Key>(s: &mut [T])
     sort_research_rs::other::rust_tessera_radix::sort_with_leaf_plan(s);
 }
 
+/// The other half of the leaf ablation: the MSD level always, the flat plan never.
+
+#[cfg(feature = "rust_tessera_radix")]
+fn tessera_msd_only<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
+    sort_research_rs::other::rust_tessera_radix::sort_with_msd_only(s);
+}
+
 
 /// Tile-budget sweep: the knob that sets the auxiliary-space bound.
 #[cfg(feature = "rust_tessera_radix")]

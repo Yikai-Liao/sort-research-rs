@@ -254,9 +254,9 @@ struct Context<T> {
     tile_bytes: usize,
     /// Tiles at or below this many records use an insertion sort.
     insertion_max: usize,
-    /// Skip the tile's MSD level and run the flat plan: the measurement surface
-    /// for whether the level still earns its keep.
-    msd_only_test: bool,
+    /// 0 runs the leaf as shipped, 1 runs the flat plan only, 2 runs the MSD level
+    /// only. The two non-zero values are the two halves of the leaf ablation.
+    leaf_mode_test: u8,
 }
 
 /// The knobs a sort can be given. The defaults are the measured constants;
@@ -291,17 +291,23 @@ pub(super) fn sort<T: Key>(arr: &mut [T]) {
 /// Sorts without the tile's MSD level: the measurement surface for whether that
 /// level still earns its keep. Not part of the sort's contract.
 pub(super) fn sort_with_leaf_plan<T: Key>(arr: &mut [T]) {
-    run(arr, Policy::default(), true);
+    run(arr, Policy::default(), 1);
+}
+
+/// Sorts using only the tile's MSD level, never the flat plan: the other half of
+/// the leaf ablation. Measurement only.
+pub(super) fn sort_with_msd_only<T: Key>(arr: &mut [T]) {
+    run(arr, Policy::default(), 2);
 }
 
 /// Sorts with an explicit policy. Every knob is a local cost decision: the tile
 /// caps the auxiliary space on its own, so which leaf finishes a tile never
 /// changes the O(sqrt n) bound.
 pub(super) fn sort_with_policy<T: Key>(arr: &mut [T], policy: Policy) {
-    run(arr, policy, false);
+    run(arr, policy, 0);
 }
 
-fn run<T: Key>(arr: &mut [T], policy: Policy, msd_only_test: bool) {
+fn run<T: Key>(arr: &mut [T], policy: Policy, leaf_mode_test: u8) {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
         return;
@@ -333,7 +339,7 @@ fn run<T: Key>(arr: &mut [T], policy: Policy, msd_only_test: bool) {
         scratch: Vec::new(),
         tile_bytes,
         insertion_max: policy.insertion_max,
-        msd_only_test,
+        leaf_mode_test,
     };
     context.sort_node(arr, variation);
 }
@@ -777,7 +783,7 @@ impl<T: Key> Context<T> {
         );
         // Strictly cheaper only: a level that merely ties the flat plan costs a memcpy
         // and a bucket walk for nothing, and measured 5 % worse on `bands8`.
-        if !self.msd_only_test && passes > MSD_LEVEL_PASSES {
+        if self.leaf_mode_test != 1 && passes > MSD_LEVEL_PASSES {
             // One level costs about two and a half flat passes, and the depth it
             // needs is set by how evenly its window divides the tile: a window
             // that only a few records distinguish leaves one child holding
@@ -793,7 +799,15 @@ impl<T: Key> Context<T> {
                     len, passes, distinct, msd_cost
                 );
             }
-            if msd_cost < passes {
+            // Mode 2 asks the other ablation question: without the flat plan, is the
+            // level plus its bucket recursion enough? Only a window that actually
+            // splits is allowed, so the forced mode cannot recurse forever.
+            let take = if self.leaf_mode_test == 2 {
+                distinct > 1
+            } else {
+                msd_cost < passes
+            };
+            if take {
                 self.msd_leaf(arr, digits[0]);
                 return;
             }

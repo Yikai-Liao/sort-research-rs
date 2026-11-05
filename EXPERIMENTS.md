@@ -1271,6 +1271,32 @@ Miri is the reason the `unsafe` here is acceptable: the code is not proved sound
 it is checked on the two properties that the raw pointer moves could actually
 break -- aliasing while a record is held, and record conservation on unwind.
 
+### 39. The leaf ablation on current HEAD, and the shape we still lose
+
+Open item 0 asked whether the flat counting plan still earns its place now that
+the leaf has an MSD level. Measured in one process, 7 rounds, ns per record:
+
+| 1M | leaf as shipped | flat plan only | ipnsort |
+| --- | --- | --- | --- |
+| u64 random | **20.4** | 27.3 | 27.3 |
+| u128 random | **35.7** | 81.4 | 47.6 |
+| u64 sparse8 | 6.6 | **6.0** | 5.3 |
+| u128 sparse8 | 36.8 | **35.9** | **12.7** |
+
+So the level is not optional: without it u128 random is 2.28x worse, and u64
+random loses the ipnsort tie it otherwise wins. On sparse8 the flat plan is
+still slightly ahead (6.0 against 6.6), which is the 5 %-ish case the cost
+estimate already resolves in favour of flat -- the ablation confirms the
+estimate rather than finding a gap.
+
+The number worth staring at is the last row: on 8 distinct values spread over a
+128-bit key we are **2.9x behind ipnsort**. A comparison sort finishes that shape
+in a few partitions because comparisons throw away six bits per compare, while an
+8-bit radix digit sees 256 empty buckets and has to keep splitting; our estimate
+sends it to the flat plan, which walks sixteen digit passes over 15 MiB. That is
+a structural cost of radix on low-cardinality wide keys, not a bug, and it is the
+first cell in a long time where the honest answer is 'the comparison sort wins'.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
