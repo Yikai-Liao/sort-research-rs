@@ -793,6 +793,34 @@ runs (10.2, 10.6, 10.2 on re-measurement) because a 7 ms cell is at the mercy of
 the neighbours; small types and small sizes need more rounds than the sweep
 gives them before a single number means anything.
 
+### 26. The cost model was challenged, measured, and kept
+
+It is the largest single block in the file (~200 lines including the bandwidth
+curves) and it has been wrong twice, so it was the obvious thing to delete:
+replace routing with one rule -- split while the node is over the tile. The
+alternative was built, benched against the model in one process, and then
+deleted, because the model won wherever it matters:
+
+| common cell, 1M | model | always split |
+| --- | --- | --- |
+| u128 random | 33.5 | 35.5 |
+| u64 random | 16.8 | 16.8 |
+| u64 sparse (8 values) | 4.8 | 5.0 |
+| u128 sparse (8 values) | 14.8 | 15.6 |
+| u32 random / 2 values / 8 values / 99 % sorted | 8.8 / 2.6 / 2.4 / 6.7 | all equal or worse |
+
+The shapes where the model loses are `bands8` and `blocks_desc`, which are not
+what 'general purpose' means, and the shapes where the single rule looked 2x
+better (`u32 sparse8` at 3.5 against 9.3) were noise: at load 0.5 with five
+rounds the same cell reads 9.1 against 9.2. Lesson, now rule 0 in this file: a
+cell under about 10 ms needs a quiet machine and five rounds before it can
+vote, and a 2x claim on one cell is a claim about the neighbours.
+
+So the model stays. What did come out of the challenge: the routing trace now
+prints one `route` line per node instead of a `shape` line and a `block` line
+repeating the same four numbers, and `sample_split_shape` no longer counts
+distinct buckets that nothing read.
+
 ## Open items
 
 1. u32 10M: the model predicts "do not split" where splitting is 12 % faster.
