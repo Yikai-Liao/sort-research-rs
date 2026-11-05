@@ -6,9 +6,9 @@ the measurement that is missing.
 
 | item | status | why |
 | --- | --- | --- |
-| N1 leaf only needs to know whether a second digit appears | open | today the leaf plans the full flat digit set and then samples for the depth guard. N1 would replace both with one question. The depth guard restored in s58 already reads a single sampled count, so the remaining gain is the planner call itself, which s51 measured at 0.0 % of instructions in the router. Worth folding into N2-A, not worth its own measurement. |
-| N2-A single-digit exit before width planning and sampling | **done** | s56: the routing-off exit now happens before any planning, verified decision-neutral (trace identical on 10 cells). |
-| N2-B stop reading the experiment switch per node | **done already** | trace() is a OnceLock initialised once per process, and leaf_mode_test is a field read, not an env lookup. No per-node env access exists. |
+| N1 leaf only needs to know whether a second digit appears | **withdrawn** | the premise expired with s58: the depth guard consumes the full distinct count (largest /= distinct, level_cost = MSD_LEVEL_PASSES * depth), so a boolean cannot preserve the decision. The earlier justification in this file -- crediting the router's 0.0 % planner count (s51) to the leaf's sampler -- also compared the wrong object. Withdrawn; no measurement needed. |
+| N2-A single-digit exit before width planning and sampling | **partly done** | s56 simplified the terminal itself (one permutation, no plan array, no second engine) and deleted stream_node/sort_with_digits, but the exit still sits after the width choice and the sample in sort_node. Moving it earlier is a control-flow tidy, not a performance item. |
+| N2-B stop reading the experiment switch per node | **real, but small** | this file was wrong: RADIX_BLOCK_SCALE *is* read from the environment on every block-size computation (default_block_size). trace() is the flag that is a OnceLock. Hook cleanup, no performance claim. |
 | N2-C locate each bucket's tail block in the prefix loop | open | block-engine change; would remove a pass over active blocks in finish_pass. Unmeasured, and r6 puts the whole descent at the 5 % bar. |
 | N3 flat leaf builds every pass's histogram in one scan | open, but see the precedent | the flat plan currently reads the tile once per pass to count, then once more to scatter. One scan that fills histograms for all passes would cut the count half, which is ~25 % of a flat tile's traffic. Space: one histogram per pass at 2 bytes per bucket (a 13-bit window and 3 passes is 48 KiB) against a 31 KiB tile -- over the O(sqrt n) budget as written, so it needs narrower windows or per-pass u8 counts to fit. That constraint is the experiment. **Precedent against it**: s50 fused a second per-record update into the very same scatter loop to save a later pass, and it cost 10-16 % of instructions for a pass saved. N3 asks for exactly that trade again (two extra ops per record to save one read pass), so its expected value is low unless the histogram update is cheaper than s50's table RMW -- which is the first thing to measure. |
 | N4 small batches: compute the digit, then stable scatter | open, same precedent | aimed at the scatter's per-record key extraction. s50 measured that adding even two read-modify-writes inside that loop costs 10-16 % of instructions, so the room here is small and the risk is the same shape. |
@@ -27,3 +27,26 @@ identical work). The ones that would survive that noise are the traversal remova
 because they change bytes moved rather than instructions -- N3 is the strongest of them
 and its blocker is the histogram memory, which is a design decision rather than a
 measurement.
+
+
+## Corrections from the round-2 revision (2026-11-05)
+
+The revised brainstorm re-read the tree at \`cd406f8\` and corrected this file in three
+places, all of which are accepted above:
+
+1. **N1 is withdrawn.** Its premise was "the leaf only needs a boolean", which s58
+   invalidated by making the guard depend on the full distinct count. The
+   justification I wrote for it borrowed s51's router measurement, which is 0.0 % for a
+   different call site; that comparison was wrong.
+2. **N2-B is real, not absent.** \`RADIX_BLOCK_SCALE\` is read per block-size computation.
+   The OnceLock I checked is \`trace()\`.
+3. **N2-A is partial, not done.** The terminal is simplified; the exit is still after the
+   width choice and the sample.
+
+Two further points accepted without change:
+
+- s58's two comparisons (27.10 vs 23.46, then 24.30 vs 24.28) must be quoted as two
+  separate paired measurements, not combined into one precise cross-build percentage.
+- The retraction of N3 as a high priority is consistent with s61's conclusion: at these
+  sizes, mechanisms that add working-set pressure per record do not pay regardless of
+  their instruction count.
