@@ -396,14 +396,13 @@ fn tile_cost(
 /// work, each discounted by what a cache-resident working set is worth. A child
 /// too large for the tile earns no discount, which is what makes the rule stop
 /// splitting once the children are still large.
-fn split_pays(cold_passes: usize) -> bool {
-    // One rule, no machine facts: while the node needs more than one pass, split it.
-    // A split costs SPLIT_PASSES passes over the node and leaves children that the
-    // tile boundary then finishes in cache; streaming costs cold_passes passes over
-    // the whole node, which is more than one pass of the same bytes. The pass count
-    // is what decides, and the ratio that used to appear here is folded into the
-    // tile boundary: a node over the tile is cold by construction.
-    cold_passes >= 2
+fn split_pays(span: usize) -> bool {
+    // One rule, no machine facts: a node whose varying bits do not fit one split
+    // digit would need a second pass, and one permutation plus cache-resident
+    // children is cheaper than that. A node that fits has nothing to gain from a
+    // split. The tile boundary already says whether the working set is resident,
+    // so no rate, no bandwidth and no cache size appear here.
+    span > RADIX
 }
 
 enum Order {
@@ -672,12 +671,12 @@ impl<T: Key> Context<T> {
             self.lsd_leaf(arr, variation);
             return;
         }
-        // What the node costs if it is streamed instead of split: the passes its
-        // varying digits need at the split width. That count is the whole rule.
-        let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
-        let cold_passes = plan_digits_packed(varying, RADIX, &mut scratch_digits);
-        // The digit the split would peel, decided once.
+        // One fact decides the route: how many bits the keys still vary in. A span
+        // that fits one split digit is one pass over the node, and splitting it
+        // cannot beat one pass; a wider span needs at least two, which the split
+        // replaces with one permutation plus children that are cache resident.
         let top = (u128::BITS - varying.leading_zeros()) as usize;
+        let span = top - varying.trailing_zeros() as usize;
         let mut radix = split_radix(records, record_bytes, self.tile_bytes)
             .min(top)
             .max(1);
@@ -712,11 +711,16 @@ impl<T: Key> Context<T> {
         // nothing left to price: the rule reads one number.
         // One line per node says everything the routing decided, so a trace diff
         // between two builds is a decision diff.
-        let routed = split_pays(cold_passes);
+        let routed = split_pays(span);
         if trace() {
+            // The old rule, kept only under the trace: the pass count the planner
+            // would need, next to the span the new rule reads. Every node prints both,
+            // so a run of the whole suite proves the two agree wherever it looks.
+            let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
+            let cold_passes = plan_digits_packed(varying, RADIX, &mut scratch_digits);
             eprintln!(
-                "route len={} bytes={} passes={} split={}",
-                records, node_bytes, cold_passes, routed
+                "route len={} bytes={} passes={} span={} split={}",
+                records, node_bytes, cold_passes, span, routed
             );
         }
         if !routed {

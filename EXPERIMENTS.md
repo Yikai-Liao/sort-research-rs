@@ -1587,6 +1587,62 @@ This closes the last item on r5-perf's list. What remains open is only what the 
 already minimises: the split is at the scatter floor, the leaf is at its pass floor, and
 the routing rule reads one counted number.
 
+### 52. An external review found two generator bugs, and the skew family it asked for says skew is not the cliff
+
+Four of its points were checked. Two were real bugs, in the harness rather than the
+sort, and both had been feeding conclusions:
+
+**1. type_top_byte was all zeros for u32 and u64.** The builder placed the varying
+byte at bit 120 of a u128 and the narrowing cast then kept nothing, so those rows
+sorted an array of *equal* keys and recorded it as "only the top byte varies". The
+shift is now derived from the target width (bits - 8). Any conclusion drawn from the
+u32/u64 type_top_byte rows is void; the rows are now what they claim.
+
+**2. sparse8 never used the full width.** The pattern went through the i32 widening,
+which puts every named pattern in the *top 32 bits* of the key, so for u128 the low 96
+bits were constant and "8 values scattered across 128 bits, sixteen passes" was
+really 8 values in the top 32 bits. Section 40's explanation was therefore wrong about
+the mechanism even though the routing decision it described was measured on real data.
+Fixed by adding sparse8_full, which draws its 8 values from the whole type width and
+then repeats them. Measured at 1M, ns per record, medians of 7 rounds:
+
+| | sparse8 | sparse8_full |
+| --- | --- | --- |
+| u32 | 4.20 | 4.21 |
+| u64 | 6.71 | 6.92 |
+| u128 | 17.16 | 17.33 |
+
+So the *result* survives the correction (within 2 %) but the old sentence about 16
+passes does not, and the record now uses sparse8_full for the claim.
+
+**3. Deep skew, the family the reviewer asked for.** Ten distinct keys, one of them
+holding 10, 50, 90 or 99 % of the records -- the case where the leaf's proxy (the
+count of non-empty buckets) cannot distinguish a flat window from a heavy tail. 1M,
+ns per record:
+
+| | skew10 | skew50 | skew90 | skew99 |
+| --- | --- | --- | --- | --- |
+| u32 | 4.20 | 4.08 | 4.33 | 4.53 |
+| u64 | 6.01 | 6.10 | 6.69 | 6.01 |
+| u128 | 14.27 | 12.62 | 11.87 | 10.80 |
+
+No cliff, and u128 gets *faster* as the tail sharpens (fewer distinct keys means less
+work in every pass). The heuristic the reviewer doubted is therefore not what decides
+here: with ten distinct values the sort finishes inside one or two passes whatever the
+leaf does, so the proxy's blindness has nothing to choose wrongly between.
+
+**4. Statistics.** The reported ratio and ns/elem are now the **median** of the
+interleaved rounds, not the minimum; the minimum keeps its own column because it is
+the stable number on a quiet machine. Every round is archived when RADIX_RAW names a
+file: commit sha, type, pattern, n, variant, round, seconds. raw_runs.csv is the first
+such archive.
+
+**5. What is weakened.** "The split is at the scatter floor" was too strong. What the
+counters show is that *all* of this harness's accesses at 1M miss the cache on this
+guest (37 misses per record), which rules out a cache-residency win but does not prove
+the split cannot be made cheaper by a different store pattern. The claim is narrowed to
+that in section 47's wording and in the ceiling report.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

@@ -315,7 +315,7 @@ fn displaced(mut v: Vec<i32>, swaps: usize) -> Vec<i32> {
 /// widening mappings above scale an i32 pattern by ~2^31, which turns two
 /// adjacent values into a 31-bit difference. These build the key directly, so
 /// "two values one bit apart" really is one varying bit.
-fn type_space_keys(pattern: &str, len: usize) -> Option<Vec<u128>> {
+fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> {
     let keys: Vec<u128> = match pattern {
         // One varying bit, 50/50: the cheapest possible non-trivial input.
         "type_two_near" => patterns::random(len).into_iter().map(|x| (x & 1) as u128).collect(),
@@ -328,17 +328,69 @@ fn type_space_keys(pattern: &str, len: usize) -> Option<Vec<u128>> {
         // Eight values one bit apart.
         "type_eight_near" => patterns::random(len).into_iter().map(|x| (x & 7) as u128).collect(),
         // Only the top byte varies.
-        "type_top_byte" => patterns::random(len)
-            .into_iter()
-            .map(|x| ((x & 0xff) as u128) << 120)
-            .collect(),
+        // The varying byte sits in the target type's own top byte. Placing it at
+        // bit 120 unconditionally made u32 and u64 rows all-zero -- the pattern
+        // sorted an array of equal keys and called it "top byte varies".
+        "type_top_byte" => {
+            let shift = bits - 8;
+            patterns::random(len)
+                .into_iter()
+                .map(|x| ((x & 0xff) as u128) << shift)
+                .collect()
+        }
+        // Few values, maximal span: 8 keys spread over the whole width of the
+        // type. The previous sparse8 went through the i32 widening, which puts every
+        // pattern in the top 32 bits, so "8 values across 128 bits" was really "8
+        // values across 32 bits" and the low 96 bits were constant.
+        // Deep skew with a fixed number of distinct keys: ten values, but one of
+        // them takes 10, 50, 90 or 99 % of the records. The leaf judges a window by
+        // the count of non-empty buckets, which cannot tell these four apart, so
+        // this is the family that says whether that heuristic picks the right
+        // strategy when the distribution is heavy tailed.
+        "skew10" | "skew50" | "skew90" | "skew99" => {
+            let share: u64 = match pattern {
+                "skew10" => 10,
+                "skew50" => 50,
+                "skew90" => 90,
+                _ => 99,
+            };
+            let mask = if bits == 128 { u128::MAX } else { (1u128 << bits) - 1 };
+            let step = mask / 10;
+            let mut state = 0x1234_5678_9abc_def1u64 ^ len as u64;
+            (0..len)
+                .map(|_| {
+                    let roll = splitmix64(&mut state) % 100;
+                    let index = if roll < share {
+                        0
+                    } else {
+                        1 + (splitmix64(&mut state) % 9)
+                    };
+                    (index as u128 * step) & mask
+                })
+                .collect()
+        }
+        "sparse8_full" => {
+            let mut state = 0x9e37_79b9_7f4a_7c15u64 ^ len as u64;
+            let mask = if bits == 128 { u128::MAX } else { (1u128 << bits) - 1 };
+            let picks: Vec<u128> = (0..8)
+                .map(|_| {
+                    let hi = splitmix64(&mut state) as u128;
+                    let lo = splitmix64(&mut state) as u128;
+                    ((hi << 64) | lo) & mask
+                })
+                .collect();
+            patterns::random(len)
+                .into_iter()
+                .map(|x| picks[(x as usize) & 7])
+                .collect()
+        }
         _ => return None,
     };
     Some(keys)
 }
 
 fn keys_u32(pattern: &str, len: usize) -> Vec<u32> {
-    if let Some(keys) = type_space_keys(pattern, len) {
+    if let Some(keys) = type_space_keys(pattern, len, 32) {
         return keys.into_iter().map(|key| key as u32).collect();
     }
     if pattern == "random_wide" {
@@ -365,7 +417,7 @@ fn keys_u16(pattern: &str, len: usize) -> Vec<u16> {
 }
 
 fn keys_u64(pattern: &str, len: usize) -> Vec<u64> {
-    if let Some(keys) = type_space_keys(pattern, len) {
+    if let Some(keys) = type_space_keys(pattern, len, 64) {
         return keys.into_iter().map(|key| key as u64).collect();
     }
     if pattern == "random_wide" {
@@ -379,7 +431,7 @@ fn keys_u64(pattern: &str, len: usize) -> Vec<u64> {
 }
 
 fn keys_u128(pattern: &str, len: usize) -> Vec<u128> {
-    if let Some(keys) = type_space_keys(pattern, len) {
+    if let Some(keys) = type_space_keys(pattern, len, 128) {
         return keys;
     }
     if pattern == "random_wide" {
@@ -500,10 +552,37 @@ fn summarize(mut times: Vec<Duration>) -> Sample {
     }
 }
 
+/// Appends one line per round when RADIX_RAW names a file.
+///
+/// A ratio cannot be recomputed from a summary, so the raw rounds are what makes a
+/// result checkable later: which key, which variant, which round, how long, and
+/// which commit produced it. The commit is asked of git once per process.
+fn archive_raw(pattern: &str, label: &str, n: usize, name: &str, round: usize, secs: f64) {
+    use std::io::Write;
+    let Ok(path) = std::env::var("RADIX_RAW") else {
+        return;
+    };
+    static SHA: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let sha = SHA.get_or_init(|| {
+        std::process::Command::new("git")
+            .args(["rev-parse", "--short", "HEAD"])
+            .output()
+            .ok()
+            .and_then(|out| String::from_utf8(out.stdout).ok())
+            .map(|s| s.trim().to_owned())
+            .unwrap_or_else(|| "unknown".into())
+    });
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{sha},{label},{pattern},{n},{name},{round},{secs:.9}");
+    }
+}
+
 fn tournament<T: Clone>(
     input: &[T],
     variants: &[(&'static str, fn(&mut [T]))],
     rounds: usize,
+    label: &str,
+    pattern: &str,
 ) -> Vec<(&'static str, Sample)> {
     let mut samples: Vec<Vec<Duration>> = vec![Vec::with_capacity(rounds); variants.len()];
     let mut buf = input.to_vec();
@@ -513,7 +592,9 @@ fn tournament<T: Clone>(
             buf.clone_from_slice(input);
             let start = Instant::now();
             (variants[idx].1)(&mut buf);
-            samples[idx].push(start.elapsed());
+            let elapsed = start.elapsed();
+            samples[idx].push(elapsed);
+            archive_raw(pattern, label, input.len(), variants[idx].0, round, elapsed.as_secs_f64());
         }
     }
     variants
@@ -547,8 +628,12 @@ fn run<T: Clone + Ord + std::fmt::Debug>(
         assert_eq!(probe, expected, "{name} produced the wrong order");
     }
 
-    let results = tournament(&input, &variants, cfg.rounds);
-    let best = results.iter().map(|r| r.1.min).min().unwrap();
+    let results = tournament(&input, &variants, cfg.rounds, label, pattern);
+    // The median of the interleaved rounds is the reported statistic, not the
+    // minimum: on a shared VM a single fast round is a lucky one, and a ratio taken
+    // from two lucky rounds is not a ratio. The minimum stays in its own column
+    // because it is the only number that is stable when the machine is quiet.
+    let best = results.iter().map(|r| r.1.median).min().unwrap();
     let bytes = std::mem::size_of::<T>();
     let ascending = input.windows(2).all(|w| w[0] <= w[1]);
     let descending = input.windows(2).all(|w| w[0] >= w[1]);
@@ -568,8 +653,8 @@ fn run<T: Clone + Ord + std::fmt::Debug>(
             name,
             format!("{:.3?}", s.min),
             format!("{:.3?}", s.median),
-            s.min.as_secs_f64() / best.as_secs_f64(),
-            s.min.as_secs_f64() * 1e9 / input.len() as f64
+            s.median.as_secs_f64() / best.as_secs_f64(),
+            s.median.as_secs_f64() * 1e9 / input.len() as f64
         );
     }
 }

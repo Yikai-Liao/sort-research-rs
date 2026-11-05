@@ -211,30 +211,27 @@ fn a_key_panic_never_loses_or_duplicates_a_record() {
 /// is what tells a simplification apart from a regression.
 #[test]
 fn route_table() {
-    // (node bytes, records, flat passes, largest child share, split?); the last two
-    // columns check the trace numbers the rule reads, not an input to it
+    // (node bytes, records, varying span in bits, largest child share, split?);
+    // the last two columns check the trace numbers the rule reads, not an input
     let routes = [
-        // uniform u64 at 1M: 8 passes, a well-divided first digit
-        (8_000_000usize, 1_000_000usize, 8usize, 0.0107f64, true),
-        // two values: one pass cannot pay for a split
-        (8_000_000, 1_000_000, 1, 0.5303, false),
-        // keys piled into one bucket: seven passes against five for a split plus a
-        // tile-sized child, so the split still pays -- this is the zipf case, where
-        // both routes measured the same
-        (8_000_000, 1_000_000, 7, 0.9980, true),
-        // a node only just over the tile: the structural rule splits anything that
-        // needs more than one pass, even a two-pass node with a narrow digit
-        (65_552, 8_194, 2, 0.0100, true),
-        // 99 % sorted: the top digit separates the stragglers
-        (8_000_000, 1_000_000, 8, 0.9980, true),
+        // uniform u64 at 1M: the keys span all 64 bits, so one digit cannot do it
+        (8_000_000usize, 1_000_000usize, 64usize, 0.0107f64, true),
+        // two values in one byte: one pass over them is the whole job
+        (8_000_000, 1_000_000, 8, 0.5303, false),
+        // keys piled into one bucket of a wide span: splitting still pays because
+        // the alternative is seven passes over the node
+        (8_000_000, 1_000_000, 56, 0.9980, true),
+        // a node only just over the tile: one bit more than a digit already splits
+        (65_552, 8_194, 9, 0.0100, true),
+        // a long spine with stragglers: the span says nothing about the skew, the
+        // sampled width is what handles that
+        (8_000_000, 1_000_000, 40, 0.9980, true),
     ];
-    for (bytes, records, flat, largest, expected) in routes {
-        // The router prices the child at the best case the leaf can reach; see the
-        // comment at the call site for the 25 % that assuming otherwise cost.
+    for (bytes, records, span, largest, expected) in routes {
         assert_eq!(
-            split_pays(flat),
+            split_pays(span),
             expected,
-            "{records} records of {} bytes, {flat} passes, largest {largest}",
+            "{records} records of {} bytes, span {span}, largest {largest}",
             bytes / records
         );
     }
