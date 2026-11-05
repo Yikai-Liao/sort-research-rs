@@ -222,17 +222,17 @@ fn route_table() {
         // tile-sized child, so the split still pays -- this is the zipf case, where
         // both routes measured the same
         (8_000_000, 1_000_000, 7, 0.9980, true),
-        // a node only just over the tile with a narrow digit
-        (65_552, 8_194, 2, 0.0100, false),
+        // a node only just over the tile: the structural rule splits anything that
+        // needs more than one pass, even a two-pass node with a narrow digit
+        (65_552, 8_194, 2, 0.0100, true),
         // 99 % sorted: the top digit separates the stragglers
         (8_000_000, 1_000_000, 8, 0.9980, true),
     ];
     for (bytes, records, flat, largest, expected) in routes {
         // The router prices the child at the best case the leaf can reach; see the
         // comment at the call site for the 25 % that assuming otherwise cost.
-        let hot = flat.min(MSD_LEVEL_PASSES);
         assert_eq!(
-            split_pays(flat, hot),
+            split_pays(flat),
             expected,
             "{records} records of {} bytes, {flat} passes, largest {largest}",
             bytes / records

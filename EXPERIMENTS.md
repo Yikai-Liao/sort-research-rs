@@ -1416,6 +1416,20 @@ uses to choose between the flat plan and its MSD level; hot_passes is still read
 routing trace. The next simplification round has to decide whether the trace line and
 the leaf's cost estimate are worth their keep, rather than the compiler's leftovers.
 
+### 44. Correction: the unit-test target was broken for three commits
+
+d45dc16 changed the split_pays signature and left tests.rs calling it with two
+arguments, so the lib test target failed to *compile* from that commit onward. The
+"6 targets green" claims in section 43 counted the six integration binaries and
+missed the lib target entirely -- the check was a count of "test result: ok" lines,
+which cannot see a compile failure. Fixed here, together with the route_table row
+that went stale when the rule changed: under cold_passes >= 2 a two-pass node now
+splits, so the "just over the tile" row flips from false to true. That row is the
+guard doing its job: it caught a real decision change that nothing else did.
+
+The check is now the full test command plus the lib target counted separately --
+7 targets, not 6 -- and section 43's claim is corrected to point here.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
