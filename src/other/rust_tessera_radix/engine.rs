@@ -991,17 +991,23 @@ impl<T: Key> Context<T> {
         let mut counts = MaybeUninit::<[u16; MAX_BUCKETS]>::uninit();
         let counts_ptr = counts.as_mut_ptr().cast::<u16>();
 
-        // The record set lives in `source` for the whole pass. A panic from the
-        // key extractor therefore never loses or duplicates a record: if the
-        // source is the tile, the tile is untouched; if it is the scratch
-        // buffer, the buffer still holds every record and is copied back.
-        let mut live_in_scratch = false;
-        let mut run = |live_in_scratch: &mut bool, counts_ptr: *mut u16| {
-            let mut source: *mut T = arr.as_mut_ptr();
+        // The record set lives in exactly one of the two buffers for the whole
+        // leaf, so the restore is the same whether a pass returns or the key
+        // extractor panics: put the set back if it is not already in the tile.
+        // Doing that in a guard, instead of catching the panic only for the
+        // types that own a resource, makes the promise hold for every type.
+        let mut guard = Restore {
+            tile: arr.as_mut_ptr(),
+            len,
+            scratch: scratch_ptr,
+            live: false,
+        };
+        {
+            let mut source: *mut T = guard.tile;
             let mut destination: *mut T = scratch_ptr;
             let mut source_is_tile = true;
             for index in (0..passes).rev() {
-                *live_in_scratch = !source_is_tile;
+                guard.live = !source_is_tile;
                 // SAFETY: the source holds `len` initialized records, the
                 // destination has room for `len` records, and both are distinct
                 // allocations that stay alive for the whole leaf.
@@ -1011,36 +1017,35 @@ impl<T: Key> Context<T> {
                 std::mem::swap(&mut source, &mut destination);
                 source_is_tile = !source_is_tile;
             }
-            source_is_tile
-        };
+            guard.live = !source_is_tile;
+        }
+    }
+}
 
-        let ended_in_tile = if const { std::mem::needs_drop::<T>() } {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run(&mut live_in_scratch, counts_ptr)
-            })) {
-                Ok(ended_in_tile) => ended_in_tile,
-                Err(payload) => {
-                    if live_in_scratch {
-                        // SAFETY: the scratch buffer holds the complete record
-                        // set; the tile only holds stale duplicates or a stale
-                        // prefix from the previous pass.
-                        unsafe {
-                            std::ptr::copy_nonoverlapping(scratch_ptr, arr.as_mut_ptr(), len);
-                        }
-                    }
-                    std::panic::resume_unwind(payload);
-                }
-            }
-        } else {
-            run(&mut live_in_scratch, counts_ptr)
-        };
+/// Puts the record set back in the tile when a leaf stops with it in scratch.
+///
+/// The scratch buffer holds every record of the tile while a pass is in flight,
+/// so one copy back restores the complete set: on an odd number of passes, and on
+/// a panic from the key extractor, however far into the pass it happened. A guard
+/// covers both, so the promise holds for every record type, not only the owning
+/// ones: a duplicated record is a double free there, while a plain key type would
+/// otherwise keep stale duplicates in the tile.
+/// Raw pointers on purpose: the leaf owns both buffers for the whole pass, and a
+/// shared reference to the tile would alias the writes the passes make through it.
+struct Restore<T: Key> {
+    tile: *mut T,
+    len: usize,
+    scratch: *mut T,
+    live: bool,
+}
 
-        if !ended_in_tile {
-            // SAFETY: an odd number of passes left the complete record set in
-            // the scratch buffer; the tile slots being overwritten are stale
-            // records that were already moved out.
+impl<T: Key> Drop for Restore<T> {
+    fn drop(&mut self) {
+        if self.live {
+            // SAFETY: the scratch buffer holds initialized records for the whole
+            // tile; the slots being overwritten are stale records already moved out.
             unsafe {
-                std::ptr::copy_nonoverlapping(scratch_ptr, arr.as_mut_ptr(), len);
+                std::ptr::copy_nonoverlapping(self.scratch, self.tile, self.len);
             }
         }
     }

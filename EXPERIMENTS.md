@@ -821,7 +821,48 @@ prints one `route` line per node instead of a `shape` line and a `block` line
 repeating the same four numbers, and `sample_split_shape` no longer counts
 distinct buckets that nothing read.
 
+### 27. The level-by-level route is our loop now
+
+The model sometimes decides that splitting a node costs more than running the
+radix passes over it in place. That route used to call the block engine's own
+`sort_with_variation` -- another implementation, closed to us. It now runs from
+this module's digit planner on the block engine's permutation primitive
+(`core::sort_with_digits`: one engine for all passes, one compaction at the end).
+
+A first attempt drove the single-pass `partition_digit` in a loop and lost 7-20 %
+on the nodes that take this route, because every call built an engine and
+compacted. The shared-engine version is at parity or better, measured in one
+process with both implementations as bench variants (`tessera` against
+`tessera_engine`), 1M records:
+
+| cell | our loop | block engine's | cell | our loop | block engine's |
+| --- | --- | --- | --- | --- | --- |
+| u64 random | 18.8 | 19.5 | u128 random | 34.4 | 34.5 |
+| u64 sparse | 6.1 | 7.4 | u128 sparse | 18.0 | 18.3 |
+| u64 zipf | 11.2 | 11.6 | u128 zipf | 21.6 | 21.5 |
+| u64 two values | 4.7 | 4.6 | u128 two values | 9.0 | 9.6 |
+
+So the sort no longer depends on another algorithm, only on the permutation
+primitive -- which is the layer we can still replace. The `StreamMode` knob stays
+as that comparison's measurement surface, like `LeafMode`.
+
+Also from the review: the routing branch called `split_pays` twice (the first arm
+returns, so the second was dead), and the leaf's panic restore had two
+implementations -- a `catch_unwind` around the types that own a resource and
+nothing at all for the rest -- now one `Drop` guard. Mutation testing did not show
+the old gating losing or duplicating a record (a key panic lands in the counting
+phase, before any record moves), so that change is a simplification and a removed
+untested branch, not a bug fix. A new sweep with a plain record type covers the
+branch that previously did not exist.
+
 ## Open items
+
+0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
+   LSD passes or one MSD level, chosen by a cost estimate. The ablation that is
+   missing is MSD-only (no flat plan): if a single MSD-based leaf is within the
+   5 % bar on the common cells, the leaf loses a strategy. Old data says flat wins
+   on low-cardinality tiles by 5-10 %, so this has to be measured per cell, in one
+   process, against the same bench.
 
 1. u32 10M: the model predicts "do not split" where splitting is 12 % faster.
    The floor of the cold-pass cost (3.0 ns/record) is what misplaces it; a
