@@ -797,7 +797,7 @@ impl<'a, T> Sorter<'a, T> {
         let mut visited_start = 0;
         let mut callback_panic = None;
         let mut visit_due = |start: usize| {
-            let Some(mut callback) = visit.take() else {
+            let Some(callback) = visit.take() else {
                 return;
             };
             while visited < ends.len() && ends[visited] <= start {
