@@ -1528,6 +1528,38 @@ So the cap is already doing the tuning, and the lever is closed. This is a measu
 negative, not an untested guess: the hook stays (it is how the next person re-checks
 after changing the tile), and no shipped path is pinned.
 
+### 49. Iteration 6: a split widens its digit when the window does not divide
+
+An MSD level may only peel the highest bits -- a lower window would order by the wrong
+bits -- so the single freedom a level has is how many of them to peel. Zipf-shaped keys
+concentrate in the top bits, so at the size-chosen width the level puts almost every
+record in one bucket and the child pays the same two passes again for nothing.
+
+The rule now samples (the existing sampled_buckets, one pass over 128 keys) and widens
+the digit by two bits until a quarter of the buckets are occupied, up to
+SPLIT_RADIX_MAX = 12 (the block engine asserts that bound).
+
+Measured in instructions, which is layout- and frequency-independent, 1M unless noted
+(otherwise identical build, -0.0 % on the cells not listed):
+
+| cell | instructions |
+| --- | --- |
+| u32 zipf | **-17.4 %** |
+| u128 zipf | **-16.0 %** |
+| u64 zipf | -3.6 % |
+| u32/u64/u128 sparse8 | +1.6 / +1.9 / +2.9 % |
+| everything else, including 10M random | within +-0.5 % |
+
+Wall clock on a loaded machine said u64 random +16.7 % and mixed_runs +13.6 % for the
+same build; the instruction counts for those two cells are 4.293e9 against 4.294e9 and
+4.422e9 against 4.422e9, i.e. the identical work, so those wall numbers are the VM
+drifting and not the change. This is exactly the case the two-metric rule exists for.
+
+Kept: it is the first change since the structural router to move a mainstream cell by
+more than the band, it fires only on concentrated nodes (random samples already pass the
+quarter test, so their decision and their work are unmoved), and it costs 2-3 % of
+instructions on few-value cells where the absolute time is 3-4 memcpy units.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

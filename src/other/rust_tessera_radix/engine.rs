@@ -13,15 +13,22 @@
 //! cost a third as much each, which is why this sort improves with n where
 //! block LSD degrades.
 //!
-//! Four decisions use measured costs instead of thresholds:
+//! Four decisions are made from one counted quantity each, not from thresholds:
 //!
 //! - **Sort at all**: a monotone input is answered by one probe (`probe_order`),
 //!   ascending immediately and descending by a reversal with its equal-key runs
 //!   repaired. Nothing else in the sort can see order, and the probe costs two
 //!   comparisons on random data because it gives up at the first inversion.
-//! - **Split or stream**: compare streaming the node cold against the split plus
-//!   its cache-resident passes, charging the split for the passes on the largest
-//!   child it would actually create (`split_pays`, `sample_split_shape`).
+//! - **Split or stream**: count the passes the node needs if it is streamed, and
+//!   split whenever there is more than one of them (`split_pays`). The
+//!   tile boundary already says whether the working set is cache resident, so
+//!   the counting rule needs no rate, no bandwidth and no cache size.
+//! - **How wide a split peels**: a window that concentrates the keys buys nothing,
+//!   so a sampled node widens its digit until a quarter of its buckets are
+//!   occupied (up to `SPLIT_RADIX_MAX`). Zipf-shaped keys that used to
+//!   repeat the same one-bucket level get a level that divides: -17 % of the
+//!   work at 1M, measured in instructions, with random nodes unmoved because
+//!   their window already passes the sample.
 //! - **Leaf digit width and placement**: wider digits mean fewer passes but a
 //!   bigger bucket table, so the width is the widest whose table is no larger
 //!   than the tile itself (`leaf_radix`), and the windows are placed on the
@@ -59,6 +66,12 @@ type SortKey<T> = <T as Key>::Value;
 /// Bits per digit for the MSD split and for the block engine's own LSD passes.
 /// The block engine's block-size coefficient is tuned for this width.
 const RADIX: usize = 8;
+
+/// Widest digit the split may peel. The block engine's bucket table is sized for
+/// 12 bits (it asserts the bound), and a wider fan-out makes every write in the
+/// split's last pass land in a different 40 KiB region -- measured in section 21
+/// as a loss even when the extra buckets are all occupied.
+const SPLIT_RADIX_MAX: usize = 12;
 /// Widest digit a leaf may use. The cursor table is `2 << width` bytes of
 /// `u16`, so this is a 32 KiB stack array in the worst case; the leaf only
 /// clears and scans the part its own digit uses.
@@ -665,9 +678,33 @@ impl<T: Key> Context<T> {
         let cold_passes = plan_digits_packed(varying, RADIX, &mut scratch_digits);
         // The digit the split would peel, decided once.
         let top = (u128::BITS - varying.leading_zeros()) as usize;
-        let radix = split_radix(records, record_bytes, self.tile_bytes)
+        let mut radix = split_radix(records, record_bytes, self.tile_bytes)
             .min(top)
             .max(1);
+        // A window that puts nearly every record in one bucket buys nothing: the
+        // child repeats the same decision one level down and the level's two passes
+        // are wasted. An MSD level may only peel the *highest* bits (a lower window
+        // would order by the wrong bits), so the single freedom it has is how many
+        // of them to peel: widening pulls lower bits into the bucket index and
+        // splits a concentrated key set into distinct buckets.
+        //
+        // The sample costs one pass over MSD_SAMPLE keys, which at the top of a
+        // 15 MiB node is nothing, and it only ever widens a node whose sample shows
+        // the window does not divide -- a random node is already balanced at the
+        // size-chosen width, so its decision does not move.
+        while radix < top && radix + 2 <= SPLIT_RADIX_MAX {
+            let probe = Digit {
+                shift: top - radix,
+                width: radix,
+            };
+            // A quarter of the buckets occupied is the bar: below it the level is
+            // mostly one bucket and a wider one is strictly better, above it the
+            // extra table and boundary reads cost more than the balance they buy.
+            if sampled_buckets(arr, probe) * 4 >= 1usize << radix {
+                break;
+            }
+            radix += 2;
+        }
         let digit = Digit {
             shift: top - radix,
             width: radix,
