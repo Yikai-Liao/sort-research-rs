@@ -1859,6 +1859,29 @@ quiet machine: the gate, the table bound, and the two-pass structure are all in 
 section, and the one number that would decide it is a paired comparison of
 random_sorted99 and zipf against a flat-only build with more than five pairs.
 
+### 61. N3 (fuse the next pass's histogram into the scatter): fewer instructions, more time
+
+Implemented the full mechanism: the flat plan's scatter now accumulates the next pass's
+histogram while it has the key in hand, alternating two cursor tables, so the flat plan
+reads the tile once per pass instead of twice.
+
+Instructions say it works: u64 random -1.2 %, u32 random -4.9 %, u64 99 % sorted -6.8 %,
+u64 bands8 -6.8 %, u128 random +5.9 %.
+
+Wall clock says no, and not marginally: u64 random -4.4 %, u32 random **+21.6 %**,
+u128 random +4.3 %, 99 % sorted **+11.0 %**, bands8 **+7.4 %**.
+
+The mechanism is the same one section 59 exposed from the other side: the fused pass
+touches a second 16 KiB cursor table in random order once per record, which does not
+cost instructions worth counting but does cost cache. The tile is 31 KiB; two hot tables
+of that size plus the records no longer fit, so the pass that "saves a read" evicts the
+data it was reading.
+
+Reverted. This is the third mechanism in a row (s59, s60, s61) whose instruction count
+improves while its wall clock gets worse, which is now the strongest single conclusion
+this notebook has: **for this design, at these sizes, nothing that adds working-set
+pressure per record can pay, however few instructions it saves.**
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
