@@ -13,7 +13,7 @@ with the reason it has not been taken. Nothing here is "planned" without a verdi
 | 04 export bucket boundaries | measured at the bar | r6 puts it at ~1.5 ns/record; its variant that folds the aggregates into the permutation was measured slower (s50, +10-16% instructions), and the cursor table this notebook did measure was 48% faster only inside a tile. Open, expected < 5%. |
 | 05 reuse one sample across widths, estimate max share | open | the estimate it would feed no longer exists (s53). Only worth it if a share-based decision comes back. |
 | 06 reuse the block workspace across nodes | open | plausible for many mid-sized children; the split allocates per node today. Not measured. |
-| 07 block size / layout sweep | **partly done** | fan-out sweeps at 1M and 10M (s21), leaf width (s48). Block size itself is unswept; RADIX_SPLIT_WIDTH and RADIX_LEAF_WIDTH are the hooks. |
+| 07 block size / layout sweep | **done**, negative | s57: RADIX_BLOCK_SCALE over 0.5x-4x spans 1.0-2.1% of instructions, no step near the bar. Fan-out sweeps (s21) and leaf width (s48) were already done. |
 | 08 real MSD-only ablation | **done** | s53: MSD-only is within noise of auto on 14/15 cells and catastrophically better than flat-only on wide records (u128 random 82.1 against 31.2). |
 | 09 indirect tile sort for wide records | open | a specialised path; the tile is the only place this design touches wide payloads, so it is the one place a new structure could pay. |
 | 10 block-boundary mask instead of end pointers | open | hot-loop metadata; unmeasured. |
@@ -22,7 +22,7 @@ with the reason it has not been taken. Nothing here is "planned" without a verdi
 | 13 fuse compact with leaf consumption | rejected | s50 is its cheapest form and it lost. |
 | 14 ordered equal-bucket path for few wide values | open | zipf and few-value cells are where a comparison sort beats us; a separate prototype, not a routing change. |
 | 15 insertion with cached key + one rotation | open | small experiment, no measurement yet. |
-| 16 probe order before the variation scan | **already the case** | probe_order runs first; the variation scan follows it. |
+| 16 probe order before the variation scan | **already the case** | probe_order runs first; the variation scan follows it, so the cheap detector already runs before the expensive one. |
 
 ## What the open rows have in common
 
