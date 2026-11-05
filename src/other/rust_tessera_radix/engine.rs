@@ -251,13 +251,6 @@ fn trace() -> bool {
 struct Context<T> {
     /// Scratch for the leaves; holds the largest tile seen so far.
     scratch: Vec<MaybeUninit<T>>,
-    /// Where each record of a tile has to move for one stable MSD level, and the
-    /// bitmap that says which slots the in-place apply has already filled. Two
-    /// bytes per record instead of the record-sized buffer the copy-back needed,
-    /// which is what keeps the leaf's own space below the tile it works on.
-    positions: Vec<u16>,
-    visited: Vec<u64>,
-    starts: Vec<u16>,
     tile_bytes: usize,
     /// Tiles at or below this many records use an insertion sort.
     insertion_max: usize,
@@ -338,9 +331,6 @@ fn run<T: Key>(arr: &mut [T], policy: Policy, msd_only_test: bool) {
     }
     let mut context = Context {
         scratch: Vec::new(),
-        positions: Vec::new(),
-        visited: Vec::new(),
-        starts: Vec::new(),
         tile_bytes,
         insertion_max: policy.insertion_max,
         msd_only_test,
@@ -697,19 +687,6 @@ impl<T: Key> Context<T> {
     }
 
 
-    fn ensure_positions(&mut self, len: usize, buckets: usize) {
-        if self.positions.len() < len {
-            self.positions.resize(len, 0);
-        }
-        let words = len.div_ceil(64);
-        if self.visited.len() < words {
-            self.visited.resize(words, 0);
-        }
-        if self.starts.len() < buckets + 1 {
-            self.starts.resize(buckets + 1, 0);
-        }
-    }
-
     fn set_scratch_len(&mut self, len: usize) {
         if self.scratch.len() < len {
             self.scratch.clear();
@@ -731,112 +708,48 @@ impl<T: Key> Context<T> {
     /// Traffic, in units of one tile traversal: the histogram is one, the scatter
     /// is two, the copy back is two. A flat pass is two, so this pays off from
     /// three flat passes upwards, which is what the caller checks.
-    /// One stable MSD level over the tile, then each bucket finished on its own.
-    ///
-    /// The level is applied in place. A count pass and a rank pass write each
-    /// record's destination into two bytes; then every record is moved exactly once
-    /// along its cycle, with a bitmap saying which slots are already filled. That is
-    /// two reads plus one apply, against the buffer version's histogram, scatter into
-    /// the buffer, and full copy back: two fewer traversals of record bytes, and the
-    /// level no longer needs a record-sized buffer, only two bytes per record.
-    ///
-    /// Stability is in the rank, not in how the move is made: a record's destination
-    /// is its bucket start plus the number of equal keys before it, so equal keys keep
-    /// their order and the buckets come out contiguous.
-    ///
-    /// Panic safety is structural: no key is extracted after the rank pass, and the
-    /// rank pass only reads, so a panicking extractor leaves the tile intact.
     fn msd_leaf(&mut self, arr: &mut [T], digit: Digit) {
         let len = arr.len();
+        self.set_scratch_len(len);
+        let scratch = self.scratch.as_mut_ptr().cast::<T>();
+        let mut counts = MaybeUninit::<[u16; MAX_BUCKETS]>::uninit();
+        let counts_ptr = counts.as_mut_ptr().cast::<u16>();
+        // SAFETY: the tile holds `len` initialized records, the scratch buffer has
+        // room for `len`, and they are distinct allocations. The tile is only read
+        // here, so a panic from the key extractor leaves the whole record set in
+        // the tile and nothing needs undoing -- unlike the flat plan, this level
+        // needs no recovery of its own.
+        unsafe { counting_pass(arr.as_ptr(), scratch, len, digit, counts_ptr) };
+        // The scatter wrote every record exactly once, so the scratch is a complete
+        // record set and the tile is stale. Copying back is therefore valid whether
+        // or not the pass finished, and it restores the invariant the rest of the
+        // leaf relies on: the tile always holds the set.
+        // SAFETY: as above, plus `len` records were written to the scratch.
+        unsafe { std::ptr::copy_nonoverlapping(scratch, arr.as_mut_ptr(), len) };
+        // Boundaries come from the cursor table rather than from comparing keys:
+        // with a bucket per record the comparison walk is one unpredictable branch
+        // per record, which measured 48 % slower than reading the ends this pass
+        // already computed. A bucket of one record is done; a larger one has its
+        // variation re-read, and a flat plan on equal keys returns immediately.
         let buckets = 1usize << digit.width;
-        self.ensure_positions(len, buckets);
-        let mask = digit.mask::<T>();
-        let shift = T::Value::from_usize(digit.shift);
-        let positions = &mut self.positions[..len];
-        let visited = &mut self.visited[..len.div_ceil(64)];
-        let self_starts = &mut self.starts[..buckets + 1];
-
-        // Histogram, then prefix sums: starts[b] is where bucket b begins, and the
-        // boundaries stay put from here on.
-        self_starts[..buckets].fill(0);
-        for record in arr.iter() {
-            let bucket = ((record.key() & mask) >> shift).to_usize();
-            self_starts[bucket] = self_starts[bucket].saturating_add(1);
-        }
-        let mut sum = 0u16;
-        for slot in 0..buckets {
-            let count = self_starts[slot];
-            self_starts[slot] = sum;
-            sum = sum.saturating_add(count);
-        }
-        self_starts[buckets] = sum;
-
-        // Rank pass: a running position per bucket, walked forward, so equal keys get
-        // increasing destinations inside their bucket. The cursor table is the only
-        // per-bucket state, and it is leaf-sized, not record-sized.
-        let mut cursors = MaybeUninit::<[u16; MAX_BUCKETS]>::uninit();
-        let cursor = cursors.as_mut_ptr().cast::<u16>();
-        for slot in 0..buckets {
-            // SAFETY: the array holds MAX_BUCKETS entries and buckets <= MAX_BUCKETS.
-            unsafe { *cursor.add(slot) = self_starts[slot] };
-        }
-        for (index, record) in arr.iter().enumerate() {
-            let bucket = ((record.key() & mask) >> shift).to_usize();
-            // SAFETY: as above; bucket < buckets.
-            unsafe {
-                positions[index] = *cursor.add(bucket);
-                *cursor.add(bucket) = positions[index].saturating_add(1);
-            }
-        }
-
-        // Apply the permutation in place. Each cycle pushes the held record to its own
-        // destination and picks up the record that was there, so every slot is written
-        // once and the held record at the end of the cycle is the one that started it.
-        visited.fill(0);
-        let base = arr.as_mut_ptr();
-        for start in 0..len {
-            if visited[start / 64] >> (start % 64) & 1 == 1 {
-                continue;
-            }
-            let mut held = unsafe { std::ptr::read(base.add(start)) };
-            visited[start / 64] |= 1 << (start % 64);
-            let mut current = start;
-            loop {
-                let dest = (positions[current] as usize).min(len - 1);
-                // A destination already filled means the map is not a permutation, which
-                // only a key that is not a function of its record can cause; stopping
-                // keeps the walk finite and every write inside the tile.
-                if visited[dest / 64] >> (dest % 64) & 1 == 1 {
-                    break;
-                }
-                visited[dest / 64] |= 1 << (dest % 64);
-                // SAFETY: dest < len, both slots hold initialized records, and the swap
-                // moves the held record into the slot that was read.
-                unsafe {
-                    let displaced = std::ptr::read(base.add(dest));
-                    std::ptr::write(base.add(dest), held);
-                    held = displaced;
-                }
-                current = dest;
-            }
-            // SAFETY: every slot holds an initialized record; the one still held is the
-            // record that belongs at the cycle's first slot.
-            unsafe { std::ptr::write(base.add(start), held) };
-        }
-
+        let mut start = 0;
         for bucket in 0..buckets {
-            let start = self.starts[bucket] as usize;
-            let end = self.starts[bucket + 1] as usize;
+            // SAFETY: the pass filled every entry below buckets, and cumulative
+            // counts never decrease, so start <= end <= len.
+            let end = unsafe { *counts_ptr.add(bucket) } as usize;
             debug_assert!(start <= end && end <= len);
+            // A bucket that goes straight to insertion does not need its variation:
+            // the scan would only be thrown away, and a leaf-sized bucket is where
+            // that scan is a measurable share of the bucket's own work.
             if end - start > self.insertion_max {
                 let (union, intersection) = block::varying_key_bits(&arr[start..end]);
                 self.lsd_leaf(&mut arr[start..end], Variation { union, intersection });
             } else if end > start + 1 {
                 insertion_leaf(&mut arr[start..end]);
             }
+            start = end;
         }
     }
-
 
     /// Stable LSD counting sort over the tile, driven by a private buffer. One
     /// pass per remaining digit, ping-ponging between the tile and the buffer.

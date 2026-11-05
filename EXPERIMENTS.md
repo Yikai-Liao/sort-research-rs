@@ -1136,7 +1136,40 @@ the review could not match belong to the artifact branch `block-lsd-artifacts`
 (`NUMBERS.md` there maps each old number to its raw log); every number quoted in
 *this* file was produced on this branch by the commands in §0.
 
-### 36. The leaf level moves records once, in place
+### 36. REVERTED: the in-place leaf level is slower, and was measured wrong the first time
+
+This section used to claim a 7 % win for applying the leaf's MSD permutation in
+place with a visited map. It was wrong, and the way it was wrong is worth keeping:
+the evidence was a single paired comparison of *cycles* on a shared machine whose
+cycle counts swing by 10 % (§0, §26). The independent vector review priced the
+same change and found the apply three times the cost of the scatter it replaced,
+so the claim was re-tested properly -- four alternating runs, ten rounds each,
+wall clock, two cells:
+
+| u64 1M | scatter + copy back | in place |
+| --- | --- | --- |
+| run 1 | 19.5 | 26.0 |
+| run 2 | 18.7 | 25.8 |
+| u128 1M run 1 | 34.3 | 42.6 |
+| u128 1M run 2 | 34.9 | 40.1 |
+
+The in-place walk is a dependent chain of random hops plus visited-map traffic,
+while the scatter it replaced writes sequentially into 256 streams and the copy
+back is a straight memcpy; within a 31-62 KiB tile, sequential wins. Reverted in
+the same commit that records this, with the reverted build measuring 17.3 (u64
+1M) and 31.0 (u128 1M) in the same window. Two lessons: a cycle-count delta on
+this machine is not evidence, and a microbench that isolates a phase can price it
+exactly backwards when the phase is chain-bound rather than bandwidth-bound.
+
+Consequences: the follow-on idea of applying one in-place level over a whole
+split child (125-33 % on record128/10M) dies with it, since it uses the same
+apply; and the leaf's MSD level keeps its scatter + copy back.
+
+What survived from the same commit: a bucket that goes straight to insertion no
+longer has its variation scanned, which is worth -6.7 % of instructions on u128
+sparse8 and nothing anywhere else.
+
+(Superseded:)
 
 The tile's MSD level used to scatter into the leaf buffer and copy the whole set
 back: histogram, scatter (read + write), copy back (read + write). The copy back
