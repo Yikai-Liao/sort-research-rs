@@ -1643,6 +1643,33 @@ guest (37 misses per record), which rules out a cache-residency win but does not
 the split cannot be made cheaper by a different store pattern. The claim is narrowed to
 that in section 47's wording and in the ceiling report.
 
+### 51. The router stops running the leaf's planner to answer a yes/no question
+
+The last artefact of the deleted pricing model (section 45) was that the router still
+called plan_digits_packed -- the leaf's window planner -- to obtain a pass count, and
+then compared that count to 2. One window of RADIX bits covers the node's varying bits
+iff their span is at most RADIX, so the pass count is the span in disguise:
+
+    passes(map_still_needed_here) >= 2   iff   high - low + 1 > RADIX
+
+The router now computes that span directly (top minus trailing zeros of the varying
+mask) and compares it to RADIX. The word "passes" no longer appears in a routing
+decision, and the router no longer inherits the planner's window policy: a future
+change to how the leaf packs windows would silently have moved the split decision
+before this change, and cannot now.
+
+Equivalence is evidence, not algebra alone:
+
+- **Trace diff over the suite**: every routing node prints both the old pass count and
+  the new span under RADIX_TRACE, and a run of 15 cells at 1M plus 4 at 10M produced
+  **4770 nodes with 0 disagreements** between (passes >= 2) and (span > 8).
+- **route_table** was repinned to span values, with the same five shapes and the same
+  expected decisions.
+- **Instructions**: u64 1M 3.3468e9 against 3.3464e9, u128 6.7569e9 against 6.7577e9,
+  u32 2.5954e9 against 2.5962e9 -- flat, i.e. the planner call was not doing measurable
+  work, so this is a decision-identity change and is reported as one, not as a speedup.
+- 7 test targets and Miri 7/7 pass on the new rule.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
