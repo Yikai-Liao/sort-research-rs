@@ -1445,6 +1445,37 @@ and after. The trace line itself lost its hot field, which is the one visible ch
 Engine: 493 -> 490 code lines. Small, and correctly so: what was deleted was not code
 that ran, it was the residue of a model that had already been replaced.
 
+### 46. The split is not the cheap half: 29 % of u64 and 52 % of u128 at 1M
+
+The r4 performance review measured the same leaf in isolation (sorting 3900 records,
+which is exactly what one 1M child becomes) and subtracted it from the full cell:
+
+| cell | leaf only | full 1M | split = difference |
+| --- | --- | --- | --- |
+| u64 random | 13.2-13.5 | 18.9-19.8 | 5.4-6.6 ns (29-34 %) |
+| u128 random | 14.1-14.4 | 30.5-31.5 | 16.1-17.4 ns (52-55 %) |
+
+perf agrees on u64: leaf 36 % of samples, split scatter 10 %, split compact 5.5 %,
+router 5 %.
+
+Compare the split with its own floor. A split is two read-write passes over the node
+(scatter, then compact), so at one memcpy unit per pass it should cost 2 x 1.6 = 3.2 ns
+per u64 record and 2 x 3.2 = 6.4 ns per u128 record. Measured: 5.4-6.6 and 16.1-17.4.
+So **the split runs at 1.7-2.1x its pass floor for u64 and 2.5-2.7x for u128**, while
+the leaf is close to its own. That is now the largest single gap in the design, and it
+explains why u128 lands at 9.1 memcpy units against a 16-pass naive floor: the split,
+not the passes, is what costs.
+
+Why it is slow is a testable hypothesis, not a mystery: the block engine scatters into
+256 output streams, and every store into a fresh line pays for a read-for-ownership
+first, so a "2 pass" operation moves about 3x the bytes it accounts for. The u128 number
+being the worse of the two is consistent with that: 16-byte records give each stream a
+wider footprint, so fewer streams stay resident between visits.
+
+Next iteration: attack the split's traffic, not the leaf's. Cheapest falsification of
+the RFO hypothesis first -- perf stat of LLC-store-misses against bytes written on the
+1M split -- then one mechanism change.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
