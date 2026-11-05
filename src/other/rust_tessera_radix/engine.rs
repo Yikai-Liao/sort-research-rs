@@ -595,7 +595,13 @@ fn leaf_radix(records: usize, record_bytes: usize) -> usize {
     let tile_bytes = records.saturating_mul(record_bytes);
     // The widest table that still fits: `2 * 2^width` bytes of cursors.
     let widest = (usize::BITS - (tile_bytes / 2).max(1).leading_zeros()) as usize - 1;
-    widest.clamp(LEAF_RADIX_MIN, LEAF_RADIX_MAX)
+    // A digit wider than the records can fill is not free: the counter table still
+    // has to be cleared and scanned, and every bucket still costs a boundary read.
+    // A 128-byte tile of 278 records was picking 13 bits, i.e. 8192 buckets for 278
+    // records; capping at two bits above the record count keeps the table in the
+    // same order as the data it sorts.
+    let by_records = (usize::BITS - records.max(1).leading_zeros()) as usize + 2;
+    widest.min(by_records).clamp(LEAF_RADIX_MIN, LEAF_RADIX_MAX)
 }
 
 /// Digit width for one MSD split.

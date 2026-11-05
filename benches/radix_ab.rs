@@ -442,30 +442,35 @@ impl sort_research_rs::other::radix_support::Key for Record128 {
 }
 
 fn keys_record128(pattern: &str, len: usize) -> Vec<Record128> {
-    let f = if pattern == "random_wide" {
-        wide_u64
+    // A full-width row draws the key itself; the named patterns keep their shape.
+    let keys: Vec<u64> = if pattern == "random_wide" {
+        full_width_u64(len)
     } else {
-        narrow_u64
+        base_keys(pattern, len)
+            .into_iter()
+            .map(narrow_u64)
+            .collect()
     };
-    base_keys(pattern, len)
-        .into_iter()
-        .map(|x| Record128 {
-            key: f(x),
+    keys.into_iter()
+        .map(|key| Record128 {
+            key,
             _padding: [0; 120],
         })
         .collect()
 }
 
 fn keys_record16(pattern: &str, len: usize) -> Vec<Record16> {
-    let f = if pattern == "random_wide" {
-        wide_u64
+    let keys: Vec<u64> = if pattern == "random_wide" {
+        full_width_u64(len)
     } else {
-        narrow_u64
+        base_keys(pattern, len)
+            .into_iter()
+            .map(narrow_u64)
+            .collect()
     };
-    base_keys(pattern, len)
-        .into_iter()
-        .map(|x| Record16 {
-            key: f(x),
+    keys.into_iter()
+        .map(|key| Record16 {
+            key,
             _padding: [0; 8],
         })
         .collect()

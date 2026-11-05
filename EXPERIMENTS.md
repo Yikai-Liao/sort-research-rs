@@ -1164,6 +1164,31 @@ Same commit: a bucket that goes straight to insertion no longer has its
 variation scanned first (the scan was thrown away), which is where the -6.7 % on
 u128 sparse8's instructions came from.
 
+### 37. A leaf digit wider than the records can fill was costing 46 % on wide records
+
+The leaf picked its digit width from the tile's *bytes*: 14 bits for a 64 KiB tile
+regardless of how many records that tile holds. For 8-byte records that is 8192
+records against 16384 buckets, which is sane. For 128-byte records the tile holds
+278 records against the same 8192 buckets, and each leaf then cleared and scanned a
+table thirty times the size of its data. The trace showed it directly:
+`leaf len=278 flat=4 distinct=127 msd_cost=3`.
+
+The width is now also capped at two bits above the record count, and the record
+types in the harness were given full-width keys (they had no `random_wide` row at
+all, so the type had never been measured on a random array). record128 at 1M, ns
+per record, 5 rounds:
+
+| | before | after | ipnsort |
+| --- | --- | --- | --- |
+| record128 1M | 290.1 | **155.6** | 183.9 |
+| record16 1M | 34.1 | 34.7 | 44.2 |
+
+So the widest supported record went from 1.48x behind ipnsort to 1.18x ahead, and
+the 8-byte-record cells are untouched by construction (`log2(8192) + 2 = 15` is
+above the 14 they already used), which the paired run confirms: 26.03 against
+26.17 ms, 25.75 against 26.20 ms on u64 1M with a load average of 1.1 -- the
+machine was slower overall in that window, the two builds were not.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
