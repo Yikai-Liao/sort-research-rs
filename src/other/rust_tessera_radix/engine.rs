@@ -483,6 +483,12 @@ fn trace() -> bool {
     *TRACE.get_or_init(|| std::env::var_os("RADIX_TRACE").is_some())
 }
 
+fn fuse_leaf() -> bool {
+    use std::sync::OnceLock;
+    static FUSE: OnceLock<bool> = OnceLock::new();
+    *FUSE.get_or_init(|| std::env::var("RADIX_FUSE_LEAF").map_or(true, |v| v != "0"))
+}
+
 struct Context<T> {
     /// Scratch for the leaves; holds the largest tile seen so far.
     scratch: Vec<MaybeUninit<T>>,
@@ -1045,18 +1051,37 @@ impl<T: Key> Context<T> {
         if trace() {
             eprintln!("  split radix={} shift={}", radix, top - radix);
         }
-        let ends = block::partition_digit_with_ends(arr, digit.width, digit.shift);
         // Within a bucket every key shares the split digit, so those bits are
         // removed from what the child still has to scan for. The block pass
         // already knows where each bucket ends; using those ends avoids a
         // second digit comparison per record.
         let candidate = varying & !digit.mask::<T>().to_u128();
+        let fused = fuse_leaf();
+        let tile_bytes = self.tile_bytes;
+        let record_bytes = std::mem::size_of::<T>();
+        let ends = if fused {
+            // A leaf child is sorted as soon as the block pass has copied it
+            // into input. The records are still in cache, so the leaf's first
+            // histogram pass does not refetch the whole tile from memory.
+            let mut visit = |child: &mut [T]| {
+                if child.len().saturating_mul(record_bytes) <= tile_bytes {
+                    let variation = scan_variation(child, candidate);
+                    self.lsd_leaf(child, variation);
+                }
+            };
+            block::partition_digit_with_ends_and_visit(arr, digit.width, digit.shift, visit)
+        } else {
+            block::partition_digit_with_ends(arr, digit.width, digit.shift)
+        };
         let mut start = 0;
         for &end in &ends {
             if end > start {
                 let child = &mut arr[start..end];
-                let variation = scan_variation(child, candidate);
-                self.sort_node(child, variation);
+                let is_tile = child.len().saturating_mul(record_bytes) <= tile_bytes;
+                if !(fused && is_tile) {
+                    let variation = scan_variation(child, candidate);
+                    self.sort_node(child, variation);
+                }
             }
             start = end;
         }

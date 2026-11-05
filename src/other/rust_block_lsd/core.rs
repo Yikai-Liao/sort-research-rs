@@ -200,7 +200,7 @@ pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) 
 /// within each bucket. Used by the MSD front end of the hybrid sorts.
 #[cfg(feature = "rust_tessera_radix")]
 pub(crate) fn partition_digit<T: Key>(arr: &mut [T], radix: usize, shift: usize) {
-    partition_digit_inner(arr, radix, shift, false);
+    partition_digit_inner(arr, radix, shift, false, None);
 }
 
 /// One stable digit pass that also returns each bucket's cumulative record end.
@@ -212,7 +212,20 @@ pub(crate) fn partition_digit_with_ends<T: Key>(
     radix: usize,
     shift: usize,
 ) -> Vec<usize> {
-    partition_digit_inner(arr, radix, shift, true)
+    partition_digit_inner(arr, radix, shift, true, None)
+}
+
+/// One stable digit pass that yields each complete bucket to `visit` while the
+/// block engine materializes the sequence. The callback sees the bucket in input
+/// order and may sort it in place; it is not called for empty buckets.
+#[cfg(feature = "rust_tessera_radix")]
+pub(crate) fn partition_digit_with_ends_and_visit<T: Key, F: FnMut(&mut [T])>(
+    arr: &mut [T],
+    radix: usize,
+    shift: usize,
+    mut visit: F,
+) -> Vec<usize> {
+    partition_digit_inner(arr, radix, shift, true, Some(&mut visit))
 }
 
 fn partition_digit_inner<T: Key>(
@@ -220,6 +233,7 @@ fn partition_digit_inner<T: Key>(
     radix: usize,
     shift: usize,
     want_ends: bool,
+    visit: Option<&mut dyn FnMut(&mut [T])>,
 ) -> Vec<usize> {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
@@ -242,7 +256,9 @@ fn partition_digit_inner<T: Key>(
         sorter.compact();
         std::panic::resume_unwind(payload);
     }
-    sorter.compact();
+    if let Some(payload) = sorter.compact_with(&ends, visit) {
+        std::panic::resume_unwind(payload);
+    }
     ends
 }
 
@@ -732,12 +748,60 @@ impl<'a, T> Sorter<'a, T> {
     }
 
     fn compact(&mut self) {
+        let _ = self.compact_with(&[], None);
+    }
+
+    /// Materializes the active sequence into input. When bucket ends are given,
+    /// `visit` is called on each bucket as soon as its records are contiguous in
+    /// input, so a leaf can consume the bucket while it is still cache-hot.
+    /// A callback panic does not interrupt materialization: the remaining
+    /// buckets are copied without callbacks and the payload is returned after
+    /// the input slice is a complete permutation again.
+    fn compact_with(
+        &mut self,
+        ends: &[usize],
+        mut visit: Option<&mut dyn FnMut(&mut [T])>,
+    ) -> Option<PanicPayload> {
         // Sorting is finished. Reuse the output buffer as the inverse map:
         // physical block ID -> position in block_order.
         let mut block_positions = std::mem::take(&mut self.next_block_order);
         for i in 0..self.block_order.len() {
             block_positions[self.block_order[i] as usize] = i as u32;
         }
+        let input_ptr = self.blocks.input;
+        let mut visited = 0;
+        let mut visited_start = 0;
+        let mut callback_panic = None;
+        let mut visit_due = |start: usize| {
+            let Some(mut callback) = visit.take() else {
+                return;
+            };
+            while visited < ends.len() && ends[visited] <= start {
+                let end = ends[visited];
+                if end > visited_start {
+                    // SAFETY: compact has written this complete bucket into the
+                    // input range, and the bucket is not a source for any later
+                    // copy. The slice is disjoint from block scratch.
+                    let bucket = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            input_ptr.add(visited_start),
+                            end - visited_start,
+                        )
+                    };
+                    if let Err(payload) =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(bucket)))
+                    {
+                        callback_panic = Some(payload);
+                        return;
+                    }
+                }
+                visited_start = end;
+                visited += 1;
+            }
+            if callback_panic.is_none() {
+                visit = Some(callback);
+            }
+        };
         let mut start = 0;
         let mut partial = 0;
         let mut free_logical = 0;
@@ -784,6 +848,7 @@ impl<'a, T> Sorter<'a, T> {
             block_positions[source] = output as u32;
             block_positions[destination] = input as u32;
             start += length;
+            visit_due(start);
             if input != output {
                 free_physical = source;
                 free_logical = output;
@@ -799,9 +864,13 @@ impl<'a, T> Sorter<'a, T> {
                 ptr::copy(from, self.blocks.input.add(start), length);
             }
             start += length;
+            visit_due(start);
         }
+        visit_due(start);
+        debug_assert!(visited == ends.len() || callback_panic.is_some());
         assert_eq!(start, self.blocks.input_len);
         self.input_materialized = true;
+        callback_panic
     }
 }
 

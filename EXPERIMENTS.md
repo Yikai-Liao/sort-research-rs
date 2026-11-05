@@ -140,6 +140,7 @@
 | 75 | 宽记录叶子的间接 tile 排序：key + u16 index 排好后 gather 一次（B09） | 否决 | 1M（7 轮中位数，强制 RADIX_INDIRECT=1）：record128 random 126.63 → 160.82 ns，zipf 170.58 → 170.71（持平）。16B pair 的 6 趟 counting pass 加 gather 仍不如现有 MSD 叶子；记录宽度不是唯一成本，pass 数与随机 gather 把收益吃掉。 |
 | 76 | 跨节点复用 block workspace（B06） | 否决（噪声内） | 1M 三周期交替（5 轮中位数）：u64 random 13.02 → 13.13、u128 random 23.11 → 24.13、u128 zipf 23.97 → 24.51；record128 zipf/sparse 约 −2%；u64 sparse 7.36 → 6.54 但一轮 5.26 离群。整体方向不一致，保留每节点分配。 |
 | 77 | 等值切分后常数子节点的 all-equal 快路径 | 否决 | 1M 三周期交替（5 轮中位数）：u64 sparse8 6.48 → 5.74、record16 sparse 16.04 → 14.76、record16 p95 9.51 → 8.95；但 u64 zipf13 13.67 → 15.13、record16 zipf 24.97 → 25.71，random/two 持平。低基数但非常数的子节点会被预读一路扫到首个差异，收益与损失交叉，不保留。 |
+| 78 | 把 leaf 排序挂到 block compact 的桶完成点：每个 tile 桶物化到 input 后立即 scan_variation + lsd_leaf | 保留 | 1M（5 周期 × 7 次，中位数，RADIX_FUSE_LEAF A/B）：u64 random 12.25 → 11.89、u128 random 23.21 → 21.77、record16 random 21.85 → 19.42；u64 zipf 13.91 → 14.02、u128 zipf 23.99 → 24.03、record16 zipf 24.77 → 25.66；record128 random 122.39 → 123.45、zipf 168.92 → 170.11。随机 cell 稳定获益，zipf 小幅回退，宽记录持平；净收益为正，保留。这是 compact 后的缓存融合，不改变 leaf 内部 pass 结构，也没有处理 E1 的 flat 奇偶性。 |
 
 另有一次"拨乱反正"：§30 和 §36 里原有的 "(Superseded)" 段落（被推翻的旧结论、旧数字）在本次压缩中删除，
 对应的最终结论已写入上表。
