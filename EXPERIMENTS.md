@@ -144,6 +144,7 @@
 | 79 | 等值切分的 less/greater 桶也挂到 compact 完成点；equal band 跳过 | 保留 | 1M 三周期 × 5（digit fusion 固定，RADIX_FUSE_EQ A/B）：u128 zipf13 23.35 → 20.72；u64 zipf13 13.47 → 13.63；u64 p95zero 5.15 → 4.94；u64 two_values 5.43 → 4.96、u128 two_values 10.67 → 9.63。s81 显示 two_values 的 fused-leaf 为 0，这组差异不能归因于提前叶子；保留依据是 zipf 有 37.4% 记录实际提前完成，two_values 数字视为噪声/布局。 |
 | 80 | E1 覆盖统计：只统计 MSD→插入路径（RADIX_TRACE，1M u64，rounds=1） | 诊断，未实现 | random_wide 1,000,000/1,000,000 条（100%）走 leaf-msd 且 largest≤insertion；zipf13 2,443/1,000,000（0.2443%）走 leaf-msd，其余由 equality、直接插入或其他叶子完成；sparse8/two_values 为 0。harness 先校验再计时，所以原始 trace 是两次调用；比例已归一化。E1 最小切片只对 random-like 有效；zipf 需要 flat/equality 融合，而 flat 有趟数奇偶性。结合 s78/s79，E1 的默认收益范围比旧预估窄。 |
 | 81 | fusion visitor 实际提前完成的记录统计（trace，u64，1M，--trace-once） | 诊断 | random 1,000,000/1M（256 个 tile）；zipf13 373,518/1M（37.35%，3735 个 tile）；two_values 0/1M（回调到达但外侧桶远大于 tile，未进入叶子）。two_values 的 §79 时间差不能归因于该机制；只有 random/zipf 的部分记录真正命中。 |
+| 82 | 128 字节记录不挂 fused leaf，落回 compact 后排序（类型策略） | 保留 | 1M（5 周期 × 5，中位数，RADIX_FUSE_LEAF A/B）：record128 random 130.2 vs 131.2 ms、zipf 177.5 vs 179.4、sparse 102.9 vs 103.6、two 64.2 vs 66.0、p95 56.3 vs 56.8；128 B tile 的 visitor 让叶子多一份全 tile 工作集，8–16 B 记录仍保留 4–11% 融合收益。 |
 
 另有一次"拨乱反正"：§30 和 §36 里原有的 "(Superseded)" 段落（被推翻的旧结论、旧数字）在本次压缩中删除，
 对应的最终结论已写入上表。

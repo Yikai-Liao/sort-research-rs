@@ -491,6 +491,13 @@ fn fuse_leaf() -> bool {
     *FUSE.get_or_init(|| std::env::var("RADIX_FUSE_LEAF").map_or(true, |v| v != "0"))
 }
 
+/// A 128-byte record turns the visitor into a second full-size tile working
+/// set. Measured on the 1 MiB record corpus, sorting after compact is 0.7–2.8 %
+/// faster there, while 8–16 byte records keep the 4–11 % fused-leaf gain.
+fn fuse_leaf_for<T>() -> bool {
+    fuse_leaf() && std::mem::size_of::<T>() <= 64
+}
+
 /// Measurement hook: RADIX_FUSE_EQ=0 disables only equality-band fusion while
 /// digit-split fusion stays on, so the two A/Bs remain separable.
 fn fuse_equality() -> bool {
@@ -1066,7 +1073,7 @@ impl<T: Key> Context<T> {
         // already knows where each bucket ends; using those ends avoids a
         // second digit comparison per record.
         let candidate = varying & !digit.mask::<T>().to_u128();
-        let fused = fuse_leaf();
+        let fused = fuse_leaf_for::<T>();
         let tile_bytes = self.tile_bytes;
         let record_bytes = std::mem::size_of::<T>();
         let ends = if fused {
@@ -1120,7 +1127,7 @@ impl<T: Key> Context<T> {
                 Greater => 2,
             }
         };
-        let fused = fuse_leaf() && fuse_equality();
+        let fused = fuse_leaf_for::<T>() && fuse_equality();
         let tile_bytes = self.tile_bytes;
         let record_bytes = std::mem::size_of::<T>();
         let ends = if fused {
