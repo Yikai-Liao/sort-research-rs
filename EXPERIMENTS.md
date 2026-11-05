@@ -1234,8 +1234,20 @@ first place, and it is the one they covered for the whole branch before §36; a
 fresh Miri run on current HEAD is a bookkeeping item, not a new risk.
 
 The audit agent that was asked to re-run it timed out after 30 minutes inside
-Miri (the interpreter is ~100x slower and this crate's tests build 1M-element
-arrays); the static review of the same code found nothing.
+Miri (the interpreter is ~100x slower and the tests built 1M-element arrays),
+which is a test-sizing bug, not a soundness question. Fixed the same day: every
+size in this module's tests is now `cfg!(miri)`-gated to a shape-preserving small
+case. The full set of seven then passes **7/7 under Miri in 216 s**:
+
+```
+$ cargo +nightly miri test --features rust_tessera_radix --lib other::rust_tessera_radix
+test result: ok. 7 passed; 0 failed; ... finished in 216.36s
+```
+
+That covers the panic sweep (a panic at every key call of every small run), the
+duplicate-stability case, the boundary lengths, the random configuration sweep and
+the routing table -- i.e. the `unsafe` in this module is Miri-clean, not just
+test-clean.
 
 (Original note:)
 

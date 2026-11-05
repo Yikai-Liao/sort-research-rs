@@ -150,7 +150,11 @@ fn a_key_panic_never_loses_or_duplicates_a_record() {
     // sweep is sized from the calls an unarmed sort really makes: the leaf
     // changed shape since this test was written and a fixed upper bound
     // started arming panics that never happen.
-    for &len in &[20usize, 300, 2000] {
+    // Miri interprets every operation, and this sweeps a panic at every key call of
+    // every run, so it gets the two lengths it needs to reach both the insertion and
+    // the passing paths and nothing more.
+    let lengths: &[usize] = if cfg!(miri) { &[12, 40] } else { &[20, 300, 2000] };
+    for &len in lengths {
         // Identical data for the probe and for every armed run: the number of
         // key calls depends on the data (insertion is data dependent), and
         // arming inside a range measured on other data skipped the panic.
@@ -249,9 +253,14 @@ fn route_table() {
 #[test]
 fn every_width_and_tile_rounds_to_zero() {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
-    for &len in &[
-        0usize, 1, 2, 3, 7, 8, 9, 100, 255, 256, 257, 1000, 4097, 20_000,
-    ] {
+    // Miri interprets every byte moved, so it gets the boundary lengths that decide a
+    // branch and none of the large ones that only repeat what they already showed.
+    let lengths: &[usize] = if cfg!(miri) {
+        &[0, 1, 2, 3, 7, 8, 9, 100, 255, 257]
+    } else {
+        &[0, 1, 2, 3, 7, 8, 9, 100, 255, 256, 257, 1000, 4097, 20_000]
+    };
+    for &len in lengths {
         let u32s: Vec<u32> = (0..len).map(|_| rng.next() as u32).collect();
         check(u32s, TILE_BYTES);
         let u64s: Vec<u64> = (0..len).map(|_| rng.next()).collect();
@@ -298,8 +307,11 @@ fn random_configurations_match_a_stable_reference() {
 
     let mut rng = Rng(0x2545_f491_4f6c_dd1d);
     let tiles = [4 * 1024usize, 16 * 1024, 64 * 1024, 256 * 1024, 1 << 20];
-    for round in 0..2000 {
-        let len = (rng.next() % 8000) as usize;
+    // Miri gets the same shapes at a size it can interpret in seconds.
+    let rounds = if cfg!(miri) { 12 } else { 2000 };
+    let widest = if cfg!(miri) { 200 } else { 8000 };
+    for round in 0..rounds {
+        let len = (rng.next() % widest) as usize;
         let shape = rng.next() % 6;
         let mut input: Vec<Item<u32>> = Vec::with_capacity(len);
         for index in 0..len {
@@ -349,10 +361,13 @@ fn constant_keys_are_no_ops() {
 fn skewed_keys_sort() {
     let mut rng = Rng(11);
     let mut input: Vec<u32> = Vec::new();
-    for _ in 0..50_000 {
+    // 98 % zeros, the rest random: the shape is what matters, not the count, so Miri
+    // gets a hundredth of the records.
+    let (zeros, stragglers) = if cfg!(miri) { (500, 10) } else { (50_000, 1_000) };
+    for _ in 0..zeros {
         input.push(0);
     }
-    for _ in 0..1_000 {
+    for _ in 0..stragglers {
         input.push(rng.next() as u32);
     }
     check(input, TILE_BYTES);
