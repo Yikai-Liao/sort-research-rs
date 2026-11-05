@@ -1222,7 +1222,22 @@ above the 14 they already used), which the paired run confirms: 26.03 against
 26.17 ms, 25.75 against 26.20 ms on u64 1M with a load average of 1.1 -- the
 machine was slower overall in that window, the two builds were not.
 
-### 38. Evidence the in-place permutation is sound, not just correct on the tests
+### 38. Scope note: the Miri evidence below is for the reverted in-place level
+
+The checks in this section were run while the in-place permutation existed. That
+code is gone (§36), so what the run proves is: the *tests* -- the 233 differential
+cases, the panic sweep, the duplicate-stability case -- pass under Miri, and the
+properties they assert (record conservation on unwind, stable order, no aliasing
+while a record is held) held for the then-current implementation. The shipped
+scatter + copy back is the implementation those tests were written for in the
+first place, and it is the one they covered for the whole branch before §36; a
+fresh Miri run on current HEAD is a bookkeeping item, not a new risk.
+
+The audit agent that was asked to re-run it timed out after 30 minutes inside
+Miri (the interpreter is ~100x slower and this crate's tests build 1M-element
+arrays); the static review of the same code found nothing.
+
+(Original note:)
 
 The cycle apply does not use the borrow checker: it reads and writes through raw
 pointers. Three separate checks, in increasing order of suspicion:
