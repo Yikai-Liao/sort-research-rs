@@ -128,6 +128,7 @@
 | 63 | N6：tile MSD 交替两个缓冲，省拷回 | 关闭（无覆盖）| 未实现，只做了覆盖测量。每条记录当前拷回 `d+(p mod 2)`（d=tile 内 MSD 层数，p=末端 flat 趟数），交替后最少 `(d+p) mod 2`。临时诊断补丁（未入库）在每个终止区间记 (d,p,len)：u64/u128 random 在 2e4/1e5/1e6/1e7 **100% 记录为 d=1,p=0**，可省 0%；local20/mod1000 为 d=0,p=1（或 u128 p=2），可省 0%；zipf/少值大多在 block 层按等值桶结束，到不了 tile。主流形状没有可省的拷回。**之前"random −3～6%"无依据，撤回** |
 | 64 | 顺序探测移到 variation 扫描之前（B16/P4）| 保留 | `examples/sort_time.rs`（同一程序，只换库源码）1M 中位数：升序 u64 2.61 → 2.24 ns、u128 6.48 → 3.37、u32 1.70 → 1.49；10M：u64 3.26 → 2.53、u128 6.61 → 3.61。全等输入为 strided 采样多付一次（1M u64 1.00 → 1.15），10M 持平。单次排序指令：u64 升序 −6.8%、u128 −19.5%，random 持平；random 与 sorted99 的 trace 逐字节相同。**注**：`radix_ab` 对 u32 ascending 1M 给出互相矛盾的两个 build 数（1.4 vs 2.0），见 §C.1 |
 | 65 | 叶子跳过逐桶遍历：前缀和记最大桶，最大桶 ≤ 插入阈值时整块插入排序（P1②）| 保留 | `radix_ab` 中位数，1M/10M：u64 random 18.3/27.3 → 15.1/23.1 ns、u64 random_wide 18.7/25.9 → 14.8/21.7、u128 random_wide 35.0/51.5 → 26.7/39.7；u128 narrow random 不调用 msd 叶子，不变；zipf13/sparse8/two_values/p95zero 全在噪声内。单次排序指令（1M）：u64 random −14.7%，u32 random（全平坦，max 累加被 DCE）±0.0%，u64 zipf13 +0.6%（fallback 记 max 的代价）。u64 random 1M 的 256 个 tile 全部走 insertion。Miri 7/7 |
+| 66 | 加宽循环越过最后一个变化位 | 修正 | 9-bit span、采样集中的节点先取 8 bit，再按 +2 加宽到 10：shift = top - radix 下溢，partition_digit 的 assert!(shift < bits) 触发 panic（不是内存错误）。公开 sort 可达：100 万条落在同一字节内 3 个值的记录。现在 radix = (radix + 2).min(top)；回归测试用 16k 条 0..=511 的三值输入 + 1 KiB tile（Miri 下同形）|
 
 另有一次"拨乱反正"：§30 和 §36 里原有的 "(Superseded)" 段落（被推翻的旧结论、旧数字）在本次压缩中删除，
 对应的最终结论已写入上表。

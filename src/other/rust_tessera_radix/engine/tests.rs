@@ -364,3 +364,22 @@ fn skewed_keys_sort() {
     }
     check(input, TILE_BYTES);
 }
+
+#[test]
+fn a_nine_bit_node_never_shifts_its_digit_past_the_last_varying_bit() {
+    // Keys over 9 bits (0..=511), concentrated in two of them, in a node large
+    // enough that split_radix picks 8. The widening loop wants two more bits,
+    // which would place the digit shift below bit zero. It must stop at the
+    // highest varying bit of the node instead.
+    let mut rng = Rng(7);
+    let (len, tile) = if cfg!(miri) { (2_000, 1024) } else { (16_384, 1024) };
+    let input: Vec<u64> = (0..len)
+        .map(|_| match rng.next() % 3 {
+            0 => 0,
+            1 => 1,
+            _ => 511,
+        })
+        .collect();
+    check(input, tile);
+}
+

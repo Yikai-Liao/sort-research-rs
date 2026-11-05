@@ -707,7 +707,11 @@ impl<T: Key> Context<T> {
                     break;
                 }
             }
-            radix += 2;
+            // Never widen past the last varying bit: the digit's shift is
+            // `top - width`, so a wider window would shift below bit zero and
+            // panic in the block engine (or, without its check, index with a
+            // wrapped mask). A 9-bit node used to reach this.
+            radix = (radix + 2).min(top);
         }
         let digit = Digit {
             shift: top - radix,
