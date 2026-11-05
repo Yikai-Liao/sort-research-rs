@@ -57,22 +57,6 @@ pub trait Key {
 
 unsigned!(u8, u16, u32, u64, u128, usize);
 
-/// Rank of a key among a short sorted list of heavy keys.
-///
-/// The heavy-hitter split asks this once per record. A binary search costs a
-/// data-dependent branch per heavy key; eight lanes of portable SIMD answer the
-/// same question with one compare and a popcount. The blanket implementation is
-/// the scalar fallback for the key widths SIMD does not cover.
-pub(crate) trait RankIn: Unsigned {
-    fn rank_in(self, sorted: &[Self]) -> usize;
-}
-
-impl<T: Unsigned> RankIn for T {
-    default fn rank_in(self, sorted: &[Self]) -> usize {
-        sorted.partition_point(|&value| value < self)
-    }
-}
-
 macro_rules! signed {
     ($(($signed:ty, $unsigned:ty)),* $(,)?) => {$(
         impl Key for $signed {
