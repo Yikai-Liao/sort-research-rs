@@ -1,7 +1,7 @@
 # Backlog：所有想法的当前状态
 
 三份旧文件（`BACKLOG.md` 脑暴 1、`EXPERIMENT-BACKLOG.md`、`BACKLOG-2.md` 脑暴 2）合并于此。
-原文：`git show 3528d08:<文件名>`。证据里的 `sN` 指 `EXPERIMENTS.md` 的 §N。
+原文：`git show a80b566:<文件名>`。证据里的 `sN` 指 `EXPERIMENTS.md` 的 §N。
 
 规则：每条必须有结论，要么引用一个测量，要么写明缺哪个测量。没有裁决的条目不得留在这里。
 编号前缀保持各自来源：**E**＝早期实验清单，**B**＝脑暴 1（01–16），**N**＝脑暴 2（N1–N7）。
