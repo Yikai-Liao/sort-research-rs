@@ -206,31 +206,26 @@ fn for_each_bucket<T: Key>(
     }
 }
 
-/// Writes the passes a node will really run into `digits`, highest first, and
-/// returns how many there are.
+/// Writes the passes a leaf will run into `digits`, highest first, and returns
+/// how many there are. Every pass covers only varying bits: constant bits cannot
+/// change the order, so dropping whole digits keeps a node full of duplicates
+/// cheap, and narrowing a partially varying digit keeps a skewed node cheap,
+/// because both a split's bucket count and a leaf's digit width follow the digit
+/// they are given.
 ///
-/// Consider digits of `width` bits covering the key, and keep only what varies:
-/// constant bits cannot change the order, so no pass runs for them. Dropping
-/// whole digits is what keeps a node full of duplicate keys cheap; narrowing a
-/// partially varying digit is what keeps a skewed node cheap, because both a
-/// split's bucket count and a leaf's digit width follow the digit it is given.
-/// Keys that differ only in their top bit would otherwise pay a 256-bucket pass
-/// to make two buckets.
+/// The windows pack, instead of following the fixed grid `stream_passes` counts.
+/// The grid splits a cluster of varying bits that straddles a cell boundary into
+/// two passes and gives one pass to every other cell, which is why a key with 31
+/// varying bits scattered over 62 used to take six passes where three windows
+/// suffice: a window runs from the lowest varying bit not yet consumed up to the
+/// highest one within `width` bits, and only that span.
+///
+/// Passes come out most significant first, the order the leaf consumes them in
+/// (it walks the plan backwards, so the last entry runs first). Disjoint spans
+/// cannot interleave two keys' digits differently from the key order.
 ///
 /// The plan stays a slice of a caller-owned array: this toolchain's layout query
 /// ICEs when a function passes an array whose length is a path constant.
-/// The passes a leaf runs, packing windows instead of using a fixed grid.
-///
-/// The fixed grid splits a cluster of varying bits that straddles a cell
-/// boundary into two passes and gives one pass to every other cell, which is
-/// why a key with 31 varying bits scattered over 62 used to take six passes
-/// where three windows suffice. Here each window covers the span from the lowest
-/// varying bit not yet consumed up to the highest one within `width` bits, and
-/// only that span, so a window is never wider than its cluster needs.
-///
-/// Passes come out most significant window first, the order the leaf consumes
-/// them in (it walks the plan backwards, so the last entry runs first). Disjoint
-/// spans cannot interleave two keys' digits differently from the key order.
 fn plan_digits_packed(varying: u128, width: usize, digits: &mut [Digit]) -> usize {
     let mut remaining = varying;
     let mut len = 0;
@@ -312,6 +307,7 @@ pub struct Policy {
     /// Which strategy a leaf uses beyond insertion.
     pub leaf_mode: LeafMode,
 }
+
 
 impl Default for Policy {
     fn default() -> Self {
@@ -434,7 +430,6 @@ fn sample_split_shape<T: Key>(arr: &[T], varying: u128) -> f64 {
         }
         block += SPLIT_RUN;
     }
-    let distinct = buckets.iter().filter(|&&count| count > 0).count();
     largest as f64 / sampled.max(1) as f64
 }
 
@@ -778,6 +773,17 @@ impl<T: Key> Context<T> {
             // Splitting would cost more than the passes it replaces. Finish the
             // node with the block engine's LSD pass, which needs no buffer the
             // size of the node. It gets the variation scan already done here.
+            stream_node(arr, variation);
+            return;
+        }
+        if !split_pays(
+            node_bytes,
+            records,
+            self.tile_bytes,
+            cold_passes,
+            hot_passes,
+            largest_child,
+        ) {
             stream_node(arr, variation);
             return;
         }
