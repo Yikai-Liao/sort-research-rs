@@ -1189,6 +1189,28 @@ above the 14 they already used), which the paired run confirms: 26.03 against
 26.17 ms, 25.75 against 26.20 ms on u64 1M with a load average of 1.1 -- the
 machine was slower overall in that window, the two builds were not.
 
+### 38. Evidence the in-place permutation is sound, not just correct on the tests
+
+The cycle apply does not use the borrow checker: it reads and writes through raw
+pointers. Three separate checks, in increasing order of suspicion:
+
+1. The 233 differential cases in `tests/tessera_functionality.rs` (every supported
+   type, 60 configurations, duplicates included) compare against `Vec::sort`, which
+   is stable, so a stability break fails the test rather than passing quietly.
+2. `duplicates_stay_stable` and `a_key_panic_never_loses_or_duplicates_a_record`
+   run under **Miri**, and both pass: the permutation reads and writes only
+   initialized slots, never forms aliasing references while a record is held, and
+   the panic sweep (a panic at every abort index) leaves a permutation of the
+   input with every payload dropped exactly once.
+3. The cycle walk has a second exit condition (a destination already visited),
+   which only triggers when `Key` is not a function of its record. That makes the
+   walk finite for a lying key and keeps every write inside the tile; the price
+   is one bit test per record, which the instruction counts do not show.
+
+Miri is the reason the `unsafe` here is acceptable: the code is not proved sound,
+it is checked on the two properties that the raw pointer moves could actually
+break -- aliasing while a record is held, and record conservation on unwind.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
