@@ -506,6 +506,26 @@ fn fuse_equality() -> bool {
     *FUSE.get_or_init(|| std::env::var("RADIX_FUSE_EQ").map_or(true, |v| v != "0"))
 }
 
+/// A node whose keys differ only inside one 64-bit half of a wider key.
+///
+/// Sorts of 16-byte records whose logical key lives in the top (or bottom)
+/// half pay 128-bit shifts and masks in every pass, although an assignment of
+/// bucket indices made from the half orders them identically. The wrapper is
+/// `repr(transparent)`: the engine still moves whole records, only `key()`
+/// narrows to a `u64`. Its `Ord` is never observed -- the engine only calls
+/// `key()` -- and the dropped half is constant across the node by the caller's
+/// variation test, so equal and ordered records stay equal and ordered.
+#[repr(transparent)]
+struct Shifted<const SHIFT: usize, T: Key>(T);
+
+impl<const SHIFT: usize, T: Key> Key for Shifted<SHIFT, T> {
+    type Value = u64;
+    #[inline]
+    fn key(&self) -> u64 {
+        (self.0.key().to_u128() >> SHIFT) as u64
+    }
+}
+
 struct Context<T> {
     /// Scratch for the leaves; holds the largest tile seen so far.
     scratch: Vec<MaybeUninit<T>>,
@@ -526,6 +546,11 @@ pub struct Policy {
     pub tile_bytes: usize,
     /// Tiles at or below this many records are finished with an insertion sort.
     pub insertion_max: usize,
+    /// Sort a root whose varying bits lie in one 64-bit half through the
+    /// narrowed key view. Default on: it is an order-preserving key transform,
+    /// and the measured cells have no counterexample (s84). The field stays
+    /// public so an A/B does not need a second build.
+    pub narrow_key: bool,
 }
 
 impl Default for Policy {
@@ -533,6 +558,7 @@ impl Default for Policy {
         Policy {
             tile_bytes: TILE_BYTES,
             insertion_max: INSERTION_MAX,
+            narrow_key: true,
         }
     }
 }
@@ -662,6 +688,31 @@ fn run<T: Key>(arr: &mut [T], policy: Policy, leaf_mode_test: u8) {
             _ => {}
         }
     }
+    // The view is built from `to_u128`, so it only covers keys up to 128 bits;
+    // a wider key would need a high-half accessor before it could narrow.
+    if policy.narrow_key && T::Value::BITS > 64 && T::Value::BITS <= 128 {
+        let varying = variation.varying();
+        if varying >> 64 == 0 {
+            sort_shifted_root::<0, T>(
+                arr,
+                variation,
+                tile_bytes,
+                policy.insertion_max,
+                leaf_mode_test,
+            );
+            return;
+        }
+        if varying & ((1u128 << 64) - 1) == 0 {
+            sort_shifted_root::<64, T>(
+                arr,
+                variation,
+                tile_bytes,
+                policy.insertion_max,
+                leaf_mode_test,
+            );
+            return;
+        }
+    }
     let mut context = Context {
         scratch: Vec::new(),
         tile_bytes,
@@ -669,6 +720,38 @@ fn run<T: Key>(arr: &mut [T], policy: Policy, leaf_mode_test: u8) {
         leaf_mode_test,
     };
     context.sort_node(arr, variation);
+}
+
+/// Sorts a whole root through the narrowed key view when every varying bit sits
+/// in one 64-bit half. Root-only on purpose: a narrowed sort never narrows
+/// again, and the cells this targets (32-bit logical keys stored in a u128
+/// container) are already narrow at the root.
+fn sort_shifted_root<const SHIFT: usize, T: Key>(
+    arr: &mut [T],
+    variation: Variation<T>,
+    tile_bytes: usize,
+    insertion_max: usize,
+    leaf_mode_test: u8,
+) {
+    // The wrapper is repr(transparent), so the slice has the same layout,
+    // length and alignment. Moving the reference into the raw pointer ends the
+    // borrow: the new slice is the only reference for the duration.
+    let shifted: &mut [Shifted<SHIFT, T>] =
+        unsafe { &mut *(arr as *mut [T] as *mut [Shifted<SHIFT, T>]) };
+    let bits = |value: SortKey<T>| (value.to_u128() >> SHIFT) as u64;
+    let mut context = Context::<Shifted<SHIFT, T>> {
+        scratch: Vec::new(),
+        tile_bytes,
+        insertion_max,
+        leaf_mode_test,
+    };
+    context.sort_node(
+        shifted,
+        Variation {
+            union: bits(variation.union),
+            intersection: bits(variation.intersection),
+        },
+    );
 }
 
 // --- Cost model -----------------------------------------------------------

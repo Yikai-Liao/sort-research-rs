@@ -22,13 +22,19 @@
 | B07 | block 大小扫描 | 否决 | s57：0.5x–4x 只跨 1.0–2.1% 指令 |
 | B08 | 真正的 MSD-only 消融 | 完成 | s53：14/15 cell auto ≈ MSD-only；flat-only u128 random 82.1 vs 31.2 |
 | B13 | 把 compact 融进叶子消费 | 否决 | s50 是它最便宜的形式，输了 |
-| B09 | 宽记录间接 tile 排序（key + u16 pair + counting pass + gather） | 否决 | s75：1M record128 random 126.63 → 160.82 ns；zipf 170.58 → 170.71（持平）。key+u16 index 的 6 趟 counting pass 加一次 gather 仍不如现有 MSD 叶子，默认不启用 |
+| B09 | 宽记录间接 tile 排序（key + u16 pair + counting pass + gather） | 否决 | s75：1M record128 random 126.63 → 160.82 ns；zipf 170.58 → 170.71（持平）。key+u16 index 的 6 趟 counting pass 加一次 gather 仍不如现有 MSD 叶子，默认不启用。s88 的 permutation 变体（pair 排序 + 原地环应用）同样输（random +31%），别再重试 |
 | B18 | 固定众数阈值扫描（1/4、1/3、1/6、1/8） | 否决 | s74：1/6 让 u64 sparse8 8.03 → 6.84，但 zipf13 15.54 → 21.38；1/8 把 sparse8 推到 19.04。u128/record16 同样交叉，保留 1/4 |
 | B06 | 跨节点复用 block workspace | 否决（噪声内） | s76：1M 三周期交替，u64 random 13.02→13.13、u128 random 23.11→24.13、u128 zipf 23.97→24.51、record128 zipf/sparse 约 −2%；u64 sparse 7.36→6.54 但一轮 5.26 离群。方向不一致，保留每节点分配 |
 | N1 | 叶子只需知道"是否出现第二个 digit" | 撤回 | s58 后 guard 要用完整 distinct 数；原来借用 s51 的 0.0% 是比较了错误的对象 |
 | N2-B | 不要每个节点读环境变量 | 完成 | s62：`OnceLock`，不声称性能 |
 | B16 | 先探测顺序再做 variation 扫描 | 完成 | s64：升序 u64 1M 2.61 → 2.24 ns、u128 6.48 → 3.37；random trace 不变；全等输入多付一次采样 |
 | N3 | 平坦叶子一次扫描建所有遍的直方图 / 融进 scatter | 否决 | s61：指令降、墙钟升（u32 random +21.6%）。工作集压力 |
+| R1 | 分位数切分：1024 键采样 + 一级/二级分位表 + 等值桶（方案 1） | 否决 | s83：1M u64 zipf 18.75→20.98、u128 zipf 35.13→45.53、p95 +28–69%；分类器 + 重格不均衡吃掉省下的一层；恒等表 1–3 次 load 仅 +0.9–1.9 ns |
+| R2 | key 运算宽度跟随 varying 跨度：根节点窄视图（方案 2） | 保留（默认开启） | s84：1M u128 window32 1.17x、small12 1.15x、f64 1.12x、zipf 1.05x；10M 同向 1.05–1.15x；无回归，按 varying 跨度触发 |
+| R3 | compact 完成即递归所有子节点（方案 3） | 否决 | s85：10M 3 周期 × 7 符号不一致，最大改善 <5%，u128 zipf 稳定略差 |
+| R4 | scatter 分段打断 store-forwarding 依赖链（方案 4） | 否决（前提不成立） | s86：同记录/同桶大小下 runs4096 5.41、runs8 7.33 vs random 9.03 ns；同桶连续更快，mixed_runs 的慢不在游标 |
+| R5 | 叶子无分支局部修正 / CPU 优化（方案 5） | 关闭 | s87：1M u64 分支 miss 0.25–0.54/记录；插入叶子已是最便宜收尾（s65 快 14.7%），上限 <1.2x；5c 与 s69/B13 同族 |
+| R6 | 宽记录间接叶子 + 原地环应用（方案 6） | 否决 | s88：record128 1M random 138.59→181.12 ms（+31%）；zipf/sparse/two 持平或略好；512 KiB tile 变体 1M random 6–8%、10M 持平，按不做类型特化否决 |
 | 旧"已完成" A–P | Tessera 主体：MSD split+tile 叶子、variation 过滤、digit 收窄、cost-model 路由（后被 s32/s41 替换）、叶子 8→11 bit、单次扫描、32 位游标、插入叶子、tile 扫描、有序探测、u16 游标、按子节点定价、打包窗口等 | 完成 | 全部在 `EXPERIMENTS.md` §B 账本里有一行；融合直方图(H)、12 bit(K)、宽 fan-out(P) 为否决 |
 
 ## 2. 仍然开放
@@ -37,6 +43,8 @@
 （B06、B07）、或加第二套结构（B09、B14）。已测量的账是 9 个机制保留 4、否决 5（脑暴 1 时点）；
 再加 s59–s61 三个"指令降、墙钟升"，预期收益都在 5% 门槛附近，而本机噪声 5–20% 无法分辨。
 所以 **优先做能改变"移动字节数"的**（E1；N6 已在 s63 关闭），别做省指令的。
+2026-11 第二轮又试了 6 个：1 个保留（R2/s84），5 个否决或关闭（R1、R3–R6/s83、s85–s88）。
+唯一保留的 R2 也不是省指令，而是让宽 key 的算术宽度跟着数据的 varying 跨度走。
 
 | id | 想法 | 预期 | 备注 |
 | --- | --- | --- | --- |

@@ -326,7 +326,83 @@ fn displaced(mut v: Vec<i32>, swaps: usize) -> Vec<i32> {
 /// adjacent values into a 31-bit difference. These build the key directly, so
 /// "two values one bit apart" really is one varying bit.
 fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> {
+    // Real columns are not uniform over the type's bit space. The float
+    // patterns below generate the *converted key* of a normal / log-normal
+    // column, so the u64 row is exactly what an f64 column hands the sort.
+    if pattern == "f64_normal" || pattern == "f64_lognormal" {
+        let lognormal = pattern == "f64_lognormal";
+        let mut state = 0x6a09_e667_f3bc_c909u64 ^ len as u64;
+        let mut out = Vec::with_capacity(len);
+        while out.len() < len {
+            // Box–Muller from two independent uniforms in (0, 1].
+            let u1 = ((splitmix64(&mut state) >> 11) as f64 + 0.5) / (1u64 << 53) as f64;
+            let u2 = ((splitmix64(&mut state) >> 11) as f64 + 0.5) / (1u64 << 53) as f64;
+            let z = (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos();
+            let value = if lognormal { z.exp() } else { z };
+            let key = if bits == 32 {
+                let bits32 = (value as f32).to_bits();
+                let sign = 1u32 << 31;
+                (if bits32 & sign != 0 {
+                    !bits32
+                } else {
+                    bits32 ^ sign
+                }) as u128
+            } else {
+                let bits64 = value.to_bits();
+                let sign = 1u64 << 63;
+                (if bits64 & sign != 0 {
+                    !bits64
+                } else {
+                    bits64 ^ sign
+                }) as u128
+            };
+            out.push(key);
+        }
+        return Some(out);
+    }
     let keys: Vec<u128> = match pattern {
+        // A narrow integer stored in a wide container: every varying bit sits in
+        // the low 12. The named patterns go through the i32 widening, which
+        // spreads them over 62 bits, so this shape was not in the corpus.
+        "small12" => {
+            let mut state = 0x243f_6a88_85a3_08d3u64 ^ len as u64;
+            (0..len)
+                .map(|_| (splitmix64(&mut state) & 0xfff) as u128)
+                .collect()
+        }
+        // A normalized composite key: a 16-value dictionary code in the top
+        // bits and a random low word.
+        "composite16_32" => {
+            let mut state = 0xcbf2_9ce4_8422_2325u64 ^ len as u64;
+            (0..len)
+                .map(|_| {
+                    let category = splitmix64(&mut state) & 15;
+                    let low = splitmix64(&mut state);
+                    let category = category as u128;
+                    match bits {
+                        32 => (category << 16) | (low & 0xffff) as u128,
+                        64 => (category << 48) | (low & 0xffff_ffff) as u128,
+                        _ => (category << 112) | (low & 0xffff_ffff) as u128,
+                    }
+                })
+                .collect()
+        }
+        // The same logical 32-bit key in every container width: a 4-bit
+        // category plus 28 random bits, placed in the type's top 32 bits. u64
+        // and u128 sort the same values in the same order, so their difference
+        // is key arithmetic and record width -- the cell the narrowed key view
+        // (PLAN.md §3) has to win on.
+        "window32_high" => {
+            let mut state = 0x3c6e_f372_fe94_f82bu64 ^ len as u64;
+            let shift = bits.saturating_sub(32);
+            (0..len)
+                .map(|_| {
+                    let category = splitmix64(&mut state) & 15;
+                    let low = splitmix64(&mut state) & 0x0fff_ffff;
+                    (((category << 28) | low) as u128) << shift
+                })
+                .collect()
+        }
         // One varying bit, 50/50: the cheapest possible non-trivial input.
         "type_two_near" => patterns::random(len)
             .into_iter()
@@ -493,6 +569,14 @@ fn keys_record128(pattern: &str, len: usize) -> Vec<Record128> {
 fn keys_record16(pattern: &str, len: usize) -> Vec<Record16> {
     let keys: Vec<u64> = if pattern == "random_wide" {
         full_width_u64(len)
+    } else if pattern == "window32_high" {
+        // The same key as the u64 row: the payload is the only difference, so
+        // u64 -> record16 prices record bytes and nothing else.
+        type_space_keys(pattern, len, 64)
+            .unwrap()
+            .into_iter()
+            .map(|key| key as u64)
+            .collect()
     } else {
         base_keys(pattern, len)
             .into_iter()

@@ -402,6 +402,36 @@ fn random_configurations_match_a_stable_reference() {
     }
 }
 
+/// The narrowed key view runs the same records through u64 keys. It may only
+/// fire when every varying bit is in one 64-bit half, and it must keep equal
+/// keys in input order.
+#[test]
+fn a_narrowed_root_key_is_stable() {
+    let mut rng = Rng(0x7f4a_7c15_9e37_79b9);
+    // Miri is ~100x slower; the same shapes fit in a few hundred records.
+    let len = if cfg!(miri) { 600 } else { 20_000 };
+    let tiles: &[usize] = if cfg!(miri) {
+        &[4096, 16384]
+    } else {
+        &[4096, 65536]
+    };
+    for shift in [0usize, 64] {
+        for &tile in tiles {
+            let input: Vec<Item<u128>> = (0..len)
+                .map(|index| {
+                    // 16 bits of values: enough duplicates to observe stability.
+                    let value = (rng.next() & 0xffff) as u128;
+                    Item {
+                        key: value << shift,
+                        index: index as u32,
+                    }
+                })
+                .collect();
+            check(input, tile);
+        }
+    }
+}
+
 #[test]
 fn constant_keys_are_no_ops() {
     let mut input = vec![42u64; 10_000];

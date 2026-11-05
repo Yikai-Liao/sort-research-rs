@@ -10,11 +10,13 @@ One stable MSD level partitions the array by the digit the sampler says divides 
 whose sample is dominated by one value is split around that value instead (s67); a short run
 that disagrees with the node's top bit is lifted out (s68); and an array whose keys one
 insertion pass can finish for the price of one pass is finished by it (s70). A child that
-fits a ~31 KiB tile is finished in cache by one MSD level over the tile (or by flat counting
+fits a 64 KiB tile is finished in cache by one MSD level over the tile (or by flat counting
 passes, chosen by two counted quantities); constant key bits are dropped everywhere; the
-block-permutation engine from `rust_block_lsd` keeps auxiliary space at O(sqrt n). Nothing
-in the router or the leaf is a magic threshold: each decision reads counted facts -- passes
-needed, distinct buckets sampled, tile bytes, moves per record.
+block-permutation engine from `rust_block_lsd` keeps auxiliary space at O(sqrt n). A root
+whose varying bits all sit in one 64-bit half of a wider key is sorted through a narrowed
+key view (s84), which changes key arithmetic, not routing. Nothing in the router or the leaf
+is a magic threshold: each decision reads counted facts -- passes needed, distinct buckets
+sampled, tile bytes, moves per record.
 
 ## 2. Gates that must hold (all verified at HEAD)
 
@@ -23,8 +25,8 @@ needed, distinct buckets sampled, tile bytes, moves per record.
 | O(n) time | one permutation per level, levels bounded by key width / digit width |
 | stable | `tessera_functionality` (233 cases), `radix_owned`, `radix_views` |
 | O(sqrt n) extra space | block engine + one tile buffer; no n-sized buffer exists |
-| 7 test targets green | lib 16, block_lsd 8, block_lsd_functionality 233, main 233, radix_owned 2, radix_views 6, tessera_functionality 233 |
-| Miri 16/16 | `cargo +nightly miri test --features rust_tessera_radix --lib` |
+| 7 test targets green | lib 20, block_lsd 10, block_lsd_functionality 233, main 233, radix_owned 2, radix_views 6, tessera_functionality 233 |
+| Miri 20/20 | `cargo +nightly miri test --features rust_tessera_radix --lib`, 457 s; the new test scales to 600 records under Miri |
 
 ## 3. Distance to the physical floor (1M, medians)
 
@@ -32,7 +34,9 @@ Measured at s70 with the current harness, two sweeps, the lower median reported 
 shared and single sweeps move by 5-10 %); the pattern behind each row is in
 parentheses. The 2026-11 baseline this table replaced (before s64–s68) is in the ledger's
 §1 table, and its raw rounds stay in `raw_runs.csv` under their own commit. The two are
-not directly comparable where the harness pattern names changed.
+not directly comparable where the harness pattern names changed. This table predates s84:
+the u128 rows whose varying bits fit one 64-bit half (sparse8, zipf, mixed_runs, p95) are
+4-19 % faster with the narrowed key view at 1M, but the table has not been re-run.
 
 `x memcpy` is ns per record divided by one memcpy of the array (u32 0.8, u64 1.6, u128 3.2
 ns per record at 8.8-11.8 GB/s). `pass floor` is the naive number of digit passes a key
@@ -103,8 +107,14 @@ Every row is one mechanism, with the metric that decided it.
 | lift out a short run that disagrees with the node's top bit | **kept** | 99 % sorted 21.35 -> 16.16 at 1M (s68) |
 | stream the compact / double-buffer the engine | rejected | the compact is 10-14 % of cycles, so half of it bounds the win at 5-7 % (s69) |
 | one insertion pass for a nearly ordered array, priced in moves on a key copy | **kept** | 99 % sorted 15.4 -> 1.4 ns at 1M and 21.7 -> 1.7 at 10M; the same shape displaced far does not win (s70) |
+| sampled-quantile split with exact heavy buckets | rejected | skew cells +12-69 %, two values ~2x slower; classifier plus bucket imbalance ate the saved level (s83) |
+| narrowed key view for a root whose varying bits fit one 64-bit half | **kept** | u128 1M 1.04-1.17x, 10M 1.05-1.15x; no regression (s84) |
+| recurse into every compacted child, not just tiles | rejected | 10M sign inconsistent, best <5 %, u128 zipf slightly worse (s85) |
+| segment the scatter to break store-forwarding chains | rejected | same-bucket runs are faster, not slower: runs4096 5.41 vs random 9.03 ns (s86) |
+| leaf branch/CPU trimming | closed | 0.25-0.54 branch misses per record; insertion leaf is already the cheap finish (s87) |
+| wide-record indirect leaf + in-place cycle permutation | rejected | record128 1M random +31 %; the 506 KiB permutation ate the saved split (s88) |
 
-Nine of sixteen survived. That ratio is the honest summary of how much room was left.
+Ten of twenty-two survived. That ratio is the honest summary of how much room was left.
 
 ## 5. Why the remaining gap is not algorithmic
 
@@ -126,8 +136,9 @@ another radix decision.
 
 ```
 cargo test --release --features rust_tessera_radix
-cargo +nightly miri test --features rust_tessera_radix --lib
+cargo +nightly miri test --features rust_tessera_radix --lib   # tests scale under Miri
 RADIX_RAW=raw_runs.csv taskset -c 2 <bench> --types u64 --patterns random_wide,zipf20 --sizes 1000000 --rounds 7
+# new shapes: f64_normal, f64_lognormal, small12, composite16_32, window32_high
 RADIX_TRACE=1 <same>            # one line per routing node: the decision log
 RADIX_LEAF_WIDTH=n RADIX_SPLIT_WIDTH=n   # measurement hooks, unset in shipped runs
 ```
