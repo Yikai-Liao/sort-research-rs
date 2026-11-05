@@ -686,11 +686,6 @@ fn tessera_counting<T: sort_research_rs::other::radix_support::Key>(s: &mut [T])
 
 /// The other half of the leaf ablation: the MSD level always, the flat plan never.
 
-#[cfg(feature = "rust_tessera_radix")]
-fn tessera_msd_only<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    sort_research_rs::other::rust_tessera_radix::sort_with_msd_only(s);
-}
-
 
 /// Tile-budget sweep: the knob that sets the auxiliary-space bound.
 #[cfg(feature = "rust_tessera_radix")]
@@ -738,7 +733,6 @@ macro_rules! radix_variants {
                 sort_research_rs::other::rust_tessera_radix::sort(s)
             }));
             v.push(("tessera_counting", tessera_counting::<$ty>));
-            v.push(("tessera_msd_only", tessera_msd_only::<$ty>));
             // The tile budget and the leaf crossovers are swept from here while
             // tuning; they cost a build matrix, so they stay opt-in.
             if std::env::var_os("RADIX_AB_LEAVES").is_some() {

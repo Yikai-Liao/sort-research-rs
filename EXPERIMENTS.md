@@ -1783,6 +1783,32 @@ larger blocks but with no step anywhere near the 5 % bar. Wall clock cannot reso
 so no change is taken and the default stays. The hook stays for whoever re-runs this on
 a quiet machine.
 
+### 58. The leaf guard that section 53 over-simplified, restored in integers
+
+Asking whether the leaf fallback earns its place exposed a regression I had introduced:
+after section 53 the guard was \`distinct > 1\`, which is far looser than the depth
+estimate it replaced. On u64 random_local -- a tile whose top window few records
+distinguish -- the auto path took the MSD level anyway and measured 27.10 ns per record
+against the flat plan's 23.46, i.e. the fallback never fired where it was needed. The
+section 53 check covered six mainstream cells and this one is not mainstream, which is
+exactly the kind of gap a per-cell rule leaves.
+
+Restored as integer arithmetic rather than the deleted f64 model: with \`distinct\`
+occupied buckets the largest child keeps about 1/distinct of the records, so
+
+    depth  = number of levels until a child is down to insertion size
+    cost   = MSD_LEVEL_PASSES * depth
+    take the level iff cost < flat passes
+
+At 1M with a fixed seed, instructions: **u64 random_local -4.2 %**, and +-0.1 % on the
+other nine cells tried (u64/u128 random, zipf, few values, 99 % sorted, bands8,
+blocks_desc). Wall on random_local: 26.19 -> 24.30, i.e. down to the flat plan's own
+24.28 -- the guard now decides what it was supposed to decide.
+
+The same pass removed a dead harness variant: \`sort_with_msd_only\` had become identical
+to the default path when section 53 deleted the cost model (both took \`distinct > 1\`),
+so \`tessera_msd_only\` was measuring the same code twice and is gone.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

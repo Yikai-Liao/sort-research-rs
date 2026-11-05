@@ -311,12 +311,6 @@ pub(super) fn sort_with_leaf_plan<T: Key>(arr: &mut [T]) {
     run(arr, Policy::default(), 1);
 }
 
-/// Sorts using only the tile's MSD level, never the flat plan: the other half of
-/// the leaf ablation. Measurement only.
-pub(super) fn sort_with_msd_only<T: Key>(arr: &mut [T]) {
-    run(arr, Policy::default(), 2);
-}
-
 /// Sorts with an explicit policy. Every knob is a local cost decision: the tile
 /// caps the auxiliary space on its own, so which leaf finishes a tile never
 /// changes the O(sqrt n) bound.
@@ -808,10 +802,29 @@ impl<T: Key> Context<T> {
             // no share estimate (section 53 has the ablation showing a model here
             // decides nothing that the counts do not).
             let distinct = sampled_buckets(arr, digits[0]);
-            if trace() {
-                eprintln!("leaf-msd? len={} flat={} distinct={}", len, passes, distinct);
+            // A level only pays if its window actually divides the tile: with
+            // `distinct` occupied buckets the largest child keeps about 1/distinct of
+            // the records, so the recursion needs `depth` levels before a child is
+            // down to insertion size. Comparing `depth * MSD_LEVEL_PASSES` against the
+            // flat pass count is the same decision the deleted cost model made, in
+            // integer arithmetic: a window that two values fill needs six levels and
+            // loses to the flat plan (measured 27.1 against 23.5 ns per record on
+            // u64 random_local), while a well-divided one needs a single level and wins.
+            let distinct = distinct.max(1);
+            let mut largest = len;
+            let mut depth = 0;
+            while largest > self.insertion_max && depth < passes {
+                depth += 1;
+                largest /= distinct;
             }
-            if distinct > 1 {
+            let level_cost = MSD_LEVEL_PASSES * depth.max(1);
+            if trace() {
+                eprintln!(
+                    "leaf-msd? len={} flat={} distinct={} depth={} cost={}",
+                    len, passes, distinct, depth, level_cost
+                );
+            }
+            if level_cost < passes {
                 self.msd_leaf(arr, digits[0]);
                 return;
             }
