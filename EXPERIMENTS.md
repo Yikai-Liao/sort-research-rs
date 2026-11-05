@@ -1302,6 +1302,33 @@ sends it to the flat plan, which walks sixteen digit passes over 15 MiB. That is
 a structural cost of radix on low-cardinality wide keys, not a bug, and it is the
 first cell in a long time where the honest answer is 'the comparison sort wins'.
 
+### 40. Iteration 1: a cold/hot pass ratio buys -53 % on few-value wide keys, at +9 % instructions elsewhere
+
+Prediction before measuring: price a pass over a cold node at COLD_PASS_COST times a
+cache-resident pass, i.e. split iff 2 + hot/r < cold. Falsification: any >5 % regression
+on the random cells under either metric.
+
+Measured, 1M, same-machine paired, r = 3:
+
+| cell | wall | instructions |
+| --- | --- | --- |
+| u128 sparse8 | 34.0 -> 15.9 ms (-53 %) | -5.9 % |
+| u32 random | 10.3 -> 10.5 | +13.6 % |
+| u64 random | 20.2 -> 20.4 | +9.5 % |
+| u128 random | 30.2 -> 30.3 | +8.2 % |
+
+Verdict: the mechanism is real -- the r3-sparse diagnosis was right, and the -53 % is
+the largest single win on a mainstream shape since the leaf MSD level. But it fails the
+stated falsification: instructions rise 8-14 % on the random cells. Time does not move
+there (the extra passes are cache-resident), which is exactly the trade the ratio
+encodes, but the protocol said either metric.
+
+So the mechanism stays with COLD_PASS_COST = 1.0, which reproduces the old decisions
+exactly, and the next iteration gates the discount on the node actually being cold
+(node_bytes above a multiple of the tile) instead of applying it to every node.
+Prediction for that version: keeps the -53 % on sparse8 (its root is 15 MiB) and leaves
+the random cells' instruction counts alone (their extra passes came from nested nodes).
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
