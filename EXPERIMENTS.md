@@ -1365,6 +1365,42 @@ to slightly better on u128 random, bands8, zipf and u64 10M, and its one loss (u
 9.8 against 8.7) is a cell under 10 ms, which this notebook's own rule says cannot
 vote. The ratio-based version is not kept anywhere in the code: the concept is gone.
 
+### 42. The ceiling table: distance to one memcpy, per mainstream cell
+
+Primary metric as the goal defines it: ns per record, and how many times one memcpy of
+the array that is (u32 0.8, u64 1.6, u128 3.2 ns per record at this machine's 8.8-11.8
+GB/s). 1M, 5 rounds, current HEAD:
+
+| cell | ns/rec | x memcpy | passes a key needs | gap to its pass floor |
+| --- | --- | --- | --- | --- |
+| u32 random | 9.04 | 11.3 | 4 | 2.8x |
+| u32 99 % sorted | 6.48 | 8.1 | 4 | 2.0x |
+| u32 few values | 3.31 | 4.1 | 4 | 1.0x |
+| u32 zipf | 9.89 | 12.4 | 4 | 3.1x |
+| u32 mixed runs | 9.96 | 12.5 | 4 | 3.1x |
+| u64 random | 17.88 | 11.2 | 8 | 1.4x |
+| u64 99 % sorted | 16.84 | 10.5 | 8 | 1.3x |
+| u64 few values | 5.25 | 3.3 | 8 | 0.4x |
+| u64 zipf | 9.82 | 6.1 | 8 | 0.8x |
+| u64 mixed runs | 18.78 | 11.7 | 8 | 1.5x |
+| u128 random | 29.26 | 9.1 | 16 | 0.6x |
+| u128 99 % sorted | 20.49 | 6.4 | 16 | 0.4x |
+| u128 few values | 13.07 | 4.1 | 16 | 0.3x |
+| u128 zipf | 32.74 | 10.2 | 16 | 0.6x |
+| u128 mixed runs | 29.38 | 9.2 | 16 | 0.6x |
+
+The "pass floor" column is the naive count of digit passes a key needs times one
+memcpy. Two facts fall out of it:
+
+1. **u128 is already below its pass floor** (0.3-0.6x), because the top-level split
+   plus the tile keep most passes cache-resident -- the floor assumes every pass is
+   cold, and they are not. This design's whole value is visible there.
+2. **u32 is the furthest from it** (1.0-3.1x) and u64 sits in between (0.4-1.5x). For a
+   4-byte key the array is 4 MB at 1M, so the passes do not have 16 passes' worth of
+   cold traffic to amortize against: fixed per-pass machinery (bucket table clear and
+   scan, the leaf's own level) dominates a 4-pass sort. That is where the remaining
+   headroom is concentrated, and it is a *pass overhead* problem, not a bandwidth one.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
