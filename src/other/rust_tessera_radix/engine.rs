@@ -23,11 +23,13 @@
 //!   its cache-resident passes, charging the split for the passes on the largest
 //!   child it would actually create (`split_pays`, `sample_split_shape`).
 //! - **Leaf digit width and placement**: wider digits mean fewer passes but a
-//!   bigger bucket table, so the width follows the tile size (`leaf_radix`), and
-//!   the windows are placed on the varying bits rather than on a fixed grid
-//!   (`plan_digits_packed`).
-//! - **How a leaf finishes**: counting passes, a merge sort or an insertion
-//!   sort, whichever is cheapest at that size.
+//!   bigger bucket table, so the width is the widest whose table is no larger
+//!   than the tile itself (`leaf_radix`), and the windows are placed on the
+//!   varying bits rather than on a fixed grid (`plan_digits_packed`).
+//! - **How a leaf finishes**: one MSD level over the tile when that is strictly
+//!   cheaper than the flat counting plan, an insertion sort below its crossover,
+//!   and the flat plan otherwise. The three are the same partition kernel called
+//!   with different widths, not three algorithms.
 //!
 //! Constant bits are dropped everywhere, including in the split's fan-out: a
 //! digit that cannot divide the data would otherwise buy 256 empty buckets, and
@@ -36,13 +38,14 @@
 //!
 //! Records are never lost or duplicated, including through a panic. Every leaf
 //! keeps the complete record set in one buffer for the whole of every pass:
-//! the counting leaf reads a key before it moves the record, the merge leaf
-//! copies instead of moving so its source stays whole, and the insertion leaf
-//! only swaps. A panic from the key extractor therefore leaves every record
-//! reachable, and the two buffer-moving leaves copy the scratch buffer back
-//! before resuming it, but only for types that own a resource -- a duplicated
-//! record is a double free there, while a plain key type only risks an
-//! arbitrary order, so integer keys compile without any recovery at all.
+//! the counting leaf reads a key before it moves the record, the insertion leaf
+//! only swaps, and the MSD level reads the tile and writes only the scratch,
+//! which is a complete copy of the set by the time it returns. A panic from the
+//! key extractor therefore leaves every record reachable, and the counting leaf
+//! copies the scratch buffer back before resuming, but only for types that own a
+//! resource -- a duplicated record is a double free there, while a plain key
+//! type only risks an arbitrary order, so integer keys compile without any
+//! recovery at all.
 //! `sort` is stable: equal keys keep their input order through the block
 //! engine's permutation and through every leaf.
 
@@ -160,6 +163,46 @@ impl<T: Key> Copy for Variation<T> {}
 impl<T: Key> Variation<T> {
     fn varying(self) -> u128 {
         self.union.to_u128() & !self.intersection.to_u128()
+    }
+}
+
+/// Walks the buckets a partition produced, extracting every key once and
+/// accumulating the child's variation while the bucket boundary is still open,
+/// so no child pays for a second scan of its own keys. Boundaries come from
+/// comparing digits rather than from the cursor table, which is what lets the
+/// same walk serve a node the block engine just partitioned and a tile the
+/// counting pass just scattered: in both, equal digits are contiguous.
+fn for_each_bucket<T: Key>(
+    arr: &mut [T],
+    digit: Digit,
+    mut finish: impl FnMut(&mut [T], Variation<T>),
+) {
+    let mask = digit.mask::<T>();
+    let shift = T::Value::from_usize(digit.shift);
+    let bucket_of = |key: SortKey<T>| ((key & mask) >> shift).to_usize();
+    let mut start = 0;
+    while start < arr.len() {
+        let first = arr[start].key();
+        let bucket = bucket_of(first);
+        let (mut union, mut intersection) = (first, first);
+        let mut end = start + 1;
+        while end < arr.len() {
+            let key = arr[end].key();
+            if bucket_of(key) != bucket {
+                break;
+            }
+            union |= key;
+            intersection = intersection & key;
+            end += 1;
+        }
+        finish(
+            &mut arr[start..end],
+            Variation {
+                union,
+                intersection,
+            },
+        );
+        start = end;
     }
 }
 
@@ -769,35 +812,9 @@ impl<T: Key> Context<T> {
     /// the child while the bucket boundary is still open, so a child does not
     /// pay for a second scan of its own keys.
     fn descend(&mut self, arr: &mut [T], digit: Digit) {
-        let mask = digit.mask::<T>();
-        let shift = T::Value::from_usize(digit.shift);
-        let mut start = 0;
-        while start < arr.len() {
-            let first = arr[start].key();
-            let bucket = ((first & mask) >> shift).to_usize();
-            let mut union = first;
-            let mut intersection = first;
-            let mut end = start + 1;
-            while end < arr.len() {
-                let key = arr[end].key();
-                if ((key & mask) >> shift).to_usize() != bucket {
-                    break;
-                }
-                union |= key;
-                intersection = intersection & key;
-                end += 1;
-            }
-            // Within a bucket every key shares the digits above the split, so
-            // they fall out of the child's variation on their own.
-            self.sort_node(
-                &mut arr[start..end],
-                Variation {
-                    union,
-                    intersection,
-                },
-            );
-            start = end;
-        }
+        // Within a bucket every key shares the digits above the split, so they
+        // fall out of the child's variation on their own.
+        for_each_bucket(arr, digit, |child, variation| self.sort_node(child, variation));
     }
 
     fn set_scratch_len(&mut self, len: usize) {
@@ -839,17 +856,19 @@ impl<T: Key> Context<T> {
         // leaf relies on: the tile always holds the set.
         // SAFETY: as above, plus `len` records were written to the scratch.
         unsafe { std::ptr::copy_nonoverlapping(scratch, arr.as_mut_ptr(), len) };
+        // Boundaries come from the cursor table rather than from comparing keys:
+        // with a bucket per record the comparison walk is one unpredictable branch
+        // per record, which measured 48 % slower than reading the ends this pass
+        // already computed. A bucket of one record is done; a larger one has its
+        // variation re-read, and a flat plan on equal keys returns immediately.
         let buckets = 1usize << digit.width;
         let mut start = 0;
         for bucket in 0..buckets {
-            // SAFETY: the pass filled every entry below `buckets`, and cumulative
-            // counts never decrease, so `start <= end <= len`.
+            // SAFETY: the pass filled every entry below buckets, and cumulative
+            // counts never decrease, so start <= end <= len.
             let end = unsafe { *counts_ptr.add(bucket) } as usize;
             debug_assert!(start <= end && end <= len);
             if end > start + 1 {
-                // A bucket of two or more records still shares the window that was
-                // just consumed, so it is only finished if what remains of its keys
-                // is ordered. Its own variation says whether that costs anything.
                 let (union, intersection) = block::varying_key_bits(&arr[start..end]);
                 self.lsd_leaf(&mut arr[start..end], Variation { union, intersection });
             }
@@ -881,9 +900,6 @@ impl<T: Key> Context<T> {
             leaf_radix(len, std::mem::size_of::<T>()),
             &mut digits,
         );
-        // One MSD level costs about two and a half flat passes, so three is the
-        // break-even; below that the flat plan is cheaper and touches no extra
-        // buffer.
         // Strictly cheaper only: a level that merely ties the flat plan costs a memcpy
         // and a bucket walk for nothing, and measured 5 % worse on `bands8`.
         if self.leaf_mode == LeafMode::Auto && passes > MSD_LEVEL_PASSES {
