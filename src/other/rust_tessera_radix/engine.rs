@@ -483,10 +483,20 @@ fn trace() -> bool {
     *TRACE.get_or_init(|| std::env::var_os("RADIX_TRACE").is_some())
 }
 
+/// Measurement hook: RADIX_FUSE_LEAF=0 disables consuming a bucket at its
+/// compact completion. Unset in every shipped run.
 fn fuse_leaf() -> bool {
     use std::sync::OnceLock;
     static FUSE: OnceLock<bool> = OnceLock::new();
     *FUSE.get_or_init(|| std::env::var("RADIX_FUSE_LEAF").map_or(true, |v| v != "0"))
+}
+
+/// Measurement hook: RADIX_FUSE_EQ=0 disables only equality-band fusion while
+/// digit-split fusion stays on, so the two A/Bs remain separable.
+fn fuse_equality() -> bool {
+    use std::sync::OnceLock;
+    static FUSE: OnceLock<bool> = OnceLock::new();
+    *FUSE.get_or_init(|| std::env::var("RADIX_FUSE_EQ").map_or(true, |v| v != "0"))
 }
 
 struct Context<T> {
@@ -1065,6 +1075,9 @@ impl<T: Key> Context<T> {
             // histogram pass does not refetch the whole tile from memory.
             let mut visit = |_: usize, child: &mut [T]| {
                 if child.len().saturating_mul(record_bytes) <= tile_bytes {
+                    if trace() {
+                        eprintln!("  fused-leaf len={}", child.len());
+                    }
                     let variation = scan_variation(child, candidate);
                     self.lsd_leaf(child, variation);
                 }
@@ -1107,7 +1120,7 @@ impl<T: Key> Context<T> {
                 Greater => 2,
             }
         };
-        let fused = fuse_leaf();
+        let fused = fuse_leaf() && fuse_equality();
         let tile_bytes = self.tile_bytes;
         let record_bytes = std::mem::size_of::<T>();
         let ends = if fused {
@@ -1115,6 +1128,9 @@ impl<T: Key> Context<T> {
                 // The equal band is already finished; only the two outer bands
                 // can still need a leaf.
                 if bucket != 1 && child.len().saturating_mul(record_bytes) <= tile_bytes {
+                    if trace() {
+                        eprintln!("  fused-leaf bucket={} len={}", bucket, child.len());
+                    }
                     let variation = scan_variation(child, parent_varying);
                     self.lsd_leaf(child, variation);
                 }

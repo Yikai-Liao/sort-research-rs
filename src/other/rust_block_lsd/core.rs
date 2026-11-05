@@ -793,6 +793,7 @@ impl<'a, T> Sorter<'a, T> {
             block_positions[self.block_order[i] as usize] = i as u32;
         }
         let input_ptr = self.blocks.input;
+        let had_visitor = visit.is_some();
         let mut visited = 0;
         let mut visited_start = 0;
         let mut callback_panic = None;
@@ -893,7 +894,9 @@ impl<'a, T> Sorter<'a, T> {
             visit_due(start);
         }
         visit_due(start);
-        debug_assert!(visited == ends.len() || callback_panic.is_some());
+        // Without a visitor no bucket is marked visited; ends may still be
+        // non-empty because callers asked for boundaries alone.
+        debug_assert!(!had_visitor || visited == ends.len() || callback_panic.is_some());
         assert_eq!(start, self.blocks.input_len);
         self.input_materialized = true;
         callback_panic
@@ -1057,5 +1060,78 @@ mod tests {
         }
         check!(f32, u32, 0x7fc00001, 0xffc00002);
         check!(f64, u64, 0x7ff8000000000001, 0xfff8000000000002);
+    }
+
+    #[test]
+    fn compact_accepts_ends_without_a_visitor() {
+        let mut data: Vec<u64> = (0..257)
+            .map(|i| (i as u64).wrapping_mul(2_654_435_761))
+            .collect();
+        let mut expected = data.clone();
+        expected.sort_unstable();
+        let mut sorter = Sorter::new(&mut data, 2, 17);
+        let (panic, ends) = sorter.step_with_ends(|record| (*record & 1) as usize, true);
+        assert!(panic.is_none());
+        assert!(!ends.is_empty());
+        // This is the debug-assertion path that used to require a visitor.
+        assert!(sorter.compact_with(&ends, None).is_none());
+        drop(sorter);
+        data.sort_unstable();
+        assert_eq!(data, expected);
+    }
+
+    #[test]
+    fn visitor_panic_still_finishes_compaction() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        struct Tracked {
+            key: u64,
+            id: usize,
+            drops: Rc<Cell<usize>>,
+        }
+        impl Key for Tracked {
+            type Value = u64;
+            fn key(&self) -> u64 {
+                self.key
+            }
+        }
+        impl Drop for Tracked {
+            fn drop(&mut self) {
+                self.drops.set(self.drops.get() + 1);
+            }
+        }
+
+        let drops = Rc::new(Cell::new(0));
+        let mut data: Vec<Tracked> = (0..257)
+            .map(|id| Tracked {
+                key: (id % 4) as u64,
+                id,
+                drops: drops.clone(),
+            })
+            .collect();
+        let mut sorter = Sorter::new(&mut data, 4, 17);
+        let (panic, ends) = sorter.step_with_ends(|record| record.key as usize, true);
+        assert!(panic.is_none());
+        assert!(ends.len() == 4);
+        let mut calls = 0;
+        let payload = sorter.compact_with(
+            &ends,
+            Some(&mut |_bucket, bucket: &mut [Tracked]| {
+                calls += 1;
+                if calls == 2 {
+                    panic!("boom");
+                }
+                bucket.sort_by_key(|record| record.key);
+            }),
+        );
+        assert!(payload.is_some());
+        assert_eq!(calls, 2);
+        drop(sorter);
+        assert_eq!(drops.get(), 0);
+        data.sort_by_key(|record| record.id);
+        assert!(data.iter().enumerate().all(|(id, record)| record.id == id));
+        drop(data);
+        assert_eq!(drops.get(), 257);
     }
 }

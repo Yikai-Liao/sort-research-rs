@@ -87,6 +87,9 @@ mod tracked {
     static CALLS: AtomicUsize = AtomicUsize::new(0);
     static PANIC_AT: AtomicUsize = AtomicUsize::new(usize::MAX);
     static DROPS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+    // Both panic sweeps use these process-wide counters; cargo runs tests in
+    // parallel, so they must not arm each other's panics.
+    pub static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     pub struct Tracked {
         pub id: u64,
@@ -144,6 +147,7 @@ mod tracked {
 /// dropped twice.
 #[test]
 fn a_key_panic_never_loses_or_duplicates_a_record() {
+    let _guard = tracked::TEST_LOCK.lock().unwrap();
     // The interesting panics are the ones inside a level that is writing
     // into the live buffer, and where those sit in the call sequence depends
     // on the leaf, so the whole sequence is swept instead of guessed. The
@@ -210,6 +214,56 @@ fn a_key_panic_never_loses_or_duplicates_a_record() {
                 "len={len} panic_at={panic_at} did not drop every record exactly once"
             );
         }
+    }
+}
+
+/// A small tile forces the split's compact visitor to sort child buckets, so
+/// this arms panics inside the fused leaf path rather than only inside a
+/// root-level leaf.
+#[test]
+fn a_key_panic_in_a_fused_leaf_still_finishes_compaction() {
+    let _guard = tracked::TEST_LOCK.lock().unwrap();
+    let len = 200;
+    let policy = Policy {
+        tile_bytes: 256,
+        ..Policy::default()
+    };
+    let build = || -> Vec<tracked::Tracked> {
+        let mut rng = Rng(0x9f4a_2c31_7b68_d105 ^ len as u64);
+        (0..len)
+            .map(|id| tracked::Tracked {
+                id: id as u64,
+                key: rng.next(),
+            })
+            .collect()
+    };
+    tracked::reset();
+    let mut probe = build();
+    sort_with_policy(&mut probe, policy);
+    let calls = tracked::calls();
+    drop(probe);
+    for step in 0..40 {
+        let panic_at = 1 + step * calls / 40;
+        tracked::reset();
+        let mut records = build();
+        let expected: Vec<u64> = (0..len as u64).collect();
+        tracked::arm(panic_at);
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            sort_with_policy(&mut records, policy);
+        }));
+        assert!(outcome.is_err(), "panic_at={panic_at} did not panic");
+        let mut ids: Vec<u64> = records.iter().map(|record| record.id).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, expected, "panic_at={panic_at} lost records");
+        assert!(
+            tracked::drops().is_empty(),
+            "panic_at={panic_at} dropped a record while the tile still held it"
+        );
+        tracked::disarm();
+        drop(records);
+        let mut dropped = tracked::drops();
+        dropped.sort_unstable();
+        assert_eq!(dropped, expected, "panic_at={panic_at} drop count");
     }
 }
 
