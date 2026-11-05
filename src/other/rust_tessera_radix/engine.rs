@@ -72,6 +72,12 @@ const RADIX: usize = 8;
 /// split's last pass land in a different 40 KiB region -- measured in section 21
 /// as a loss even when the extra buckets are all occupied.
 const SPLIT_RADIX_MAX: usize = 12;
+
+/// Narrowest width at which the widening bar cannot be met by any sample.
+///
+/// The bar is distinct * 4 >= 2^width and the sample has MSD_SAMPLE entries, so from
+/// width 10 upwards no sample can satisfy it and probing is pure overhead.
+const WIDENING_SAMPLE_LIMIT: usize = 10;
 /// Widest digit a leaf may use. The cursor table is `2 << width` bytes of
 /// `u16`, so this is a 32 KiB stack array in the worst case; the leaf only
 /// clears and scans the part its own digit uses.
@@ -673,15 +679,22 @@ impl<T: Key> Context<T> {
         // the window does not divide -- a random node is already balanced at the
         // size-chosen width, so its decision does not move.
         while radix < top && radix + 2 <= SPLIT_RADIX_MAX {
-            let probe = Digit {
-                shift: top - radix,
-                width: radix,
-            };
-            // A quarter of the buckets occupied is the bar: below it the level is
-            // mostly one bucket and a wider one is strictly better, above it the
-            // extra table and boundary reads cost more than the balance they buy.
-            if sampled_buckets(arr, probe) * 4 >= 1usize << radix {
-                break;
+            // The sample can only ever see MSD_SAMPLE distinct buckets, so the
+            // quarter bar (distinct * 4 >= 2^width) cannot be met once 2^width
+            // exceeds four times the sample. Widening straight past those widths is
+            // the same decision for less work: the alternative is a sample that is
+            // guaranteed to fail, at every node, for nothing.
+            if radix < WIDENING_SAMPLE_LIMIT {
+                let probe = Digit {
+                    shift: top - radix,
+                    width: radix,
+                };
+                // A quarter of the buckets occupied is the bar: below it the level is
+                // mostly one bucket and a wider one is strictly better, above it the
+                // extra table and boundary reads cost more than the balance they buy.
+                if sampled_buckets(arr, probe) * 4 >= 1usize << radix {
+                    break;
+                }
             }
             radix += 2;
         }

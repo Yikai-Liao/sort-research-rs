@@ -1724,6 +1724,26 @@ Reverted in full. The surviving lesson is the one the last four sections keep
 re-teaching: the block engine's fan-out is part of its cost policy, so "one digit" is
 not a free simplification of a node that used to run a planned stream.
 
+### 55. Idea 03: the widening sample that could never pass, and the measurement error that hid it
+
+The widening loop samples at most MSD_SAMPLE = 128 buckets and stops when a quarter of
+2^width is covered, i.e. when distinct * 4 >= 2^width. From width 10 upwards that can
+never hold, so those probes were guaranteed to fail; the loop now widens past them
+without sampling (WIDENING_SAMPLE_LIMIT = 10).
+
+Validated the only way a decision-neutral change can be validated: with OVERRIDE_SEED=1
+(the patterns crate's own seed hook, which I had forgotten existed) the routing trace is
+**byte-identical on all 8 cells tested** and instructions differ by at most 0.03 % --
+this change saves work that was never necessary rather than changing what is decided.
+
+**The important part is the mistake it exposed.** Section 54 rejected brainstorm idea 01
+using two builds that each generated their *own* random data, because --filter does not
+fix a seed and I had removed the partial seeding I tried earlier. Different data means
+different bucket sizes, different routing, and a "+14.3 % instructions" that was really
+"+different input". That verdict is void and idea 01 is being re-measured with
+OVERRIDE_SEED=1. Every cross-build comparison in this notebook from now on sets it, and
+raw_runs.csv records the seed alongside the commit.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
