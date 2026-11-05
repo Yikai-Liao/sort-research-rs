@@ -934,7 +934,28 @@ from, in one interleaved A/B, 15 rounds per cell, 24 common cells:
 | u128 two values | 10.4 | 10.0 | | u64 descending | 5.1 | 4.6 |
 | u128 eight values | 11.2 | 10.2 | | u32 descending | 4.5 | 3.5 |
 
-Worst regression +3.5 % (u64 random), inside the 5 % bar and inside this machine's
+Wall-clock on this shared VM cannot settle ±5 % across separately built binaries:
+the same matrix re-run gives 9 of 18 cells better and 9 worse, with untouched paths
+(ascending) swinging 15-22 % between builds. The measurement that does settle it is
+`perf stat` instructions, one cell per line, 5 rounds, base against final:
+
+| 1M cell | base | final | | 1M cell | base | final |
+| --- | --- | --- | --- | --- | --- | --- |
+| u64 random | 1.946 G | +0.12 % | | u32 random | 1.186 G | +0.02 % |
+| u64 99 % sorted | 1.808 G | +0.05 % | | u32 99 % sorted | 0.977 G | +0.01 % |
+| u64 two values | 0.389 G | +0.27 % | | u32 two values | 0.341 G | +4.23 % |
+| u64 eight values | 0.411 G | +0.18 % | | u32 eight values | 0.375 G | +0.42 % |
+| u64 ascending | 0.285 G | +0.95 % | | u32 ascending | 0.264 G | -0.28 % |
+| u64 descending | 0.566 G | -0.02 % | | u32 descending | 0.531 G | -0.03 % |
+| u128 random | 4.431 G | +0.28 % | | u128 99 % sorted | 1.590 G | -0.19 % |
+| u128 two values | 0.654 G | +1.46 % | | u128 ascending | 0.537 G | -0.58 % |
+
+Seventeen of eighteen common cells are within 1.5 % of the work they did before the
+round; the outlier is u32 with two values at +4.2 % of instructions, still inside
+the 5 % bar. The wall-clock table above, worst regression +3.5 % (u64 random), is
+consistent with that and is kept as the sanity check, not as the proof.
+
+(Superseded note:)
 noise; most cells moved the other way. The same cells measured at 7 rounds earlier
 in the round had shown a 39 % "regression" on u32 random that 15 rounds under the
 same pairing turned into a 12 % gain -- the rule from §26 needs the round count to
