@@ -236,14 +236,31 @@ pub fn bench<T: Ord + std::fmt::Debug>(
     #[cfg(feature = "rust_afsort")]
     bench_inst!(other::rust_afsort);
 
+    // Integer-only radix comparisons. The type gate keeps types the adapter
+    // rejects (strings, the 1 KiB value, f128) out of the run instead of
+    // failing on the deliberate rejection.
+    #[cfg(feature = "cpp_ips2ra")]
+    if other::cpp_ips2ra::supports_type::<T>() {
+        bench_inst!(other::cpp_ips2ra);
+    }
+
+    #[cfg(feature = "cpp_dovetail")]
+    if other::cpp_dovetail::supports_type::<T>() {
+        bench_inst!(other::cpp_dovetail);
+    }
+
     #[cfg(feature = "cpp_simdsort")]
     bench_inst!(other::cpp_simdsort);
 
     #[cfg(feature = "cpp_vqsort")]
-    bench_inst!(other::cpp_vqsort);
+    if other::cpp_vqsort::supports_type::<T>() {
+        bench_inst!(other::cpp_vqsort);
+    }
 
     #[cfg(feature = "cpp_intel_avx512")]
-    bench_inst!(other::cpp_intel_avx512);
+    if other::cpp_intel_avx512::supports_type::<T>() {
+        bench_inst!(other::cpp_intel_avx512);
+    }
 
     #[cfg(feature = "singeli_singelisort")]
     bench_inst!(other::singeli_singelisort);

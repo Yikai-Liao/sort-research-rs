@@ -15,6 +15,7 @@
 
 use std::time::{Duration, Instant};
 
+use sort_test_tools::ffi_types::{Record128, Record16};
 use sort_test_tools::{patterns, Sort};
 
 struct Config {
@@ -459,58 +460,9 @@ fn keys_u128(pattern: &str, len: usize) -> Vec<u128> {
         .collect()
 }
 
-/// A 16-byte record that sorts by its leading u64, like benches/bench.rs does.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(C)]
-struct Record16 {
-    key: u64,
-    _padding: [u8; 8],
-}
-
-impl Ord for Record16 {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.key.cmp(&other.key)
-    }
-}
-impl PartialOrd for Record16 {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl sort_research_rs::other::radix_support::Key for Record16 {
-    type Value = u64;
-    fn key(&self) -> u64 {
-        self.key
-    }
-}
-
-/// A 128-byte record that sorts by its leading u64, like the repository's
-/// u64_128b benchmark type.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(C)]
-struct Record128 {
-    key: u64,
-    _padding: [u8; 120],
-}
-
-impl Ord for Record128 {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.key.cmp(&other.key)
-    }
-}
-impl PartialOrd for Record128 {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl sort_research_rs::other::radix_support::Key for Record128 {
-    type Value = u64;
-    fn key(&self) -> u64 {
-        self.key
-    }
-}
+// The record layouts live in sort_test_tools so the C ABI wrappers and the
+// benchmark use exactly the same field order. The Key impls live in
+// sort_research_rs::other::radix_support, where the trait is defined.
 
 fn keys_record128(pattern: &str, len: usize) -> Vec<Record128> {
     // A full-width row draws the key itself; the named patterns keep their shape.
@@ -523,10 +475,7 @@ fn keys_record128(pattern: &str, len: usize) -> Vec<Record128> {
             .collect()
     };
     keys.into_iter()
-        .map(|key| Record128 {
-            key,
-            _padding: [0; 120],
-        })
+        .map(|key| Record128::new(key, [0; 120]))
         .collect()
 }
 
@@ -540,10 +489,7 @@ fn keys_record16(pattern: &str, len: usize) -> Vec<Record16> {
             .collect()
     };
     keys.into_iter()
-        .map(|key| Record16 {
-            key,
-            _padding: [0; 8],
-        })
+        .map(|key| Record16::new(key, [0; 8]))
         .collect()
 }
 
@@ -739,6 +685,45 @@ fn msd_radix<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
     sort_research_rs::other::rust_msd_radix::sort(s);
 }
 
+#[cfg(feature = "cpp_ips2ra")]
+fn ips2ra<T: Ord>(s: &mut [T]) {
+    sort_research_rs::other::cpp_ips2ra::sort(s);
+}
+
+#[cfg(feature = "cpp_dovetail")]
+fn dovetail<T: Ord>(s: &mut [T]) {
+    sort_research_rs::other::cpp_dovetail::sort(s);
+}
+
+#[cfg(feature = "cpp_vqsort")]
+fn vqsort<T: Ord>(s: &mut [T]) {
+    sort_research_rs::other::cpp_vqsort::sort(s);
+}
+
+#[cfg(feature = "cpp_intel_avx512")]
+fn intel_avx512<T: Ord>(s: &mut [T]) {
+    sort_research_rs::other::cpp_intel_avx512::sort(s);
+}
+
+#[cfg(feature = "rust_radsort")]
+fn radsort_direct<T: Ord>(s: &mut [T]) {
+    sort_research_rs::other::rust_radsort::sort(s);
+}
+
+#[cfg(all(feature = "rust_radsort", feature = "rust_block_lsd"))]
+fn radsort_keyed<T>(s: &mut [T])
+where
+    T: sort_research_rs::other::radix_support::Key,
+    T::Value: radsort::Key,
+{
+    sort_research_rs::other::rust_radsort::sort_keyed(s);
+}
+
+#[cfg(feature = "cpp_ips4o")]
+fn ips4o<T: Ord>(s: &mut [T]) {
+    sort_research_rs::unstable::cpp_ips4o::sort(s);
+}
+
 macro_rules! radix_variants {
     ($ty:ty) => {{
         #[allow(unused_mut)]
@@ -773,6 +758,36 @@ macro_rules! radix_variants {
         #[cfg(feature = "rust_msd_radix")]
         {
             v.push(("msd_radix", msd_radix::<$ty>));
+        }
+        #[cfg(feature = "cpp_ips2ra")]
+        if sort_research_rs::other::cpp_ips2ra::supports_type::<$ty>() {
+            v.push(("ips2ra", ips2ra::<$ty>));
+        }
+        #[cfg(feature = "cpp_dovetail")]
+        if sort_research_rs::other::cpp_dovetail::supports_type::<$ty>() {
+            v.push(("dovetail", dovetail::<$ty>));
+        }
+        #[cfg(feature = "cpp_vqsort")]
+        if sort_research_rs::other::cpp_vqsort::supports_type::<$ty>() {
+            v.push(("vqsort", vqsort::<$ty>));
+        }
+        #[cfg(feature = "cpp_intel_avx512")]
+        if sort_research_rs::other::cpp_intel_avx512::supports_type::<$ty>() {
+            v.push(("intel_avx512", intel_avx512::<$ty>));
+        }
+        #[cfg(feature = "rust_radsort")]
+        if sort_research_rs::other::rust_radsort::supports_type::<$ty>() {
+            v.push(("radsort", radsort_direct::<$ty>));
+        }
+        #[cfg(all(feature = "rust_radsort", feature = "rust_block_lsd"))]
+        if !sort_research_rs::other::rust_radsort::supports_type::<$ty>()
+            && <$ty as sort_research_rs::other::radix_support::Key>::SUPPORTED
+        {
+            v.push(("radsort_keyed", radsort_keyed::<$ty>));
+        }
+        #[cfg(feature = "cpp_ips4o")]
+        if std::any::TypeId::of::<$ty>() == std::any::TypeId::of::<u64>() {
+            v.push(("ips4o", ips4o::<$ty>));
         }
         v
     }};

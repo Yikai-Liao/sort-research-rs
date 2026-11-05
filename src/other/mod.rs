@@ -29,6 +29,14 @@ pub mod cpp_vqsort;
 #[cfg(feature = "cpp_intel_avx512")]
 pub mod cpp_intel_avx512;
 
+// Call IPS²Ra sort via FFI.
+#[cfg(feature = "cpp_ips2ra")]
+pub mod cpp_ips2ra;
+
+// Call DovetailSort via FFI.
+#[cfg(feature = "cpp_dovetail")]
+pub mod cpp_dovetail;
+
 // Call singelisort sort via FFI.
 #[cfg(feature = "singeli_singelisort")]
 pub mod singeli_singelisort;

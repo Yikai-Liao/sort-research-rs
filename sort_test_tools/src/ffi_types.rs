@@ -98,6 +98,78 @@ impl Drop for FFIString {
     }
 }
 
+// 16 byte record. The key is the whole ordering; the payload only observes
+// whether a sort is stable and whether it moves complete records. Equality
+// follows the key, as required by the `Ord` contract; compare payloads
+// explicitly when a test needs to observe record movement.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct Record16 {
+    pub key: u64,
+    pub payload: [u8; 8],
+}
+
+impl Record16 {
+    pub fn new(key: u64, payload: [u8; 8]) -> Self {
+        Self { key, payload }
+    }
+}
+
+impl PartialEq for Record16 {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+
+impl Eq for Record16 {}
+
+impl PartialOrd for Record16 {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Record16 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key.cmp(&other.key)
+    }
+}
+
+// 128 byte record sorting by its leading u64. Large enough that moving a record
+// dominates the key comparison, which is the point of the record benchmark.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct Record128 {
+    pub key: u64,
+    pub payload: [u8; 120],
+}
+
+impl Record128 {
+    pub fn new(key: u64, payload: [u8; 120]) -> Self {
+        Self { key, payload }
+    }
+}
+
+impl PartialEq for Record128 {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+
+impl Eq for Record128 {}
+
+impl PartialOrd for Record128 {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Record128 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key.cmp(&other.key)
+    }
+}
+
 // Very large stack value.
 #[repr(C)]
 #[derive(PartialEq, Eq, Debug, Clone)]

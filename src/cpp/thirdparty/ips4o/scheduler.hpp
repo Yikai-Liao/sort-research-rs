@@ -42,7 +42,14 @@
 #include <numeric>
 #include <vector>
 
+// Local integration patch: the sequential sorter constructs Scheduler but never
+// calls into its queue. Avoid a mandatory TBB dependency when only the serial
+// entry point is used. The parallel entry point still requires TBB.
+#if defined(IPS4O_NO_TBB)
+#include <deque>
+#else
 #include <tbb/concurrent_queue.h>
+#endif
 
 namespace ips4o {
 namespace detail {
@@ -161,7 +168,11 @@ class Scheduler {
     void reset() { m_num_idle_threads.store(0, std::memory_order_relaxed); }
 
  protected:
+#if defined(IPS4O_NO_TBB)
+    std::deque<Job> m_glob_queue;
+#else
     tbb::concurrent_queue<Job> m_glob_queue;
+#endif
     std::atomic_uint64_t m_num_idle_threads;
     const size_t m_num_threads;
 };

@@ -3,6 +3,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <cstdlib>
+#include <stdexcept>
+
 extern "C" {
 struct CompResult {
     int8_t cmp_result;
@@ -22,6 +25,25 @@ struct F128 {
 
 struct FFIOneKibiByte {
     int64_t values[128];
+};
+
+// Key-first record layouts shared with sort_test_tools::ffi_types. Only the key
+// takes part in the ordering; the payload makes stability observable.
+struct Record16 {
+    uint64_t key;
+    uint8_t payload[8];
+};
+
+struct Record128 {
+    uint64_t key;
+    uint8_t payload[120];
+};
+
+// Rust u128 is little-endian and 16-byte aligned on the supported benchmark
+// targets; the alignment matters because VQSort reads 128-bit lanes.
+struct alignas(16) U128 {
+    uint64_t lo;
+    uint64_t hi;
 };
 }
 

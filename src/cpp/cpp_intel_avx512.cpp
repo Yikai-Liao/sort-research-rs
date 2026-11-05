@@ -1,7 +1,11 @@
-#include "thirdparty/intel_avx512/avx512-32bit-qsort.hpp"
-#include "thirdparty/intel_avx512/avx512-64bit-qsort.hpp"
+// x86-simd-sort, pinned at 6e059b14975df2e3c74260ec905167a1be5a34ca.
+//
+// The old adapter reinterpreted uint64_t as int64_t, which reverses the order of
+// the upper half of the unsigned range. The static interface is called with the
+// actual element type so unsigned comparisons are used. Compilation with
+// -march=native selects either the AVX2 or the AVX-512 translation.
 
-#include <stdexcept>
+#include "thirdparty/x86_simd_sort/src/x86simdsort-static-incl.h"
 
 #include <stdint.h>
 
@@ -11,74 +15,18 @@ extern "C" {
 // --- i32 ---
 
 void intel_avx512_i32(int32_t* data, size_t len) {
-    avx512_qsort(data, len);
+    x86simdsortStatic::qsort(data, len);
 }
 
-uint32_t intel_avx512_i32_by(int32_t* data,
-                             size_t len,
-                             CompResult (*cmp_fn)(const int32_t&, const int32_t&, uint8_t*),
-                             uint8_t* ctx) {
-    printf("Not supported\n");
-    return 1;
+// --- u32 ---
+
+void intel_avx512_u32(uint32_t* data, size_t len) {
+    x86simdsortStatic::qsort(data, len);
 }
 
 // --- u64 ---
 
 void intel_avx512_u64(uint64_t* data, size_t len) {
-    avx512_qsort(reinterpret_cast<int64_t*>(data), len);
-}
-
-uint32_t intel_avx512_u64_by(uint64_t* data,
-                             size_t len,
-                             CompResult (*cmp_fn)(const uint64_t&, const uint64_t&, uint8_t*),
-                             uint8_t* ctx) {
-    printf("Not supported\n");
-    return 1;
-}
-
-// --- ffi_string ---
-
-void intel_avx512_ffi_string(FFIString* data, size_t len) {
-    printf("Not supported\n");
-}
-
-uint32_t intel_avx512_ffi_string_by(FFIString* data,
-                                    size_t len,
-                                    CompResult (*cmp_fn)(const FFIString&,
-                                                         const FFIString&,
-                                                         uint8_t*),
-                                    uint8_t* ctx) {
-    printf("Not supported\n");
-    return 1;
-}
-
-// --- f128 ---
-
-void intel_avx512_f128(F128* data, size_t len) {
-    printf("Not supported\n");
-}
-
-uint32_t intel_avx512_f128_by(F128* data,
-                              size_t len,
-                              CompResult (*cmp_fn)(const F128&, const F128&, uint8_t*),
-                              uint8_t* ctx) {
-    printf("Not supported\n");
-    return 1;
-}
-
-// --- 1k ---
-
-void intel_avx512_1k(FFIOneKibiByte* data, size_t len) {
-    printf("Not supported\n");
-}
-
-uint32_t intel_avx512_1k_by(FFIOneKibiByte* data,
-                            size_t len,
-                            CompResult (*cmp_fn)(const FFIOneKibiByte&,
-                                                 const FFIOneKibiByte&,
-                                                 uint8_t*),
-                            uint8_t* ctx) {
-    printf("Not supported\n");
-    return 1;
+    x86simdsortStatic::qsort(data, len);
 }
 }  // extern "C"

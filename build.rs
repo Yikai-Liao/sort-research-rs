@@ -33,6 +33,10 @@ fn build_and_link_cpp_sort(
 
     let mut builder = cc::Build::new();
 
+    // Keep the C/C++ comparison implementations on one compiler. Features that
+    // need a specific compiler (for example the gcc 4.3 build) override this.
+    builder.compiler(CLANG_PATH);
+
     builder
         .file(file_path)
         .cpp(true)
@@ -94,7 +98,15 @@ fn build_and_link_cpp_simdsort() {}
 
 #[cfg(feature = "cpp_ips4o")]
 fn build_and_link_cpp_ips4o() {
-    build_and_link_cpp_sort("cpp_ips4o", None);
+    build_and_link_cpp_sort(
+        "cpp_ips4o",
+        Some(|builder: &mut cc::Build| {
+            // Serial entry only; Scheduler is constructed but never used.
+            builder.define("IPS4O_NO_TBB", None);
+
+            None
+        }),
+    );
 }
 
 #[cfg(feature = "cpp_vqsort")]
@@ -102,6 +114,32 @@ fn build_and_link_cpp_vqsort() {
     build_and_link_cpp_sort(
         "cpp_vqsort",
         Some(|builder: &mut cc::Build| {
+            let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+            let highway_dir = manifest_dir
+                .join("src")
+                .join("cpp")
+                .join("thirdparty")
+                .join("highway");
+            let sort_dir = highway_dir.join("hwy").join("contrib").join("sort");
+
+            builder.include(&highway_dir);
+            // The per-type translation units provide the dispatched VQSort
+            // overloads; vqsort.cc provides the secure seed helper, and the
+            // hwy runtime objects provide target detection for the dispatch.
+            for file in [
+                "vqsort.cc",
+                "vqsort_i32a.cc",
+                "vqsort_u16a.cc",
+                "vqsort_u32a.cc",
+                "vqsort_u64a.cc",
+                "vqsort_128a.cc",
+            ] {
+                builder.file(sort_dir.join(file));
+            }
+            for file in ["targets.cc", "per_target.cc", "abort.cc"] {
+                builder.file(highway_dir.join("hwy").join(file));
+            }
+
             // Make an exception for march=native here because AVX2 will not work without it.
             builder.flag("-march=native");
             builder.compiler(CLANG_PATH); // gcc yields significantly worse code-gen here.
@@ -130,6 +168,41 @@ fn build_and_link_cpp_intel_avx512() {
 
 #[cfg(not(feature = "cpp_intel_avx512"))]
 fn build_and_link_cpp_intel_avx512() {}
+
+#[cfg(feature = "cpp_ips2ra")]
+fn build_and_link_cpp_ips2ra() {
+    build_and_link_cpp_sort(
+        "cpp_ips2ra",
+        Some(|builder: &mut cc::Build| {
+            // Only the sequential entry point is used; Scheduler is still part
+            // of the object graph but never reaches its queue.
+            builder.define("IPS2RA_NO_TBB", None);
+
+            None
+        }),
+    );
+}
+
+#[cfg(not(feature = "cpp_ips2ra"))]
+fn build_and_link_cpp_ips2ra() {}
+
+#[cfg(feature = "cpp_dovetail")]
+fn build_and_link_cpp_dovetail() {
+    build_and_link_cpp_sort(
+        "cpp_dovetail",
+        Some(|builder: &mut cc::Build| {
+            // One worker: the algorithm still samples, detects frequent keys,
+            // recurses and merges, but the repository's comparison is serial.
+            builder.define("PARLAY_SEQUENTIAL", None);
+            builder.compiler(CLANG_PATH);
+
+            None
+        }),
+    );
+}
+
+#[cfg(not(feature = "cpp_dovetail"))]
+fn build_and_link_cpp_dovetail() {}
 
 #[cfg(feature = "singeli_singelisort")]
 fn build_and_link_singelisort() {
@@ -414,6 +487,8 @@ fn main() {
     build_and_link_cpp_simdsort();
     build_and_link_cpp_vqsort();
     build_and_link_cpp_intel_avx512();
+    build_and_link_cpp_ips2ra();
+    build_and_link_cpp_dovetail();
     build_and_link_singelisort();
     build_and_link_golang_std();
     build_and_link_cpp_ips4o();

@@ -329,10 +329,12 @@ pub fn basic_impl<S: Sort>() {
     write_info_to_stdout::<S>();
 
     check_is_sorted::<i32, S>(&mut []);
-    check_is_sorted::<(), S>(&mut []);
-    check_is_sorted::<(), S>(&mut [()]);
-    check_is_sorted::<(), S>(&mut [(), ()]);
-    check_is_sorted::<(), S>(&mut [(), (), ()]);
+    if <S as Sort>::supports_type::<()>() {
+        check_is_sorted::<(), S>(&mut []);
+        check_is_sorted::<(), S>(&mut [()]);
+        check_is_sorted::<(), S>(&mut [(), ()]);
+        check_is_sorted::<(), S>(&mut [(), (), ()]);
+    }
     check_is_sorted::<i32, S>(&mut []);
     check_is_sorted::<i32, S>(&mut [77]);
     check_is_sorted::<i32, S>(&mut [2, 3]);
@@ -601,6 +603,13 @@ fn stability_with_patterns<T: Ord + Clone, S: Sort>(
         return;
     }
 
+    // The test sorts `(T, occurrence)` to observe whether equal `T` values keep
+    // their input order. A key-based sort that only declares `T` must not be
+    // asked to sort the tuple wrapper.
+    if !<S as Sort>::supports_type::<(T, i32)>() {
+        return;
+    }
+
     if <S as Sort>::name().contains("unstable") {
         // It would be great to mark the test as skipped, but that isn't possible as of now.
         return;
@@ -640,6 +649,10 @@ fn stability_with_patterns<T: Ord + Clone, S: Sort>(
 gen_sort_test_fns_with_default_patterns_3_ty!(stability, stability_with_patterns, []);
 
 fn observable_is_less_u64<S: Sort>(len: usize, pattern_fn: fn(usize) -> Vec<i32>) {
+    if !<S as Sort>::supports_sort_by() || !<S as Sort>::supports_type::<u64>() {
+        return;
+    }
+
     // Technically this is unsound as per Rust semantics, but the only way to do this that works
     // across C FFI. In C and C++ it would be valid to have some trivial POD containing an int that
     // is marked as mutable. Thus allowing member functions to mutate it even though they only have

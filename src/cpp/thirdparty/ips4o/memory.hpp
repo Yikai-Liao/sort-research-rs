@@ -45,7 +45,9 @@
 #include <utility>
 #include <vector>
 
+#if !defined(IPS4O_NO_TBB)
 #include <tbb/concurrent_queue.h>
+#endif
 
 #include "ips4o_fwd.hpp"
 #include "bucket_pointers.hpp"

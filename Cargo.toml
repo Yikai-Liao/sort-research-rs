@@ -97,6 +97,8 @@ default = [
     # "cpp_simdsort",
     # "cpp_vqsort",
     # "cpp_intel_avx512",
+    # "cpp_ips2ra",
+    # "cpp_dovetail",
     # "cpp_ips4o",
     # "cpp_blockquicksort",
     # "cpp_gerbens_qsort",
@@ -149,12 +151,23 @@ cpp_powersort = []
 cpp_simdsort = []
 
 # Enable highway sort from https://github.com/google/highway/tree/master/.
+# Vendored 1.4.0. Supports i32/u16/u32/u64 and complete u128 keys.
 # Uses clang and libcxx.
 cpp_vqsort = []
 
-# Enable avx512 sort from https://github.com/intel/x86-simd-sort.
+# Enable x86-simd-sort from https://github.com/numpy/x86-simd-sort.
+# Vendored 6e059b1. Supports i32/u32/u64 with their real signedness.
 # Uses clang and libcxx.
 cpp_intel_avx512 = []
+
+# Enable IPS²Ra from https://github.com/ips4o/ips2ra.
+# Vendored 83f6b76. Unstable, low extra space; u32/u64 and records keyed by u64.
+cpp_ips2ra = []
+
+# Enable DovetailSort from https://github.com/ucrparlay/DovetailSort.
+# Vendored f4630a2, built with PARLAY_SEQUENTIAL. Stable, O(n) workspace;
+# u32/u64 and records keyed by u64.
+cpp_dovetail = []
 
 # Enable ips4o from Engineering In-place (Shared-memory) Sorting Algorithms (2020) paper.
 # Uses system C++ standard lib.
