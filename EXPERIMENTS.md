@@ -1809,6 +1809,31 @@ The same pass removed a dead harness variant: \`sort_with_msd_only\` had become 
 to the default path when section 53 deleted the cost model (both took \`distinct > 1\`),
 so \`tessera_msd_only\` was measuring the same code twice and is gone.
 
+### 59. Idea 3 of the leaf redesign (window sized to the data) is a measured negative: fewer instructions, same traffic
+
+The leaf's MSD window was the widest whose cursor table fits the tile, so a 3900-record
+tile opened 8192 buckets -- 16 KiB of table, half a tile, cleared and scanned to reach
+buckets that hold nothing. Sizing that window to the sampled occupancy instead is an
+obvious candidate, and it does what it says to the instruction count:
+
+| variant | instructions, 12 cells |
+| --- | --- |
+| table = sampled occupancy | **-4.6 % to -11.3 %** on every cell, random included |
+| table = sampled occupancy + 3 bits | **-9 % to -11 %** on the six re-checked |
+
+Wall clock says no, and says it twice. With five alternating pairs at 1M on the slack
+variant: u64 random +7.9 %, u128 random -6.3 %, u64 random_local +6.1 %, 99 % sorted
++4.2 %. The exact-size variant was worse still (+43 % on both random cells).
+
+The mechanism is not mysterious once the two metrics disagree: a narrower table saves
+*instructions* (clear, scan, boundary arithmetic) but forces an extra recursion level,
+and every level is another pass over the tile. This workload is bound by bytes moved,
+not by instructions, so the table that costs instructions and saves a pass is the right
+trade -- which is the opposite of what the instruction column alone would have said.
+Reverted; the leaf width rule is unchanged. (This is also the clean counter-example to
+the assumption that an instruction-count win is a wall-clock win: section 56 had the
+mirror case, wall-clock swings with identical instructions.)
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
