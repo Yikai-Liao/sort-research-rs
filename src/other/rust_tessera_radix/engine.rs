@@ -384,13 +384,6 @@ fn tile_cost(
 /// is the same on any machine, because it counts passes rather than pricing them.
 const SPLIT_PASSES: usize = 2;
 
-/// What one pass over a cold node costs relative to one pass over a cache-resident
-/// working set. A ratio of ratios rather than a rate: measured a cold flat pass at
-/// 9.2 ns per record against 2.5 ns in cache, i.e. 3.7 on this machine. The rule
-/// only changes at ties, so the honest sensitivity is wide: every value from 2 to 5
-/// makes the same decision on the random cells.
-const COLD_PASS_COST: f64 = 1.0;
-
 /// Whether an MSD split costs less than running the passes level by level.
 ///
 /// Both sides are counted in passes over the node, so nothing about bandwidth,
@@ -399,25 +392,14 @@ const COLD_PASS_COST: f64 = 1.0;
 /// work, each discounted by what a cache-resident working set is worth. A child
 /// too large for the tile earns no discount, which is what makes the rule stop
 /// splitting once the children are still large.
-fn split_pays(cold_passes: usize, hot_passes: usize) -> bool {
-    if cold_passes < 2 {
-        return false;
-    }
-    // A pass over a node that does not fit the cache costs COLD_PASS_COST times a
-    // pass over a cache-resident working set. Both sides of the comparison move
-    // bytes, so the factor cancels on the split side (its passes are cold too);
-    // what survives is that the stream side's passes are all cold while the
-    // child's are not:
-    //
-    //   split:  SPLIT_PASSES cold passes + hot_passes cache passes
-    //   stream: cold_passes cold passes
-    //   divide by COLD_PASS_COST  ->  SPLIT_PASSES + hot_passes / r < cold_passes
-    //
-    // Without the division the rule is size-blind, which is what put 8 values
-    // spread over a 32-bit span into sixteen cold passes over 15 MiB instead of
-    // a split whose children live in cache: 36.8 ns per record against 14.4 for
-    // the same shape in 16-byte records that happened to be split.
-    SPLIT_PASSES as f64 + hot_passes as f64 / COLD_PASS_COST < cold_passes as f64
+fn split_pays(cold_passes: usize) -> bool {
+    // One rule, no machine facts: while the node needs more than one pass, split it.
+    // A split costs SPLIT_PASSES passes over the node and leaves children that the
+    // tile boundary then finishes in cache; streaming costs cold_passes passes over
+    // the whole node, which is more than one pass of the same bytes. The pass count
+    // is what decides, and the ratio that used to appear here is folded into the
+    // tile boundary: a node over the tile is cold by construction.
+    cold_passes >= 2
 }
 
 enum Order {
@@ -705,7 +687,7 @@ impl<T: Key> Context<T> {
         let hot_passes = flat_hot.min(MSD_LEVEL_PASSES);
         // One line per node says everything the routing decided, so a trace diff
         // between two builds is a decision diff.
-        let routed = split_pays(cold_passes, hot_passes);
+        let routed = split_pays(cold_passes);
         if trace() {
             eprintln!(
                 "route len={} bytes={} passes={} hot={} split={}",

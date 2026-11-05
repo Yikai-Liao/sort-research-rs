@@ -1329,6 +1329,42 @@ exactly, and the next iteration gates the discount on the node actually being co
 Prediction for that version: keeps the -53 % on sparse8 (its root is 15 MiB) and leaves
 the random cells' instruction counts alone (their extra passes came from nested nodes).
 
+### 41. Iteration 2: the router keeps no machine fact at all, and wins 58 % on few values
+
+The previous iteration expressed the cold/hot distinction as a ratio and measured
+-53 % on u128 sparse8 at +8-14 % instructions on the random cells. Per the goal as
+restated, instructions are a diagnostic and the constraint that matters is O(sqrt n)
+space, so the ratio was not rejected for that -- it was replaced by something smaller.
+
+The rule is now just: **while a node needs more than one pass, split it.**
+
+    split iff cold_passes >= 2
+
+No ratio, no bandwidth, no cache size. The tile boundary already encodes "is this
+working set cache resident": a node above it is cold by construction, so the quantity
+the ratio was standing in for is already in the code as a size.
+
+Three-way paired wall clock, 1M, one run each (this machine's noise band is +-5 %, so
+treat single cells as directional):
+
+| cell | pass model (r=1) | + ratio r=3 | structural rule |
+| --- | --- | --- | --- |
+| u128 sparse8 | 35.7 | 15.4 | **15.0** |
+| u32 random | **8.7** | 10.5 | 9.8 |
+| u64 random | 18.6 | 18.3 | 20.8 |
+| u128 random | 31.5 | 31.2 | **30.0** |
+| u64 bands8 | 18.5 | 19.6 | **17.8** |
+| u64 zipf20 | 11.0 | 9.7 | 10.5 |
+
+Longer pairing on the two u64 cells (9 rounds): 1M 18.9 against 19.7 (+4 %, inside the
+band), 10M 285.7 against **278.3 (-2.6 %)**.
+
+Kept. It is the only variant that removes a machine fact rather than naming one, it
+wins by more than the band on a mainstream shape (-58 % on few values), it is neutral
+to slightly better on u128 random, bands8, zipf and u64 10M, and its one loss (u32 1M,
+9.8 against 8.7) is a cell under 10 ms, which this notebook's own rule says cannot
+vote. The ratio-based version is not kept anywhere in the code: the concept is gone.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
