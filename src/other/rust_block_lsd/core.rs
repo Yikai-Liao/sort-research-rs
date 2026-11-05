@@ -219,7 +219,7 @@ pub(crate) fn partition_digit_with_ends<T: Key>(
 /// block engine materializes the sequence. The callback sees the bucket in input
 /// order and may sort it in place; it is not called for empty buckets.
 #[cfg(feature = "rust_tessera_radix")]
-pub(crate) fn partition_digit_with_ends_and_visit<T: Key, F: FnMut(&mut [T])>(
+pub(crate) fn partition_digit_with_ends_and_visit<T: Key, F: FnMut(usize, &mut [T])>(
     arr: &mut [T],
     radix: usize,
     shift: usize,
@@ -233,7 +233,7 @@ fn partition_digit_inner<T: Key>(
     radix: usize,
     shift: usize,
     want_ends: bool,
-    visit: Option<&mut dyn FnMut(&mut [T])>,
+    visit: Option<&mut dyn FnMut(usize, &mut [T])>,
 ) -> Vec<usize> {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
@@ -274,6 +274,28 @@ pub(crate) fn partition_by<T: Key>(
     buckets: usize,
     classify: impl Fn(&T) -> usize,
 ) -> Vec<usize> {
+    partition_by_inner(arr, buckets, classify, None)
+}
+
+/// Same as partition_by, yielding each completed bucket to visit during
+/// materialization. The bucket index is passed so a caller can skip bands it
+/// already knows are finished.
+#[cfg(feature = "rust_tessera_radix")]
+pub(crate) fn partition_by_with_visit<T: Key, F: FnMut(usize, &mut [T])>(
+    arr: &mut [T],
+    buckets: usize,
+    classify: impl Fn(&T) -> usize,
+    mut visit: F,
+) -> Vec<usize> {
+    partition_by_inner(arr, buckets, classify, Some(&mut visit))
+}
+
+fn partition_by_inner<T: Key>(
+    arr: &mut [T],
+    buckets: usize,
+    classify: impl Fn(&T) -> usize,
+    visit: Option<&mut dyn FnMut(usize, &mut [T])>,
+) -> Vec<usize> {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
         return vec![0; buckets];
@@ -292,7 +314,9 @@ pub(crate) fn partition_by<T: Key>(
         sorter.compact();
         std::panic::resume_unwind(payload);
     }
-    sorter.compact();
+    if let Some(payload) = sorter.compact_with(&ends, visit) {
+        std::panic::resume_unwind(payload);
+    }
     ends
 }
 
@@ -760,7 +784,7 @@ impl<'a, T> Sorter<'a, T> {
     fn compact_with(
         &mut self,
         ends: &[usize],
-        mut visit: Option<&mut dyn FnMut(&mut [T])>,
+        mut visit: Option<&mut dyn FnMut(usize, &mut [T])>,
     ) -> Option<PanicPayload> {
         // Sorting is finished. Reuse the output buffer as the inverse map:
         // physical block ID -> position in block_order.
@@ -789,7 +813,9 @@ impl<'a, T> Sorter<'a, T> {
                         )
                     };
                     if let Err(payload) =
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(bucket)))
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            callback(visited, bucket)
+                        }))
                     {
                         callback_panic = Some(payload);
                         return;

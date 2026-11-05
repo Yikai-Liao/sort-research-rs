@@ -1063,7 +1063,7 @@ impl<T: Key> Context<T> {
             // A leaf child is sorted as soon as the block pass has copied it
             // into input. The records are still in cache, so the leaf's first
             // histogram pass does not refetch the whole tile from memory.
-            let mut visit = |child: &mut [T]| {
+            let mut visit = |_: usize, child: &mut [T]| {
                 if child.len().saturating_mul(record_bytes) <= tile_bytes {
                     let variation = scan_variation(child, candidate);
                     self.lsd_leaf(child, variation);
@@ -1099,14 +1099,30 @@ impl<T: Key> Context<T> {
         if trace() {
             eprintln!("  eq key={:#x}", equal.to_u128());
         }
-        let ends = block::partition_by(arr, 4, |record| {
+        let classify = |record: &T| {
             use std::cmp::Ordering::{Equal, Greater, Less};
             match record.key().cmp(&equal) {
                 Less => 0,
                 Equal => 1,
                 Greater => 2,
             }
-        });
+        };
+        let fused = fuse_leaf();
+        let tile_bytes = self.tile_bytes;
+        let record_bytes = std::mem::size_of::<T>();
+        let ends = if fused {
+            let mut visit = |bucket: usize, child: &mut [T]| {
+                // The equal band is already finished; only the two outer bands
+                // can still need a leaf.
+                if bucket != 1 && child.len().saturating_mul(record_bytes) <= tile_bytes {
+                    let variation = scan_variation(child, parent_varying);
+                    self.lsd_leaf(child, variation);
+                }
+            };
+            block::partition_by_with_visit(arr, 4, &classify, visit)
+        } else {
+            block::partition_by(arr, 4, &classify)
+        };
         // Bucket 0 is the less band, bucket 1 the equal band, bucket 2 the
         // greater band. The block engine already knows the three ends, so the
         // children do not pay a second boundary scan. Their variation scans
@@ -1115,13 +1131,20 @@ impl<T: Key> Context<T> {
         let less = ends[0];
         let equal_end = ends[1];
         if less > 1 {
-            let variation = scan_variation(&arr[..less], parent_varying);
-            self.sort_node(&mut arr[..less], variation);
+            let is_tile = less.saturating_mul(record_bytes) <= tile_bytes;
+            if !(fused && is_tile) {
+                let variation = scan_variation(&arr[..less], parent_varying);
+                self.sort_node(&mut arr[..less], variation);
+            }
         }
         let greater = equal_end;
         if arr.len() - greater > 1 {
-            let variation = scan_variation(&arr[greater..], parent_varying);
-            self.sort_node(&mut arr[greater..], variation);
+            let bytes = (arr.len() - greater).saturating_mul(record_bytes);
+            let is_tile = bytes <= tile_bytes;
+            if !(fused && is_tile) {
+                let variation = scan_variation(&arr[greater..], parent_varying);
+                self.sort_node(&mut arr[greater..], variation);
+            }
         }
     }
 
