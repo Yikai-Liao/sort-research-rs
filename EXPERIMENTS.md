@@ -1057,6 +1057,27 @@ even at u128 and u32. The u128 cell is the one to watch: a 16-byte record over 1
 is memory bound, and there block LSD's many-stream scatter is as good as our
 cache-sized tiles, which is the shape of the trade rather than a bug.
 
+### 34. What is still about a machine, and what a port has to re-pick
+
+After §32 no *rate* is baked in: nothing in the kernel reads a clock, a CPU
+feature, a cache size or a timer, and there is no `target_arch` or intrinsic
+anywhere in the module. Digit extraction works on values, not memory layout, so
+the code is endian-independent. What remains are five numbers about cache
+geometry. They are listed here because a port to AArch64 or RV64 should change
+them and nothing else.
+
+| constant | what it encodes | why it is safe off-plateau | how to re-pick it |
+| --- | --- | --- | --- |
+| `CHILD_PASS_SHARE = 0.5` | what a cache-resident pass is worth | monotone: toward 1 the rule splits only when it saves a pass | time a tile pass against a node pass |
+| `TILE_BYTES = 64 KiB` | the working set a leaf keeps resident | smaller cache: leaves stream a little; larger: one level more than needed | tile sweep 16-256 KiB, take the plateau |
+| `INSERTION_MAX = 48` | where counting stops beating insertion | plateau is wide (16-96 measured on two shapes) | `Policy::with_insertion_max` |
+| `RADIX = 8` | streams per pass; cursors are 4 KiB of u32 | 6-10 all work; 12 measured worse here | rebuild with 6/7/9 and trace |
+| `MSD_LEVEL_PASSES = 3`, `MODEL_LEAF_RADIX = 11` | what one MSD level and one leaf plan cost, in passes | they only compare against each other | `route_table` pins both; re-trace |
+
+Byte-level assumptions that are not machine facts: 8-bit bytes, IEEE-754 floats
+(via the existing total order), `u16` cursors (a tile holds at most 65535
+records), `u32` descriptors. None of them depend on the core.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
