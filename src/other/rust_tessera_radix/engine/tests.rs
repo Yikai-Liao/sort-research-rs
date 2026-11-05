@@ -383,3 +383,40 @@ fn a_nine_bit_node_never_shifts_its_digit_past_the_last_varying_bit() {
     check(input, tile);
 }
 
+
+#[test]
+fn a_short_run_below_the_body_is_lifted_out() {
+    // Two keys just under the body's top bit, parked in front of it: a split at
+    // that bit would move all of the node to separate them, the body's own split
+    // then moving it again. The lift finishes the two by insertion and leaves the
+    // body one pass. The displaced pairs keep the ordered probe out of the way.
+    let (len, tile) = if cfg!(miri) { (2_048, 256) } else { (32_768, 1_024) };
+    let scale = u32::MAX as u64 / 2 + 1;
+    let mut input: Vec<u64> = (0..len as u64).map(|x| (x + (1 << 31)) * scale).collect();
+    input[0] = (1 << 31) * scale - 2;
+    input[1] = (1 << 31) * scale - 1;
+    let mut index = 2;
+    while index + 1 < input.len() {
+        input.swap(index, index + 1);
+        index += 100;
+    }
+    check(input, tile);
+}
+
+#[test]
+fn a_short_run_above_the_body_is_lifted_out_and_rotated_off_the_front() {
+    // The mirror image: the run's bit is set, so the lifted records belong after
+    // the body and the front of the node is where they must leave from.
+    let (len, tile) = if cfg!(miri) { (2_048, 256) } else { (32_768, 1_024) };
+    let scale = u32::MAX as u64 / 2 + 1;
+    let mut input: Vec<u64> = (0..len as u64).map(|x| (x + 1) * scale).collect();
+    input[0] = (1 << 31) * scale + 1;
+    input[1] = (1 << 31) * scale + 3;
+    let mut index = 2;
+    while index + 1 < input.len() {
+        input.swap(index, index + 1);
+        index += 100;
+    }
+    check(input, tile);
+}
+

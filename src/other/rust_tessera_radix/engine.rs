@@ -149,13 +149,14 @@ const MODE_RUN: usize = 8;
 /// sample sorts 64 keys, about a thousand comparisons against a node of
 /// thousands of records, and finds nothing on random data because no value
 /// repeats there.
-fn sampled_mode<T: Key>(arr: &[T]) -> Option<SortKey<T>> {
-    // Short runs, not one key per stride: a single stride aliases with data that
-    // repeats on a period dividing it (the benchmark's sparse8 does, and a fake
-    // 25 % share turned every level into one peeled value).
-    let runs = MODE_SAMPLE / MODE_RUN;
+/// Keys a split node samples: eight short runs spread over the node.
+///
+/// Short runs, not one key per stride: a single stride aliases with data that
+/// repeats on a period dividing it (the benchmark's sparse8 does, and a fake
+/// 25 % share turned every level into one peeled value).
+fn sample<T: Key>(arr: &[T], keys: &mut [SortKey<T>]) {
+    let runs = keys.len() / MODE_RUN;
     let step = (arr.len() / runs).max(1);
-    let mut keys = [arr[0].key(); MODE_SAMPLE];
     let mut len = 0;
     for run in 0..runs {
         let start = run * step;
@@ -168,7 +169,17 @@ fn sampled_mode<T: Key>(arr: &[T]) -> Option<SortKey<T>> {
             len += 1;
         }
     }
-    keys[..len].sort_unstable();
+    // A tiny node fills fewer slots; the tail repeats the first key, which can
+    // only make the mode look larger, never smaller.
+    let first = keys[0];
+    for slot in len..keys.len() {
+        keys[slot] = first;
+    }
+}
+
+fn sampled_mode<V: Unsigned>(keys: &mut [V]) -> Option<V> {
+    let len = keys.len();
+    keys.sort_unstable();
     let (mut best, mut count) = (keys[0], 1);
     let mut run = 1;
     for index in 1..len {
@@ -183,6 +194,99 @@ fn sampled_mode<T: Key>(arr: &[T]) -> Option<SortKey<T>> {
         }
     }
     (count * MODE_SHARE >= len).then_some(best)
+}
+
+/// Whether `bit` separates a minority of the sample, and which side is the
+/// minority: `true` when the records with the bit set are the few.
+fn sampled_minority<V: Unsigned>(keys: &[V], bit: V) -> Option<bool> {
+    let zero = V::from_usize(0);
+    let set = keys.iter().filter(|key| (**key & bit) != zero).count();
+    if set * 8 <= keys.len() {
+        Some(true)
+    } else if set * 8 >= keys.len() * 7 {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// Records at one end that a split may waste a whole pass on. The run is
+/// finished by an insertion sort, which is quadratic, hence the cap.
+const OUTLIER_RUN_MAX: usize = 1024;
+
+/// A short run at one end of a node whose records disagree with every other
+/// record on the node's top bit, and the variation of the rest.
+struct Outlier<T: Key> {
+    /// The run sits at the start of the node (`true`) or at its end.
+    head: bool,
+    /// Whether the run is the side with the bit set.
+    set: bool,
+    len: usize,
+    rest: Variation<T>,
+}
+
+/// The run a node's top bit separates from the rest, if it is short and at an
+/// end.
+///
+/// The sample says whether the bit splits off a minority at all; the scan then
+/// confirms that the only records on that side are one run and collects the
+/// rest's variation, which the body's own split needs anyway. A scattered
+/// minority costs the first disagreeing record and nothing more.
+fn outlier_run<T: Key>(arr: &[T], keys: &[SortKey<T>], bit: SortKey<T>) -> Option<Outlier<T>> {
+    let minority_set = sampled_minority(keys, bit)?;
+    let zero = SortKey::<T>::from_usize(0);
+    let is_minority = |key: SortKey<T>| ((key & bit) != zero) == minority_set;
+    let cap = OUTLIER_RUN_MAX.min(arr.len() / 2);
+    let mut head = 0;
+    while head < cap && is_minority(arr[head].key()) {
+        head += 1;
+    }
+    let mut tail = 0;
+    while tail < cap && is_minority(arr[arr.len() - 1 - tail].key()) {
+        tail += 1;
+    }
+    // Both ends, or neither, or a run that may continue past the cap: not the
+    // shape this path is for.
+    if (head == 0) == (tail == 0) {
+        return None;
+    }
+    let (head_run, len) = if head > 0 { (true, head) } else { (false, tail) };
+    if len == cap {
+        return None;
+    }
+    let (start, end) = if head_run {
+        (len, arr.len())
+    } else {
+        (0, arr.len() - len)
+    };
+    let mut union = arr[start].key();
+    let mut intersection = union;
+    for record in &arr[start + 1..end] {
+        let key = record.key();
+        if is_minority(key) {
+            return None;
+        }
+        union |= key;
+        intersection = intersection & key;
+    }
+    Some(Outlier {
+        head: head_run,
+        set: minority_set,
+        len,
+        rest: Variation { union, intersection },
+    })
+}
+
+/// Stable insertion sort by key, for a lifted run of at most
+/// [`OUTLIER_RUN_MAX`] records.
+fn insertion_by_key<T: Key>(arr: &mut [T]) {
+    for index in 1..arr.len() {
+        let mut hole = index;
+        while hole > 0 && arr[hole - 1].key() > arr[hole].key() {
+            arr.swap(hole - 1, hole);
+            hole -= 1;
+        }
+    }
 }
 
 /// Bucket capacity of a leaf pass. The literal appears in the array type:
@@ -755,14 +859,31 @@ impl<T: Key> Context<T> {
             block::partition_digit(arr, RADIX, low);
             return;
         }
-        // A value that a large share of the node repeats cannot be separated by
-        // any digit window: every level moves the duplicates again, and only the
-        // level that happens to land them all in one bucket retires them. A
-        // sampled value splits them out on the first pass and the band is
-        // finished by that same pass.
-        if let Some(equal) = sampled_mode(arr) {
-            self.equality_split(arr, equal);
-            return;
+        // Both checks below look for a node whose split cannot divide it, and
+        // both pay a 64-key sort to look. That price is only worth paying where
+        // the pass it may save is much larger: a node at least a few tiles wide.
+        if node_bytes >= 4 * self.tile_bytes {
+            let mut keys = [SortKey::<T>::from_usize(0); MODE_SAMPLE];
+            sample(arr, &mut keys);
+            // A value that a large share of the node repeats cannot be separated
+            // by any digit window: every level moves the duplicates again, and
+            // only the level that happens to land them all in one bucket retires
+            // them. A sampled value splits them out on the first pass and the
+            // band is finished by that same pass.
+            if let Some(equal) = sampled_mode(&mut keys) {
+                self.equality_split(arr, equal);
+                return;
+            }
+            // A top bit that one short run disagrees on does not divide the node
+            // either: the split would move everything to separate a handful. The
+            // run is lifted out instead, and the body's own split becomes the
+            // node's only pass.
+            let top = (u128::BITS - varying.leading_zeros()) as usize;
+            let bit = SortKey::<T>::from_usize(1) << T::Value::from_usize(top - 1);
+            if let Some(outlier) = outlier_run(arr, &keys, bit) {
+                self.lift_outlier(arr, outlier);
+                return;
+            }
         }
         let mut radix = split_radix(records, record_bytes, self.tile_bytes)
             .min(top)
@@ -881,6 +1002,42 @@ impl<T: Key> Context<T> {
         if arr.len() - right > 1 {
             self.sort_node(&mut arr[right..], right_variation);
         }
+    }
+
+    /// Moves a run of disagreeing records to the end its bit belongs to, then
+    /// finishes both parts: the body by the ordinary recursion, the run by
+    /// insertion.
+    fn lift_outlier(&mut self, arr: &mut [T], outlier: Outlier<T>) {
+        if trace() {
+            eprintln!(
+                "  lift {}={} set={}",
+                if outlier.head { "head" } else { "tail" },
+                outlier.len,
+                outlier.set
+            );
+        }
+        let len = arr.len();
+        let run = outlier.len;
+        // The run belongs before the body when its bit is clear and after it when
+        // set: every record outside the run has the opposite bit.
+        let before = !outlier.set;
+        if outlier.head && !before {
+            arr.rotate_left(run);
+        } else if !outlier.head && before {
+            arr.rotate_right(run);
+        }
+        let body = if before {
+            &mut arr[run..]
+        } else {
+            &mut arr[..len - run]
+        };
+        self.sort_node(body, outlier.rest);
+        let lifted = if before {
+            &mut arr[..run]
+        } else {
+            &mut arr[len - run..]
+        };
+        insertion_by_key(lifted);
     }
 
     fn set_scratch_len(&mut self, len: usize) {
