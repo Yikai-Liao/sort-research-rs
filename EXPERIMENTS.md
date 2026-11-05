@@ -1560,6 +1560,33 @@ more than the band, it fires only on concentrated nodes (random samples already 
 quarter test, so their decision and their work are unmoved), and it costs 2-3 % of
 instructions on few-value cells where the absolute time is 3-4 memcpy units.
 
+### 50. Iteration 7 (negative): folding the descent into the permutation costs more than the pass it saves
+
+r5-perf's one surviving proposal: the split already streams every key while it
+permutes, so let it also report each bucket's key aggregates and delete the descent
+pass that currently scans the children to work out which bits they still vary in.
+
+Implemented as a second entry point in the block engine (a classifier closure that also
+updates a 256-entry union/intersection table) plus an option on for_each_bucket to use
+the table instead of scanning. Correct -- the lib tests pass -- and slower by a lot:
+
+| cell | instructions | wall |
+| --- | --- | --- |
+| u64 random 1M | +10.2 % | 19.5 -> 26.2 |
+| u128 random 1M | +7.3 % | 37.4 -> 43.3 |
+| u32 random 1M | +12.6 % | 10.7 -> 20.3 |
+| u64 random 10M | +16.1 % | 294.8 -> 416.5 |
+
+The arithmetic is not subtle: the pass being deleted is one sequential cold read
+(~9 % of the cell) and the work being added is two read-modify-writes into a table
+indexed by bucket plus a branch, executed once per record *inside the scatter's hot
+loop*, where it also stops the classifier from being a pure function of the record.
+Reverted in full (engine and block engine both back to de32eaa).
+
+This closes the last item on r5-perf's list. What remains open is only what the design
+already minimises: the split is at the scatter floor, the leaf is at its pass floor, and
+the routing rule reads one counted number.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
