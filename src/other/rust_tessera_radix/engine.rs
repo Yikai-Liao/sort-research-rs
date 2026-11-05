@@ -465,35 +465,6 @@ fn reverse_stably<T: Key>(arr: &mut [T]) {
     }
 }
 
-/// Sorts one node level by level over the whole array, least significant digit
-/// first: the radix algorithm itself, without the recursion.
-///
-/// This is what a node gets when the model finds that splitting it costs more
-/// than the passes it replaces -- a node with one or two varying digits, or one
-/// whose keys pile into a single bucket. Each pass is the same stable block
-/// permutation the split uses, so the code is the split without its children,
-/// and the digit windows come from the same planner the leaves use, so a node
-/// pays only for the bits that vary.
-///
-/// Out of line: at 1M the model rarely takes this branch and keeping it out of
-/// line leaves the split's code in one piece, but at 10M every child of the root
-/// takes it, so it must not be marked cold -- that arms the optimizer against the
-/// path that most of the data ends up on.
-#[inline(never)]
-fn stream_node<T: Key>(arr: &mut [T], variation: Variation<T>) {
-    let mut digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
-    let passes = plan_digits_packed(variation.varying(), RADIX, &mut digits);
-    // Least significant window first. The engine is created once for all the
-    // passes and compacts once, which is the difference between this and calling
-    // the single-pass partition in a loop: that paid a full compaction per pass.
-    let mut plan = [(0usize, 0usize); PLAN_DIGITS];
-    for (pass, slot) in plan[..passes].iter_mut().enumerate() {
-        let digit = digits[passes - 1 - pass];
-        *slot = (digit.width, digit.shift);
-    }
-    block::sort_with_digits(arr, RADIX, &plan[..passes]);
-}
-
 /// Stable insertion sort on converted keys.
 fn insertion_leaf<T: Key>(arr: &mut [T]) {
     for i in 1..arr.len() {
@@ -662,8 +633,9 @@ impl<T: Key> Context<T> {
         // that fits one split digit is one pass over the node, and splitting it
         // cannot beat one pass; a wider span needs at least two, which the split
         // replaces with one permutation plus children that are cache resident.
+        let low = varying.trailing_zeros() as usize;
         let top = (u128::BITS - varying.leading_zeros()) as usize;
-        let span = top - varying.trailing_zeros() as usize;
+        let span = top - low;
         let mut radix = split_radix(records, record_bytes, self.tile_bytes)
             .min(top)
             .max(1);
@@ -718,10 +690,10 @@ impl<T: Key> Context<T> {
             );
         }
         if !routed {
-            // Splitting would cost more than the passes it replaces. Finish the node
-            // with the radix passes it was priced at: no buffer the size of the node,
-            // and the variation scan is already done.
-            stream_node(arr, variation);
+            // One digit covers every varying bit, so one stable permutation finishes
+            // the node: no recursion, no plan array, no second engine. The fan-out
+            // stays at RADIX because the block engine sizes its working set from it.
+            block::partition_digit(arr, RADIX, low);
             return;
         }
         // MSD split: one stable block-permutation pass over the whole node.

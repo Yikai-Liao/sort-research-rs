@@ -1744,6 +1744,27 @@ different bucket sizes, different routing, and a "+14.3 % instructions" that was
 OVERRIDE_SEED=1. Every cross-build comparison in this notebook from now on sets it, and
 raw_runs.csv records the seed alongside the commit.
 
+### 56. Idea 01 re-measured with a seed: it is decision-neutral, and section 54's rejection was void
+
+With OVERRIDE_SEED=1 so both builds sort the same array, the single-digit terminal path
+(routing off => one stable permutation by the node's own span, fan-out RADIX) is:
+
+- **routing trace byte-identical on all 10 cells** tested (u32/u64/u128 random, 99 %
+  sorted, few values, zipf, mixed_runs, skew99), and
+- **instructions within +-0.6 %** (nine cells within 0.1 %).
+
+Wall clock on the same cells and same data moved +11 %, -9.6 %, +8.6 %, -12.1 % in
+alternating pairs: this machine's wall-clock noise now exceeds the effect size by a
+factor of two, which is why the instruction column is the one that decides here.
+
+So the change is a simplification with no behavioural cost, and it deletes two
+functions: stream_node (which re-planned the node it was handed) and the block engine's
+sort_with_digits (whose only caller was stream_node). Engine: 481 code lines, three
+fewer warnings across every feature combination.
+
+Section 54's rejection of this idea stands corrected above: it was measured on two
+different random arrays, and the "+14.3 % instructions" was the data, not the code.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

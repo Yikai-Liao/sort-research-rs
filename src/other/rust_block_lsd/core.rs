@@ -178,6 +178,7 @@ pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) 
 /// The engine keeps its records scattered over physical blocks; after this call
 /// the slice again holds them contiguously, ordered by that digit and stable
 /// within each bucket. Used by the MSD front end of the hybrid sorts.
+#[cfg(feature = "rust_tessera_radix")]
 pub(crate) fn partition_digit<T: Key>(arr: &mut [T], radix: usize, shift: usize) {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
@@ -199,27 +200,6 @@ pub(crate) fn partition_digit<T: Key>(arr: &mut [T], radix: usize, shift: usize)
     sorter.compact();
 }
 
-/// Runs one stable permutation per digit, in the order given, on one engine.
-///
-/// The caller owns the plan: which digits, in which order, and how wide. This
-/// is what lets a caller skip constant digits or pack windows while still
-/// paying for the permutation engine's setup and its final compaction once.
-pub(crate) fn sort_with_digits<T: Key>(arr: &mut [T], radix: usize, digits: &[(usize, usize)]) {
-    let record_bytes = std::mem::size_of::<T>();
-    if arr.len() < 2 || record_bytes == 0 || digits.is_empty() {
-        return;
-    }
-    let block_size = default_block_size(arr.len(), record_bytes, radix);
-    let mut sorter = Sorter::new(arr, 1usize << radix, block_size);
-    for &(width, shift) in digits {
-        let mask = (T::Value::from_usize((1usize << width) - 1)) << T::Value::from_usize(shift);
-        if let Some(payload) = sorter.step(mask, shift) {
-            sorter.compact();
-            std::panic::resume_unwind(payload);
-        }
-    }
-    sorter.compact();
-}
 
 pub(crate) fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
     let dummy = &arr[0];
