@@ -1044,7 +1044,6 @@ Each cell is mean over 7 rounds, criterion compare, ns per record:
 | u64 | 18.2 | 24.4 | 35.6 | 46.5 |
 | u128 | 47.8 | 46.8 | 47.3 | 72.3 |
 | u32 | 11.8 | 22.6 | 11.7 | 44.3 |
-| i32 | 11.5 | 22.5 | 11.7 | 44.3 |
 
 | 10M | tessera | ipnsort | block LSD r8 | std stable |
 | --- | --- | --- | --- | --- |
