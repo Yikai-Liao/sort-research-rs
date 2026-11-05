@@ -1476,6 +1476,30 @@ Next iteration: attack the split's traffic, not the leaf's. Cheapest falsificati
 the RFO hypothesis first -- perf stat of LLC-store-misses against bytes written on the
 1M split -- then one mechanism change.
 
+### 47. The RFO hypothesis is untestable here, and the cache counters say why
+
+This VM exposes no LLC events (perf reports "not supported"), so the read-for-ownership
+question cannot be answered directly. What it does expose is enough to change the
+diagnosis: cache-misses per record, same binary, u64:
+
+| n | cache-references | cache-misses | misses per record |
+| --- | --- | --- | --- |
+| 3 900 (one tile) | 274 518 | 90 150 | 23 |
+| 1 000 000 | 58 037 513 | 37 089 073 | **37** |
+
+A record is 8 bytes and the whole sort touches each one a handful of times, so 37
+misses per record means essentially **every access is a miss**: there is no cache
+residency to win at 1M on this guest, whatever the nominal 24.8 MiB L3 says. The split
+is therefore not "2.5x above its floor because of a fixable RFO problem"; it is at the
+floor a 256-stream scatter can reach on a DRAM-bound machine, where each written line
+costs a read it did not ask for and the compaction pass pays again.
+
+That closes the split as a target: fewer split passes is a radix question (swept in
+§21, worse), avoiding RFO needs full-line writes (a scatter cannot), and in-place
+permutation was measured 20-33 % slower (§36). The open lever from r4-perf is the
+opposite end: re-sweep the leaf digit width now that §37 caps it by record count, since
+the width that was tuned before the cap is no longer the width the code uses.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
