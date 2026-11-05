@@ -1703,6 +1703,27 @@ zipf, -17 % on u64 zipf) are the machine, not the change, and are not claimed.
 
 Engine: -23 code lines, one f64 model and one sampling-derived share gone.
 
+### 54. Idea 01 from the brainstorm (single-digit terminal) is a measured negative in both forms
+
+The suggestion was to stop planning a node whose varying span fits one digit and just
+permute it by that digit, deleting the multi-pass stream path. Two forms were built and
+both are rejected, with the numbers that rejected them.
+
+**Form B (fan-out = span).** partition_digit(arr, span, low): a five-bit span creates 32
+buckets instead of 256. Wall clock: u32 random +93 %, u64 99 % sorted +78 %, u64 zipf
++31 % at 1M. The block engine sizes its working set from the fan-out, so a narrower one
+does not mean less work, it means a different (worse) block policy.
+
+**Form A (fan-out = RADIX, the policy the old path used).** wall clock came back inside
+the noise band but the decision trace moved: 6 of 12 nodes that split before now stream
+(u32 zipf), and instructions rose **+14.3 %** on that cell while staying flat (-0.2 % to
++0.4 %) on the other eleven. A cell cannot do 14 % more instructions for the same data
+and the same routing unless the routing is not the same, and it is not.
+
+Reverted in full. The surviving lesson is the one the last four sections keep
+re-teaching: the block engine's fan-out is part of its cost policy, so "one digit" is
+not a free simplification of a node that used to run a planned stream.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
