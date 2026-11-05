@@ -1834,6 +1834,31 @@ Reverted; the leaf width rule is unchanged. (This is also the clean counter-exam
 the assumption that an instruction-count win is a wall-clock win: section 56 had the
 mirror case, wall-clock swings with identical instructions.)
 
+### 60. Rank compaction (leaf redesign, idea 2): correct, and slower on the cells that matter
+
+Built the full mechanism: a tile's distinct keys are collected into a small table, ranked
+by sorting them, and a single stable counting pass over the ranks finishes the tile in
+two traversals regardless of key width.
+
+Correct (lib tests, stability included) and it does win where the tile really holds few
+keys: bands8 -4.7 %, zipf -5.4 %, skew99 -5.0 %, 99 % sorted -4.3 %. But the unguarded
+version lost 19.9 % on random_local, 35.9 % on blocks_desc and 25.5 % on random_wide,
+because a tile that holds thousands of distinct keys pays a full pass to fill the table
+before the capacity check fires.
+
+Gating the attempt behind a 128-key sample (attempt only when fewer than a quarter of the
+sampled keys are distinct) removed the worst of it but not all: with the gate the same
+cells read random_local -5.5 %, 99 % sorted -6.9 %, u128 random -5.0 %, but blocks_desc
++13.4 %, random_wide +10.3 %, skew99 +12.9 %. Two runs of the same mechanism disagreeing
+on the same cell by 10-20 points is this machine's noise floor talking (section 56
+measured 10-12 % swings on identical work), and the honest reading is that the wins are
+inside that band.
+
+Reverted. The mechanism is sound and its shape is recorded here for whoever runs it on a
+quiet machine: the gate, the table bound, and the two-pass structure are all in this
+section, and the one number that would decide it is a paired comparison of
+random_sorted99 and zipf against a flat-only build with more than five pairs.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
