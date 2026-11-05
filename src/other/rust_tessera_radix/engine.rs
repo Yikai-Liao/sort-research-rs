@@ -580,6 +580,9 @@ unsafe fn counting_pass<T: Key>(
 /// become the working set), and a 61 KiB tile of 16-byte records picks 14
 /// (32 KiB table against 61 KiB of records, measured best at 1M).
 fn leaf_radix(records: usize, record_bytes: usize) -> usize {
+    if let Some(w) = leaf_width_override() {
+        return w;
+    }
     let tile_bytes = records.saturating_mul(record_bytes);
     // The widest table that still fits: `2 * 2^width` bytes of cursors.
     let widest = (usize::BITS - (tile_bytes / 2).max(1).leading_zeros()) as usize - 1;
@@ -590,6 +593,19 @@ fn leaf_radix(records: usize, record_bytes: usize) -> usize {
     // same order as the data it sorts.
     let by_records = (usize::BITS - records.max(1).leading_zeros()) as usize + 2;
     widest.min(by_records).clamp(LEAF_RADIX_MIN, LEAF_RADIX_MAX)
+}
+
+/// Measurement hook: RADIX_LEAF_WIDTH pins the leaf digit width for the same reason
+/// RADIX_SPLIT_WIDTH exists -- a sweep then costs one build. Unset in every shipped run.
+fn leaf_width_override() -> Option<usize> {
+    use std::sync::OnceLock;
+    static WIDTH: OnceLock<Option<usize>> = OnceLock::new();
+    *WIDTH.get_or_init(|| {
+        std::env::var("RADIX_LEAF_WIDTH")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|w| (LEAF_RADIX_MIN..=LEAF_RADIX_MAX).contains(w))
+    })
 }
 
 /// Measurement hook: RADIX_SPLIT_WIDTH pins the split digit width so a sweep costs

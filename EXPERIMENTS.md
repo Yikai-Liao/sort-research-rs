@@ -1500,6 +1500,34 @@ permutation was measured 20-33 % slower (§36). The open lever from r4-perf is t
 opposite end: re-sweep the leaf digit width now that §37 caps it by record count, since
 the width that was tuned before the cap is no longer the width the code uses.
 
+### 48. Iteration 5 (negative): the leaf width the cap already picks is the right one
+
+r4-perf's only open lever was re-sweeping the leaf digit width, since the record-count
+cap added in 37 changed which width the code actually uses. Added a second measurement
+hook (RADIX_LEAF_WIDTH, same shape as RADIX_SPLIT_WIDTH, unset in every shipped run) so
+the sweep costs one build.
+
+Single pass, 1M, ms:
+
+| width | u64 random | u128 random | u32 random | u128 sparse8 |
+| --- | --- | --- | --- | --- |
+| auto | 18.09 | 30.68 | **9.67** | 16.05 |
+| 9 | 20.53 | 36.53 | 12.39 | 15.77 |
+| 10 | 19.09 | 31.13 | 11.51 | 16.22 |
+| 11 | 20.15 | 31.66 | 12.01 | 16.11 |
+| 12 | 18.17 | 29.26 | 13.96 | 17.17 |
+| 13 | **16.98** | 30.24 | 10.35 | **14.76** |
+
+That looked like -6 % on u64 and -8 % on sparse8 at width 13. It is not: interleaved
+repeats (3 alternating pairs, 9 rounds each, medians) give u64 auto 17.66 against 18.31
+at width 13, and sparse8 16.81 against 16.46 -- the sign flips between repeats, so both
+are inside the band. **No width beats auto by more than 5 % in any cell**, and u32,
+which has the fewest passes to amortise, is worse at every pinned width.
+
+So the cap is already doing the tuning, and the lever is closed. This is a measured
+negative, not an untested guess: the hook stays (it is how the next person re-checks
+after changing the tile), and no shipped path is pinned.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
