@@ -72,9 +72,6 @@ const MSD_LEVEL_PASSES: usize = 3;
 /// Tiles at or below this many records are finished with an insertion sort
 /// instead of paying for a bucket table per remaining digit.
 const INSERTION_MAX: usize = 48;
-/// Tiles at or below this many records are finished with a merge sort. Placed by
-/// measurement; see EXPERIMENTS.md.
-const MERGE_MAX: usize = 384;
 /// Cursors are `u16`, which caps a tile at 65535 records. That is a constant
 /// (1 MiB even for 16-byte records), so the auxiliary space stays O(sqrt n).
 const MAX_TILE_RECORDS: usize = u16::MAX as usize;
@@ -91,8 +88,15 @@ fn sampled_buckets<T: Key>(arr: &[T], digit: Digit) -> usize {
     let mask = digit.mask::<T>();
     let shift = T::Value::from_usize(digit.shift);
     let buckets = 1usize << digit.width;
-    let mut seen = [0u64; MAX_BUCKETS / 64];
+    // Cleared only as far as the digit reaches: a 2 KiB zero-fill per leaf costs
+    // the same 14 % the cursor table did before it was made uninitialised.
+    let mut seen = MaybeUninit::<[u64; MAX_BUCKETS / 64]>::uninit();
+    let seen = seen.as_mut_ptr().cast::<u64>();
     let words = buckets.div_ceil(64);
+    for word in 0..words {
+        // SAFETY: the array holds MAX_BUCKETS / 64 words and words <= that.
+        unsafe { *seen.add(word) = 0 };
+    }
     let sample = MSD_SAMPLE.min(arr.len());
     let step = (arr.len() / sample).max(1);
     let mut distinct = 0;
@@ -100,14 +104,13 @@ fn sampled_buckets<T: Key>(arr: &[T], digit: Digit) -> usize {
         let bucket = ((arr[index].key() & mask) >> shift).to_usize();
         let word = bucket / 64;
         let bit = 1u64 << (bucket % 64);
-        if seen[word] & bit == 0 {
-            seen[word] |= bit;
-            distinct += 1;
+        // SAFETY: bucket < buckets, so word < words, which was cleared above.
+        unsafe {
+            if *seen.add(word) & bit == 0 {
+                *seen.add(word) |= bit;
+                distinct += 1;
+            }
         }
-    }
-    // The bitmap is only cleared as far as it was written.
-    for word in 0..words {
-        seen[word] = 0;
     }
     distinct
 }
@@ -134,7 +137,7 @@ impl Digit {
 /// Slots in a pass list. Packed windows are never narrower than the gap
 /// between two varying clusters, so in practice a plan is shorter than the fixed
 /// grid's; the bound is one window per varying bit.
-const PLAN_DIGITS: usize = 128;
+const PLAN_DIGITS: usize = 48;
 
 /// The bits that can still differ inside one node: every bit set in some key,
 /// and every bit set in all of them. Constant bits cannot change the order, so
@@ -210,30 +213,21 @@ fn plan_digits_packed(varying: u128, width: usize, digits: &mut [Digit]) -> usiz
 }
 
 /// The passes the block engine would run: a fixed `width`-bit grid, which is what
-/// the streaming route really costs.
-fn plan_digits<T: Key>(width: usize, variation: Variation<T>, digits: &mut [Digit]) -> usize {
+/// the streaming route really costs. Only the count is used, so only the count is
+/// returned; the leaf plans its own windows and needs the digits themselves.
+fn stream_passes<T: Key>(width: usize, variation: Variation<T>) -> usize {
     let varying_bits = variation.varying();
-    let mut len = 0;
+    let mut passes = 0;
     let mut shift = T::Value::BITS;
     while shift > 0 {
-        let width = width.min(shift);
-        shift -= width;
-        let span = ((1u128 << width) - 1) << shift;
-        let varying = varying_bits & span;
-        if varying == 0 {
-            continue;
+        let step = width.min(shift);
+        shift -= step;
+        let span = ((1u128 << step) - 1) << shift;
+        if varying_bits & span != 0 {
+            passes += 1;
         }
-        // Absolute bit positions: the span already carries the digit's place.
-        let low = varying.trailing_zeros() as usize;
-        let high = u128::BITS as usize - 1 - varying.leading_zeros() as usize;
-        debug_assert!(len < digits.len());
-        digits[len] = Digit {
-            shift: low,
-            width: high - low + 1,
-        };
-        len += 1;
     }
-    len
+    passes
 }
 
 /// Set `RADIX_TRACE=1` to print every routing decision. The trace costs one
@@ -249,10 +243,6 @@ struct Context<T> {
     tile_bytes: usize,
     /// Tiles at or below this many records use an insertion sort.
     insertion_max: usize,
-    /// Tiles at or below this many records use a merge sort instead of counting
-    /// passes: past the insertion crossover the bucket table of a counting pass
-    /// still costs more than a merge level while the tile is small.
-    merge_max: usize,
     leaf_mode: LeafMode,
 }
 
@@ -267,56 +257,45 @@ pub enum LeafMode {
     Counting,
 }
 
+/// The knobs a sort can be given. The defaults are the measured constants;
+/// measurement code pins one field instead of the library growing a function
+/// per combination of them.
+#[derive(Clone, Copy)]
+pub struct Policy {
+    /// Largest leaf, in bytes of record data. Caps the auxiliary space.
+    pub tile_bytes: usize,
+    /// Tiles at or below this many records are finished with an insertion sort.
+    pub insertion_max: usize,
+    /// Which strategy a leaf uses beyond insertion.
+    pub leaf_mode: LeafMode,
+}
+
+impl Default for Policy {
+    fn default() -> Self {
+        Policy {
+            tile_bytes: TILE_BYTES,
+            insertion_max: INSERTION_MAX,
+            leaf_mode: LeafMode::Auto,
+        }
+    }
+}
+
 /// Sorts by converted radix key, stably, in O(n) time and O(sqrt(n)) auxiliary
 /// space. See the module documentation for the shape of the algorithm.
 pub fn sort<T: Key>(arr: &mut [T]) {
-    sort_with_policy(arr, TILE_BYTES, MERGE_MAX, INSERTION_MAX);
+    sort_with_policy(arr, Policy::default());
 }
 
-/// Sorts with an explicit tile budget, in bytes of record data. Benchmarks pin
-/// the budget to make the trade-off visible.
-pub fn sort_with_tile_bytes<T: Key>(arr: &mut [T], tile_bytes: usize) {
-    sort_with_policy(arr, tile_bytes, MERGE_MAX, INSERTION_MAX);
-}
-
-/// Sorts with an explicit leaf policy. Leaf handling is a local cost decision:
-/// the tile is bounded by the budget, so the auxiliary space stays O(sqrt n)
-/// whatever the leaf does, and picking the cheapest leaf per size is free. This
-/// entry point exists so the crossovers are placed by measurement.
-pub fn sort_with_policy<T: Key>(
-    arr: &mut [T],
-    tile_bytes: usize,
-    merge_max: usize,
-    insertion_max: usize,
-) {
-    sort_with_mode(
-        arr,
-        tile_bytes,
-        merge_max,
-        insertion_max,
-        LeafMode::Auto,
-    );
-}
-
-/// Sorts with an explicit leaf strategy. The MSD level and the flat counting
-/// plan differ by a factor of two in tile traffic, so they are measured against
-/// each other in one process rather than across runs.
-pub fn sort_with_leaf_mode<T: Key>(arr: &mut [T], mode: LeafMode) {
-    sort_with_mode(arr, TILE_BYTES, MERGE_MAX, INSERTION_MAX, mode);
-}
-
-fn sort_with_mode<T: Key>(
-    arr: &mut [T],
-    tile_bytes: usize,
-    merge_max: usize,
-    insertion_max: usize,
-    leaf_mode: LeafMode,
-) {
+/// Sorts with an explicit policy. Every knob is a local cost decision: the tile
+/// caps the auxiliary space on its own, so which leaf finishes a tile never
+/// changes the O(sqrt n) bound.
+pub fn sort_with_policy<T: Key>(arr: &mut [T], policy: Policy) {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
         return;
     }
-    let tile_bytes = tile_bytes
+    let tile_bytes = policy
+        .tile_bytes
         .max(record_bytes)
         .min(MAX_TILE_RECORDS * record_bytes);
     let (union, intersection) = block::varying_key_bits(arr);
@@ -341,9 +320,8 @@ fn sort_with_mode<T: Key>(
     let mut context = Context {
         scratch: Vec::new(),
         tile_bytes,
-        insertion_max,
-        merge_max,
-        leaf_mode,
+        insertion_max: policy.insertion_max,
+        leaf_mode: policy.leaf_mode,
     };
     context.sort_node(arr, variation);
 }
@@ -379,21 +357,20 @@ const COLD_NS_PER_RECORD_FLOOR: f64 = 3.0;
 
 /// How well a split on the top varying bits would divide the node: up to
 /// `SPLIT_SAMPLES` keys spread over the node, bucketed exactly as the split
-/// would bucket them. Returns how many buckets are occupied and the largest
-/// bucket's share.
+/// would bucket them. Returns the largest bucket's share.
 ///
 /// This is what tells the model whether a split would actually shrink the
 /// working set. A digit that puts everything in one bucket divides nothing: the
 /// recursion would pay a pass and gain none, and the input's own locality (a
 /// scatter into one stream is nearly sequential) already made that pass cheap.
-fn sample_split_shape<T: Key>(arr: &[T], varying: u128) -> (usize, f64) {
+fn sample_split_shape<T: Key>(arr: &[T], varying: u128) -> f64 {
     let top = (u128::BITS - varying.leading_zeros()) as usize;
     let width = RADIX.min(top);
     let shift = top - width;
     let mask = ((1u128 << width) - 1) << shift;
-    let mut buckets = [0u32; 1 << RADIX];
+    let mut buckets = [0u16; 1 << RADIX];
     let mut sampled = 0u32;
-    let mut largest = 0u32;
+    let mut largest = 0u16;
     // Contiguous runs of `SPLIT_RUN` records, spread over the node. A strided
     // sample is cheaper but can alias with a repeating input pattern (a stride
     // that is a multiple of the pattern period sees a single bucket and calls a
@@ -415,7 +392,7 @@ fn sample_split_shape<T: Key>(arr: &[T], varying: u128) -> (usize, f64) {
         block += SPLIT_RUN;
     }
     let distinct = buckets.iter().filter(|&&count| count > 0).count();
-    (distinct, largest as f64 / sampled.max(1) as f64)
+    largest as f64 / sampled.max(1) as f64
 }
 
 /// Keys the split-shape sample may look at.
@@ -494,61 +471,6 @@ fn split_pays(
     let split_pass = SPLIT_NS_PER_RECORD_MIN.max(SPLIT_READ_SHARE * pass_ns);
     let split = SPLIT_HOT_PASSES as f64 * split_pass + hot_passes as f64 * child_pass;
     split < streamed
-}
-
-/// Merges the two runs `[start, middle)` and `[middle, end)` from `source`
-/// into `destination` at the same offsets, stably: on equal keys the left run
-/// wins, which is what keeps the whole sort stable.
-///
-/// # Safety
-///
-/// Both runs must be sorted, `source` must hold `end` initialized records and
-/// `destination` must have room for `end`, in a different allocation.
-unsafe fn merge_runs<T: Key>(
-    source: *const T,
-    destination: *mut T,
-    start: usize,
-    middle: usize,
-    end: usize,
-) {
-    unsafe {
-        if middle >= end {
-            std::ptr::copy_nonoverlapping(source.add(start), destination.add(start), end - start);
-            return;
-        }
-        // The common case on partially sorted inputs: the runs already meet in
-        // order, so the whole pair is a copy.
-        if (*source.add(middle - 1)).key() <= (*source.add(middle)).key() {
-            std::ptr::copy_nonoverlapping(source.add(start), destination.add(start), end - start);
-            return;
-        }
-        let (mut left, mut right, mut out) = (start, middle, start);
-        while left < middle && right < end {
-            let take_left = (*source.add(left)).key() <= (*source.add(right)).key();
-            let from = if take_left { left } else { right };
-            // Bitwise copy, not read-then-write. Moving out of the source
-            // would leave a prefix of the record set in the destination and a
-            // hole in the source, so a panic from the key extractor half-way
-            // through a level would duplicate one record and lose another --
-            // a double free for a type with a destructor. Copying keeps the
-            // source whole for the entire level, which makes the level
-            // recoverable, and compiles to the same load/store pair.
-            std::ptr::copy_nonoverlapping(source.add(from), destination.add(out), 1);
-            if take_left {
-                left += 1;
-            } else {
-                right += 1;
-            }
-            out += 1;
-        }
-        if left < middle {
-            std::ptr::copy_nonoverlapping(source.add(left), destination.add(out), middle - left);
-            out += middle - left;
-        }
-        if right < end {
-            std::ptr::copy_nonoverlapping(source.add(right), destination.add(out), end - right);
-        }
-    }
 }
 
 enum Order {
@@ -773,8 +695,8 @@ impl<T: Key> Context<T> {
         // Two predicted totals: stream the node through cold passes the way the
         // block engine would, or pay for one split and finish the children in
         // cache. The pass counts are the ones each route would really run.
+        let cold_passes = stream_passes::<T>(RADIX, variation);
         let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
-        let cold_passes = plan_digits::<T>(RADIX, variation, &mut scratch_digits);
         // Priced at the reference width, not at the leaf's own: routing must not
         // move when the leaf width is tuned, or a wider leaf makes every node look
         // more worth splitting and the tuning cannot be measured at all.
@@ -789,11 +711,11 @@ impl<T: Key> Context<T> {
         } else {
             flat_hot
         };
-        let (distinct, largest_child) = sample_split_shape(arr, varying);
+        let largest_child = sample_split_shape(arr, varying);
         if trace() {
             eprintln!(
-                "shape len={} distinct={} largest={:.4} cold={} hot={}",
-                records, distinct, largest_child, cold_passes, hot_passes
+                "shape len={} largest={:.4} cold={} hot={}",
+                records, largest_child, cold_passes, hot_passes
             );
         }
         if !split_pays(
@@ -886,85 +808,6 @@ impl<T: Key> Context<T> {
         }
     }
 
-    /// Stable bottom-up merge sort over the tile, driven by the same buffer the
-    /// counting passes use. A merge level moves every record once and needs no
-    /// bucket table, which is what wins while the tile is only a few hundred
-    /// records; past that the level count outgrows the digit count.
-    fn merge_leaf(&mut self, arr: &mut [T]) {
-        let len = arr.len();
-        if len < 2 || arr.windows(2).all(|pair| pair[0].key() <= pair[1].key()) {
-            return;
-        }
-        self.set_scratch_len(len);
-        let buffer = self.scratch.as_mut_ptr().cast::<T>();
-        // Same recoverability contract as the counting passes: each level
-        // copies from one buffer into the other, so the source holds the
-        // complete record set for the whole level. A panic from the key
-        // extractor therefore always leaves every record reachable, and one
-        // copy back puts the tile right if the live set is the buffer.
-        //
-        // The recovery is compiled only for types that own a resource, where
-        // a duplicated record is a double free. A key type without a
-        // destructor only risks an arbitrary order, which needs no rescue, so
-        // plain integer keys pay nothing for this.
-        let mut live_in_scratch = false;
-        let mut run = |live_in_scratch: &mut bool| {
-            let mut source = arr.as_mut_ptr();
-            let mut destination = buffer;
-            let mut source_is_tile = true;
-            let mut width = 1;
-            loop {
-                *live_in_scratch = !source_is_tile;
-                let mut start = 0;
-                while start < len {
-                    let middle = (start + width).min(len);
-                    let end = (start + 2 * width).min(len);
-                    // SAFETY: the source holds `len` initialized records and
-                    // the destination has room for `len`; they are distinct
-                    // allocations, the source is only read and the
-                    // destination only written, so a panic mid-level leaves
-                    // the source complete.
-                    unsafe {
-                        merge_runs(source, destination, start, middle, end);
-                    }
-                    start = end;
-                }
-                // The pass just finished: its output is in `destination`.
-                std::mem::swap(&mut source, &mut destination);
-                source_is_tile = !source_is_tile;
-                if 2 * width >= len {
-                    break;
-                }
-                width *= 2;
-            }
-            source_is_tile
-        };
-        let ended_in_tile = if const { std::mem::needs_drop::<T>() } {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run(&mut live_in_scratch)
-            })) {
-                Ok(ended_in_tile) => ended_in_tile,
-                Err(payload) => {
-                    if live_in_scratch {
-                        // SAFETY: the scratch buffer holds the complete
-                        // record set; the tile may hold a partly overwritten
-                        // copy of it.
-                        unsafe {
-                            std::ptr::copy_nonoverlapping(buffer, arr.as_mut_ptr(), len);
-                        }
-                    }
-                    std::panic::resume_unwind(payload);
-                }
-            }
-        } else {
-            run(&mut live_in_scratch)
-        };
-        if !ended_in_tile {
-            // SAFETY: the whole tile now lives, sorted, in the buffer.
-            unsafe { std::ptr::copy_nonoverlapping(buffer, arr.as_mut_ptr(), len) };
-        }
-    }
-
     /// One stable MSD level over the tile, then each bucket finished on its own.
     ///
     /// The leaf's private buffer is enough for a stable partition into exact
@@ -978,7 +821,7 @@ impl<T: Key> Context<T> {
     /// Traffic, in units of one tile traversal: the histogram is one, the scatter
     /// is two, the copy back is two. A flat pass is two, so this pays off from
     /// three flat passes upwards, which is what the caller checks.
-    fn msd_leaf(&mut self, arr: &mut [T], variation: Variation<T>, digit: Digit) {
+    fn msd_leaf(&mut self, arr: &mut [T], digit: Digit) {
         let len = arr.len();
         self.set_scratch_len(len);
         let scratch = self.scratch.as_mut_ptr().cast::<T>();
@@ -1029,10 +872,6 @@ impl<T: Key> Context<T> {
             insertion_leaf(arr);
             return;
         }
-        if len <= self.merge_max {
-            self.merge_leaf(arr);
-            return;
-        }
         // The leaf picks its own digit width: inside the tile the only cost that
         // scales with it is the bucket table, so a wider digit buys fewer passes
         // while the table still fits in L1 next to the records.
@@ -1070,7 +909,7 @@ impl<T: Key> Context<T> {
                 );
             }
             if msd_cost < passes {
-                self.msd_leaf(arr, variation, digits[0]);
+                self.msd_leaf(arr, digits[0]);
                 return;
             }
         }
@@ -1160,7 +999,13 @@ mod tests {
     fn check<T: Key + Copy + Ord + std::fmt::Debug>(mut input: Vec<T>, tile_bytes: usize) {
         let mut expected = input.clone();
         expected.sort();
-        sort_with_tile_bytes(&mut input, tile_bytes);
+        sort_with_policy(
+            &mut input,
+            Policy {
+                tile_bytes,
+                ..Policy::default()
+            },
+        );
         if input != expected {
             let mismatch = input
                 .iter()
@@ -1265,7 +1110,7 @@ mod tests {
             };
             tracked::reset();
             let mut probe = build();
-            sort_with_tile_bytes(&mut probe, TILE_BYTES);
+            sort_with_policy(&mut probe, Policy::default());
             let calls = tracked::calls();
             drop(probe);
             // 0..40 exclusive: the last point must stay inside the measured call
@@ -1277,7 +1122,7 @@ mod tests {
                 let expected: Vec<u64> = (0..len as u64).collect();
                 tracked::arm(panic_at);
                 let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    sort_with_tile_bytes(&mut records, TILE_BYTES);
+                    sort_with_policy(&mut records, Policy::default());
                 }));
                 assert!(outcome.is_err(), "len={len} panic_at={panic_at} did not panic");
                 let mut ids: Vec<u64> = records.iter().map(|record| record.id).collect();
@@ -1364,7 +1209,7 @@ mod tests {
             let mut sorted = input.clone();
             sorted.sort_by_key(|item| item.key);
             let mut actual = input.clone();
-            sort_with_tile_bytes(&mut actual, TILE_BYTES);
+            sort_with_policy(&mut actual, Policy::default());
             for (a, e) in actual.iter().zip(sorted.iter()) {
                 assert_eq!(a, e);
             }
@@ -1430,7 +1275,13 @@ mod tests {
             let mut expected = input.clone();
             expected.sort();
             let mut actual = input;
-            sort_with_tile_bytes(&mut actual, tiles[(round % tiles.len() as u64) as usize]);
+            sort_with_policy(
+                &mut actual,
+                Policy {
+                    tile_bytes: tiles[(round % tiles.len() as u64) as usize],
+                    ..Policy::default()
+                },
+            );
             for (position, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
                 assert_eq!(
                     (a.key, a.index),

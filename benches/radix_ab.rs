@@ -534,9 +534,13 @@ fn block_lsd_radix<const R: usize, T: sort_research_rs::other::radix_support::Ke
 /// instead of across runs on a shared machine.
 #[cfg(feature = "rust_tessera_radix")]
 fn tessera_counting<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    sort_research_rs::other::rust_tessera_radix::sort_with_leaf_mode(
+    use sort_research_rs::other::rust_tessera_radix::{Policy, sort_with_policy};
+    sort_with_policy(
         s,
-        sort_research_rs::other::rust_tessera_radix::LeafMode::Counting,
+        Policy {
+            leaf_mode: sort_research_rs::other::rust_tessera_radix::LeafMode::Counting,
+            ..Policy::default()
+        },
     );
 }
 
@@ -547,14 +551,15 @@ fn tessera_tile<const BYTES: usize, T: sort_research_rs::other::radix_support::K
 
 /// Leaf-policy sweep: (merge ceiling, insertion ceiling) in records.
 #[cfg(feature = "rust_tessera_radix")]
-fn tessera_leaf<
-    const MERGE: usize,
-    const INS: usize,
-    T: sort_research_rs::other::radix_support::Key,
->(
-    s: &mut [T],
-) {
-    sort_research_rs::other::rust_tessera_radix::sort_with_policy(s, 65536, MERGE, INS);
+fn tessera_ins<const INS: usize, T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
+    use sort_research_rs::other::rust_tessera_radix::{Policy, sort_with_policy};
+    sort_with_policy(
+        s,
+        Policy {
+            insertion_max: INS,
+            ..Policy::default()
+        },
+    );
 }
 
 #[cfg(feature = "rust_msd_radix")]
@@ -588,13 +593,10 @@ macro_rules! radix_variants {
                 v.push(("tile_128k", tessera_tile::<131072, $ty>));
                 v.push(("tile_256k", tessera_tile::<262144, $ty>));
                 v.push(("tile_512k", tessera_tile::<524288, $ty>));
-                v.push(("leaf_count_only", tessera_leaf::<0, 0, $ty>));
-                v.push(("leaf_ins48", tessera_leaf::<0, 48, $ty>));
-                v.push(("leaf_merge32", tessera_leaf::<32, 48, $ty>));
-                v.push(("leaf_merge128", tessera_leaf::<128, 48, $ty>));
-                v.push(("leaf_merge512", tessera_leaf::<512, 48, $ty>));
-                v.push(("leaf_merge2k", tessera_leaf::<2048, 48, $ty>));
-                v.push(("leaf_merge_ins128", tessera_leaf::<512, 128, $ty>));
+                v.push(("leaf_ins0", tessera_ins::<0, $ty>));
+                v.push(("leaf_ins24", tessera_ins::<24, $ty>));
+                v.push(("leaf_ins48", tessera_ins::<48, $ty>));
+                v.push(("leaf_ins128", tessera_ins::<128, $ty>));
             }
         }
         #[cfg(feature = "rust_msd_radix")]
