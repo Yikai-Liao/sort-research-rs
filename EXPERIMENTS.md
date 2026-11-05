@@ -1765,6 +1765,24 @@ fewer warnings across every feature combination.
 Section 54's rejection of this idea stands corrected above: it was measured on two
 different random arrays, and the "+14.3 % instructions" was the data, not the code.
 
+### 57. Idea 07: block size is inside the bar across a factor of eight
+
+Added RADIX_BLOCK_SCALE (a multiplier on the square-root optimum, env-gated, unset in
+shipped runs) and swept it with a fixed seed, instructions at 1M:
+
+| scale | u64 random | u128 random | u32 random |
+| --- | --- | --- | --- |
+| 0.5x | 1.1849e9 | 2.3146e9 | 9.170e8 |
+| 1x (shipped) | 1.1746e9 | 2.2944e9 | 9.112e8 |
+| 2x | 1.1682e9 | 2.2865e9 | 9.089e8 |
+| 4x | **1.1659e9** | **2.2650e9** | **9.078e8** |
+
+The whole range spans 1.6 % on u64, 2.1 % on u128 and 1.0 % on u32, monotone toward
+larger blocks but with no step anywhere near the 5 % bar. Wall clock cannot resolve a
+1-2 % difference on this machine (section 56 measured 10-12 % swings on identical work),
+so no change is taken and the default stays. The hook stays for whoever re-runs this on
+a quiet machine.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

@@ -170,7 +170,14 @@ pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) 
     // limits bookkeeping when the square-root optimum gives tiny blocks;
     // records larger than that still need at least one element per block.
     let scaled = (SQRT_SCALE * balanced).ceil() as usize;
-    scaled.max(BLOCK_BYTES_FLOOR / record_bytes).max(1)
+    let natural = scaled.max(BLOCK_BYTES_FLOOR / record_bytes).max(1);
+    // Measurement hook: RADIX_BLOCK_SCALE multiplies the square-root optimum so a
+    // block-size sweep costs one build. Unset in every shipped run.
+    let scale = std::env::var("RADIX_BLOCK_SCALE")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(1.0);
+    ((natural as f64 * scale).round() as usize).max(1)
 }
 
 /// One stable partition pass by the digit selected by `shift` and `radix`.
