@@ -510,7 +510,9 @@ fn insertion_leaf<T: Key>(arr: &mut [T]) {
     }
 }
 
-/// One stable counting pass: histogram, prefix sum, scatter.
+/// One stable counting pass: histogram, prefix sum, scatter. Returns the
+/// largest bucket count, which the leaf uses to decide whether it needs bucket
+/// boundaries at all; a flat pass drops the value and pays nothing for it.
 ///
 /// # Safety
 ///
@@ -529,7 +531,7 @@ unsafe fn counting_pass<T: Key>(
     len: usize,
     digit: Digit,
     cursor: *mut u16,
-) {
+) -> u16 {
     let mask = digit.mask::<T>();
     let shift = T::Value::from_usize(digit.shift);
     let buckets = 1usize << digit.width;
@@ -546,11 +548,13 @@ unsafe fn counting_pass<T: Key>(
         *cursor.add(bucket) += 1;
     }
     let mut offset = 0u16;
+    let mut largest = 0u16;
     for slot in 0..buckets {
         // SAFETY: as above.
         let count = *cursor.add(slot);
         *cursor.add(slot) = offset;
         offset += count;
+        largest = largest.max(count);
     }
     for index in 0..len {
         // SAFETY: the caller guarantees `len` initialized records; the cursor
@@ -570,6 +574,7 @@ unsafe fn counting_pass<T: Key>(
             std::ptr::write(destination.add(target), std::ptr::read(record));
         }
     }
+    largest
 }
 
 
@@ -775,13 +780,36 @@ impl<T: Key> Context<T> {
         // here, so a panic from the key extractor leaves the whole record set in
         // the tile and nothing needs undoing -- unlike the flat plan, this level
         // needs no recovery of its own.
-        unsafe { counting_pass(arr.as_ptr(), scratch, len, digit, counts_ptr) };
+        let largest = unsafe { counting_pass(arr.as_ptr(), scratch, len, digit, counts_ptr) };
+        if trace() {
+            eprintln!(
+                "  leaf-msd len={} buckets={} largest={} finish={}",
+                len,
+                1usize << digit.width,
+                largest,
+                if largest as usize <= self.insertion_max {
+                    "insertion"
+                } else {
+                    "walk"
+                }
+            );
+        }
         // The scatter wrote every record exactly once, so the scratch is a complete
         // record set and the tile is stale. Copying back is therefore valid whether
         // or not the pass finished, and it restores the invariant the rest of the
         // leaf relies on: the tile always holds the set.
         // SAFETY: as above, plus `len` records were written to the scratch.
         unsafe { std::ptr::copy_nonoverlapping(scratch, arr.as_mut_ptr(), len) };
+        // A tile whose largest bucket is still insertion-sized needs no bucket
+        // boundaries: one stable insertion sort over the whole tile has exactly the
+        // per-bucket sorts' inversion count (records in different buckets are
+        // already in order) and never looks at an empty bucket. Random tiles put
+        // 3906 records into 8192 buckets, so this is the common case; a tile with
+        // one long bucket still needs the walk below to find it.
+        if largest as usize <= self.insertion_max {
+            insertion_leaf(arr);
+            return;
+        }
         // Boundaries come from the cursor table rather than from comparing keys:
         // with a bucket per record the comparison walk is one unpredictable branch
         // per record, which measured 48 % slower than reading the ends this pass
