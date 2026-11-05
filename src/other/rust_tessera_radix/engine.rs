@@ -725,13 +725,9 @@ const MODEL_LEAF_RADIX: usize = 11;
 /// (32 KiB table against 61 KiB of records, measured best at 1M).
 fn leaf_radix(records: usize, record_bytes: usize) -> usize {
     let tile_bytes = records.saturating_mul(record_bytes);
-    let mut width = LEAF_RADIX_MIN;
-    for candidate in LEAF_RADIX_MIN..=LEAF_RADIX_MAX {
-        if (2usize << candidate) <= tile_bytes {
-            width = candidate;
-        }
-    }
-    width
+    // The widest table that still fits: `2 * 2^width` bytes of cursors.
+    let widest = (usize::BITS - (tile_bytes / 2).max(1).leading_zeros()) as usize - 1;
+    widest.clamp(LEAF_RADIX_MIN, LEAF_RADIX_MAX)
 }
 
 /// Digit width for one MSD split.
@@ -789,26 +785,23 @@ impl<T: Key> Context<T> {
             flat_hot
         };
         let largest_child = sample_split_shape(arr, varying);
-        if trace() {
-            eprintln!(
-                "shape len={} largest={:.4} cold={} hot={}",
-                records, largest_child, cold_passes, hot_passes
-            );
-        }
-        if !split_pays(
+        // One line per node says everything the routing decided, so a trace diff
+        // between two builds is a decision diff.
+        let routed = split_pays(
             node_bytes,
             records,
             self.tile_bytes,
             cold_passes,
             hot_passes,
             largest_child,
-        ) {
-            if trace() {
-                eprintln!(
-                    "block len={} bytes={} cold_passes={} hot_passes={}",
-                    records, node_bytes, cold_passes, hot_passes
-                );
-            }
+        );
+        if trace() {
+            eprintln!(
+                "route len={} bytes={} passes={} hot={} largest={:.4} split={}",
+                records, node_bytes, cold_passes, hot_passes, largest_child, routed
+            );
+        }
+        if !routed {
             // Splitting would cost more than the passes it replaces. Finish the
             // node with the block engine's LSD pass, which needs no buffer the
             // size of the node. It gets the variation scan already done here.
@@ -843,10 +836,7 @@ impl<T: Key> Context<T> {
             width: radix,
         };
         if trace() {
-            eprintln!(
-                "split len={} bytes={} cold_passes={} hot_passes={} radix={}",
-                records, node_bytes, cold_passes, hot_passes, radix
-            );
+            eprintln!("  split radix={} shift={}", radix, top - radix);
         }
         block::partition_digit(arr, digit.width, digit.shift);
         self.descend(arr, digit);

@@ -4,6 +4,42 @@
 
 use super::*;
 
+/// A record whose key type is wider or narrower than its payload: equal keys then
+/// have to keep their input order, which is what stability means here.
+#[derive(Clone, Copy, Debug)]
+struct Item<K> {
+    key: K,
+    index: u32,
+}
+
+impl<K: Copy + Ord> PartialEq for Item<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key && self.index == other.index
+    }
+}
+
+impl<K: Copy + Ord> Eq for Item<K> {}
+
+impl<K: Copy + Ord> PartialOrd for Item<K> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<K: Copy + Ord> Ord for Item<K> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key.cmp(&other.key)
+    }
+}
+
+impl<K: Unsigned> Key for Item<K> {
+    type Value = K;
+
+    fn key(&self) -> K {
+        self.key
+    }
+}
+
 struct Rng(u64);
 
 impl Rng {
@@ -259,37 +295,10 @@ fn every_width_and_tile_rounds_to_zero() {
 fn duplicates_stay_stable() {
     // Equal keys carry their input index, so a stable sort must keep the
     // index order inside every run of equal keys.
-    #[derive(Clone, Copy, Debug)]
-    struct Item {
-        key: u16,
-        index: u32,
-    }
-    impl PartialEq for Item {
-        fn eq(&self, other: &Self) -> bool {
-            self.key == other.key && self.index == other.index
-        }
-    }
-    impl Eq for Item {}
-    impl PartialOrd for Item {
-        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-    impl Ord for Item {
-        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-            self.key.cmp(&other.key)
-        }
-    }
-    impl Key for Item {
-        type Value = u16;
-        fn key(&self) -> u16 {
-            self.key
-        }
-    }
 
     let mut rng = Rng(7);
     for &len in &[2usize, 100, 5000] {
-        let input: Vec<Item> = (0..len)
+        let input: Vec<Item<u16>> = (0..len)
             .map(|index| Item {
                 key: (rng.next() % 4) as u16,
                 index: index as u32,
@@ -312,40 +321,13 @@ fn random_configurations_match_a_stable_reference() {
     // equal-key pair out of order fails the comparison: this is the one test
     // that exercises stability and correctness together over shapes no
     // hand-written case names (sparse masks, one varying byte, two clusters).
-    #[derive(Clone, Copy, Debug)]
-    struct Item {
-        key: u32,
-        index: u32,
-    }
-    impl PartialEq for Item {
-        fn eq(&self, other: &Self) -> bool {
-            self.key == other.key && self.index == other.index
-        }
-    }
-    impl Eq for Item {}
-    impl PartialOrd for Item {
-        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-    impl Ord for Item {
-        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-            self.key.cmp(&other.key)
-        }
-    }
-    impl Key for Item {
-        type Value = u32;
-        fn key(&self) -> u32 {
-            self.key
-        }
-    }
 
     let mut rng = Rng(0x2545_f491_4f6c_dd1d);
     let tiles = [4 * 1024usize, 16 * 1024, 64 * 1024, 256 * 1024, 1 << 20];
     for round in 0..2000 {
         let len = (rng.next() % 8000) as usize;
         let shape = rng.next() % 6;
-        let mut input: Vec<Item> = Vec::with_capacity(len);
+        let mut input: Vec<Item<u32>> = Vec::with_capacity(len);
         for index in 0..len {
             let roll = rng.next();
             let key = match shape {

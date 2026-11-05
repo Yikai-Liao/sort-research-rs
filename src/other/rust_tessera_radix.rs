@@ -17,15 +17,3 @@ pub fn sort_with_policy<T: Key>(data: &mut [T], policy: Policy) {
     engine::sort_with_policy(data, policy);
 }
 
-/// Sorts with an explicit tile budget, in bytes of record data. Benchmarks pin
-/// the budget to make the trade-off visible; it is the knob that sets the
-/// auxiliary-space bound.
-pub fn sort_with_tile_bytes<T: Key>(data: &mut [T], tile_bytes: usize) {
-    engine::sort_with_policy(
-        data,
-        Policy {
-            tile_bytes,
-            ..Policy::default()
-        },
-    );
-}
