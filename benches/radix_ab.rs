@@ -1,17 +1,9 @@
-//! Standalone A/B timing harness for the radix experiments.
+//! Interleaved timing of supported radix and comparison sorts.
 //!
-//! Criterion is too slow for the inner loop of a tuning session, so this target
-//! runs a small interleaved tournament: every variant sorts a fresh copy of the
-//! same input, the variants rotate across rounds, and each cell reports the
-//! minimum and median of `--rounds` samples. Setup and input cloning stay
-//! outside the timed region. Each variant is checked once before timing.
+//! Each variant sorts the same input; order rotates per round. Input generation,
+//! cloning and reference checks are outside the timed region.
 //!
-//! ```text
-//! cargo bench --features rust_block_lsd --bench radix_ab -- \
-//!     --types u64,u32 --patterns random --sizes 1000000
-//! ```
-//!
-//! Experiment scaffolding, not part of the library build.
+//! cargo bench --features rust_tessera_radix --bench radix_ab -- --variants tessera
 
 use std::time::{Duration, Instant};
 
@@ -24,12 +16,8 @@ struct Config {
     sizes: Vec<usize>,
     rounds: usize,
     filter: Option<String>,
-    /// Exact variant names to keep, when `--filter`'s substring match would let a
-    /// second variant through (`tessera` also matches `tessera_counting`).
+    /// Exact variant names to retain.
     variants: Option<Vec<String>>,
-    /// Run the first retained variant once and return: the mode `RADIX_TRACE=1`
-    /// wants, one sort so the decision log has exactly one copy of each node.
-    trace_once: bool,
 }
 
 fn parse_config() -> Config {
@@ -40,7 +28,6 @@ fn parse_config() -> Config {
         rounds: 7,
         filter: None,
         variants: None,
-        trace_once: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -57,7 +44,6 @@ fn parse_config() -> Config {
             "--rounds" => cfg.rounds = value().parse().expect("bad round count"),
             "--filter" => cfg.filter = Some(value()),
             "--variants" => cfg.variants = Some(value().split(',').map(str::to_owned).collect()),
-            "--trace-once" => cfg.trace_once = true,
             // Passed by the cargo harness for every bench target.
             "--bench" | "--nocapture" | "--test" => {}
             other => panic!("unknown argument: {other}"),
@@ -71,8 +57,7 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
         "random" => patterns::random(len),
         "random_d256" => patterns::random_uniform(len, 0..256),
         "random_d16" => patterns::random_uniform(len, 0..16),
-        // Skewed distributions: a long head plus a thin tail is what the MSD
-        // experiments had to survive, so they stay in the default set.
+
         "zipf11" => patterns::random_zipf(len, 1.1),
         "zipf13" => patterns::random_zipf(len, 1.3),
         "zipf20" => patterns::random_zipf(len, 2.0),
@@ -82,15 +67,10 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             v.extend(patterns::random(len - zeros));
             v
         }
-        // The library's `random_sorted` sometimes comes out fully ascending (the
-        // appended tail can be larger than the sorted prefix), which would take
-        // the ordered fast path and measure something else. These two are
-        // ascending with a fixed fraction of adjacent pairs swapped: near-sorted,
-        // guaranteed not sorted.
+        // Adjacent swaps give a guaranteed near-sorted input.
         "random_sorted95" => displaced(patterns::ascending(len), len / 20),
         "random_sorted99" => displaced(patterns::ascending(len), len / 100),
-        // Nearly reverse ordered: descending, then 5 % of the positions swapped,
-        // which is what a sort sees after a few appends and a reversal.
+        // Descending input with a few separated swaps.
         "random_reverse95" => {
             let mut v = patterns::descending(len);
             let step = (len / 20).max(1);
@@ -101,8 +81,7 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             }
             v
         }
-        // Few distinct values spread over the whole type range: the digits are
-        // sparse, which is the case a fixed digit grid handles worst.
+        // Eight repeating keys, spread by the type mapping.
         "sparse8" => {
             let rng = patterns::random(8);
             let mut v = Vec::with_capacity(len);
@@ -111,10 +90,7 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             }
             v
         }
-        // Eight narrow bands far apart. The band index sits in the top three
-        // bits and the offset in the low sixteen, so the widening mappings (which
-        // shift the pattern into the type's high half) keep them apart: within a
-        // band only the low bits vary, between bands only the top three do.
+        // Eight bands: high three bits select the band, low sixteen vary within it.
         "bands8" => {
             let offsets = patterns::random_uniform(len, 0..(1 << 16));
             let mut v = Vec::with_capacity(len);
@@ -124,11 +100,8 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             }
             v
         }
-        // Concatenated sorted runs with disjoint key ranges: what a merge of
-        // sorted pages, a k-way merge or a B-tree leaf scan looks like. The
-        // ordered probe rejects it (the run boundaries invert), so it is sorted as
-        // an unsorted array with a lot of local order.
-        "runs64" => {
+        // Sorted runs over disjoint ranges.
+        "runs64" | "blocks_desc" => {
             let runs = 64usize.min(len.max(1));
             let run_len = len / runs;
             let mut v = Vec::with_capacity(len);
@@ -138,20 +111,19 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
                     .into_iter()
                     .map(|x| base.wrapping_add(x))
                     .collect();
-                part.sort_unstable();
+                if pattern == "blocks_desc" {
+                    part.sort_unstable_by(|a, b| b.cmp(a));
+                } else {
+                    part.sort_unstable();
+                }
                 v.extend_from_slice(&part);
             }
             v.truncate(len);
             v
         }
-        // Ascending and descending runs, unequal lengths, in random order, over
-        // overlapping key ranges: what a merge of pre-sorted sources actually looks
-        // like. No probe can accept it (the first inversion is a few records in) and
-        // no run is long enough to pay for a search, so every adaptive decision has
-        // to be made per node from the data in front of it.
+        // Unequal ascending/descending runs over overlapping key ranges.
         "mixed_runs" => {
-            // A local generator: the run lengths and directions are part of the
-            // pattern, not of the data, so they must not depend on the key generator.
+            // Run layout is independent of the key generator.
             let mut state = 0x5d2b_9c11_7a63_e401u64;
             let mut below = |limit: usize| {
                 state = state
@@ -162,8 +134,6 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             let keys = patterns::random(len);
             let mut v: Vec<i32> = Vec::with_capacity(len);
             while v.len() < len {
-                // 16 to 2064 records: a run is sometimes shorter than a tile and
-                // sometimes several tiles long.
                 let run = (16 + below(2048)).min(len - v.len());
                 let descending = below(2) == 0;
                 let mut part: Vec<i32> = keys[v.len()..v.len() + run].to_vec();
@@ -176,44 +146,22 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             }
             v
         }
-        // The same runs, each descending: order exists but the wrong way round,
-        // and the probe cannot use it either.
-        "blocks_desc" => {
-            let runs = 64usize.min(len.max(1));
-            let run_len = len / runs;
-            let mut v = Vec::with_capacity(len);
-            for run in 0..runs {
-                let base = (run as i64 * (i32::MAX as i64 / runs as i64)) as i32;
-                let mut part: Vec<i32> = patterns::random_uniform(run_len.max(1), 0..(1 << 20))
-                    .into_iter()
-                    .map(|x| base.wrapping_add(x))
-                    .collect();
-                part.sort_unstable_by(|a, b| b.cmp(a));
-                v.extend_from_slice(&part);
-            }
-            v.truncate(len);
-            v
-        }
-        // Two values, half and half: the extreme of "few distinct values" and the
-        // case a counting pass with two buckets should finish in one pass.
+
+        // Two values spanning the base key range.
         "two_values" => {
             let rng = patterns::random(len);
             rng.into_iter()
                 .map(|x| if x >= 0 { 0 } else { i32::MAX })
                 .collect()
         }
-        // 1000 groups of equal keys, groups in ascending order: a sorted array with
-        // long duplicate runs, so the ordered probe accepts it and the duplicate
-        // structure has to be cheap.
+        // One thousand equal-key groups in ascending order.
         "staircase" => {
             let groups = 1000usize;
             (0..len)
                 .map(|index| ((index * groups / len.max(1)) as i32) << 20)
                 .collect()
         }
-        // Random keys, but each 64-record block draws from a 64-wide window, so
-        // consecutive records share most of their bits: locality inside the array,
-        // no global order.
+        // Each 64-record block draws from a 64-value window.
         "random_local" => {
             let bases = patterns::random_uniform(len.div_ceil(64), 0..(1 << 20));
             let offsets = patterns::random_uniform(len, 0..64);
@@ -221,10 +169,7 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
                 .map(|index| (bases[index / 64] << 10).wrapping_add(offsets[index]))
                 .collect()
         }
-        // Only eight bits vary, and they sit above every other varying bit. The
-        // shift is chosen so the widening mappings (which scale the pattern into
-        // the type's high half) keep the cluster intact: bits 23-30 of the i32 land
-        // at bits 54-61 of a u64 and 119-126 of a u128.
+        // The byte at bits 23–30 stays clustered under the type mappings.
         "high_byte_only" => {
             let rng = patterns::random(len);
             rng.into_iter().map(|x| (x & 0xff) << 23).collect()
@@ -248,41 +193,29 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
     }
 }
 
-/// Full-range keys: mixes both 32-bit halves so every bit position varies.
-fn wide_keys(pattern: &str, len: usize) -> Vec<i32> {
-    // "random_wide" is the full-width flavour of the plain random pattern; the
-    // named distributions keep their shape and are widened by the type mapping.
-    let v = if pattern == "random_wide" {
-        patterns::random(len)
-    } else {
-        base_keys(pattern, len)
-    };
-    v.into_iter()
+fn full_width_u32(len: usize) -> Vec<u32> {
+    patterns::random(len)
+        .into_iter()
         .enumerate()
-        .map(|(i, x)| {
-            let lo = (x as u32).wrapping_mul(0x9e37_79b9);
-            let hi = (x as u32)
+        .map(|(index, key)| {
+            let lo = (key as u32).wrapping_mul(0x9e37_79b9);
+            let hi = (key as u32)
                 .wrapping_mul(0x85eb_ca6b)
-                .rotate_left(i as u32 & 31);
-            (lo ^ hi) as i32
+                .rotate_left(index as u32 & 31);
+            lo ^ hi
         })
         .collect()
 }
 
-fn narrow_u32(x: i32) -> u32 {
+fn ordered_u32_key(x: i32) -> u32 {
     (x as i64 + (i32::MAX as i64 + 1)) as u32
 }
 
-fn narrow_u64(x: i32) -> u64 {
-    (narrow_u32(x) as u64) * i32::MAX as u64
+fn spread_u64_key(x: i32) -> u64 {
+    (ordered_u32_key(x) as u64) * i32::MAX as u64
 }
 
-/// SplitMix64: the generator for patterns that claim full width. Drawing the key
-/// itself, rather than hashing a single i32 per record, is what makes the claim
-/// true: one i32 carries 32 bits of entropy, so a u64 drawn that way has at most
-/// 2^32 distinct values and produces about 1000 times more duplicates at 10M than
-/// an independent 64-bit draw -- which changes what the duplicate and bucket paths
-/// are asked to do.
+/// Full-width draws use SplitMix64, rather than widening 32-bit keys.
 fn splitmix64(state: &mut u64) -> u64 {
     *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
     let mut z = *state;
@@ -309,8 +242,7 @@ fn full_width_u128(len: usize) -> Vec<u128> {
         .collect()
 }
 
-/// Swaps \`swaps\` evenly spread adjacent pairs: an ordered array with that many
-/// displaced elements, which is the shape "sorted, then a few edits" produces.
+/// Swaps evenly spaced adjacent pairs.
 fn displaced(mut v: Vec<i32>, swaps: usize) -> Vec<i32> {
     let step = (v.len() / swaps.max(1)).max(2);
     let mut index = 0;
@@ -321,14 +253,9 @@ fn displaced(mut v: Vec<i32>, swaps: usize) -> Vec<i32> {
     v
 }
 
-/// Patterns that only make sense in the target type's own bit space: the
-/// widening mappings above scale an i32 pattern by ~2^31, which turns two
-/// adjacent values into a 31-bit difference. These build the key directly, so
-/// "two values one bit apart" really is one varying bit.
+/// Builds keys in the target type's bit space, without the base-key mapping.
 fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> {
-    // Real columns are not uniform over the type's bit space. The float
-    // patterns below generate the *converted key* of a normal / log-normal
-    // column, so the u64 row is exactly what an f64 column hands the sort.
+    // Floating columns are represented by their total-order integer keys.
     if pattern == "f64_normal" || pattern == "f64_lognormal" {
         let lognormal = pattern == "f64_lognormal";
         let mut state = 0x6a09_e667_f3bc_c909u64 ^ len as u64;
@@ -361,17 +288,14 @@ fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> 
         return Some(out);
     }
     let keys: Vec<u128> = match pattern {
-        // A narrow integer stored in a wide container: every varying bit sits in
-        // the low 12. The named patterns go through the i32 widening, which
-        // spreads them over 62 bits, so this shape was not in the corpus.
+        // Only the low twelve bits vary.
         "small12" => {
             let mut state = 0x243f_6a88_85a3_08d3u64 ^ len as u64;
             (0..len)
                 .map(|_| (splitmix64(&mut state) & 0xfff) as u128)
                 .collect()
         }
-        // A normalized composite key: a 16-value dictionary code in the top
-        // bits and a random low word.
+        // A dictionary category above a random low word.
         "composite16_32" => {
             let mut state = 0xcbf2_9ce4_8422_2325u64 ^ len as u64;
             (0..len)
@@ -387,11 +311,7 @@ fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> 
                 })
                 .collect()
         }
-        // The same logical 32-bit key in every container width: a 4-bit
-        // category plus 28 random bits, placed in the type's top 32 bits. u64
-        // and u128 sort the same values in the same order, so their difference
-        // is key arithmetic and record width -- the cell the narrowed key view
-        // (PLAN.md §3) has to win on.
+        // The same 32-bit logical key in the top word of every container width.
         "window32_high" => {
             let mut state = 0x3c6e_f372_fe94_f82bu64 ^ len as u64;
             let shift = bits.saturating_sub(32);
@@ -403,26 +323,22 @@ fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> 
                 })
                 .collect()
         }
-        // One varying bit, 50/50: the cheapest possible non-trivial input.
+
         "type_two_near" => patterns::random(len)
             .into_iter()
             .map(|x| (x & 1) as u128)
             .collect(),
-        // Two values at opposite ends of the key: same cardinality, maximal digit
-        // distance, so the digit work is maximal while the comparison work is not.
+
         "type_two_far" => patterns::random(len)
             .into_iter()
             .map(|x| if x >= 0 { 0 } else { u128::MAX })
             .collect(),
-        // Eight values one bit apart.
+
         "type_eight_near" => patterns::random(len)
             .into_iter()
             .map(|x| (x & 7) as u128)
             .collect(),
-        // Only the top byte varies.
-        // The varying byte sits in the target type's own top byte. Placing it at
-        // bit 120 unconditionally made u32 and u64 rows all-zero -- the pattern
-        // sorted an array of equal keys and called it "top byte varies".
+        // Use the target type's top byte; a fixed shift of 120 made u32/u64 all zero.
         "type_top_byte" => {
             let shift = bits - 8;
             patterns::random(len)
@@ -430,15 +346,7 @@ fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> 
                 .map(|x| ((x & 0xff) as u128) << shift)
                 .collect()
         }
-        // Few values, maximal span: 8 keys spread over the whole width of the
-        // type. The previous sparse8 went through the i32 widening, which puts every
-        // pattern in the top 32 bits, so "8 values across 128 bits" was really "8
-        // values across 32 bits" and the low 96 bits were constant.
-        // Deep skew with a fixed number of distinct keys: ten values, but one of
-        // them takes 10, 50, 90 or 99 % of the records. The leaf judges a window by
-        // the count of non-empty buckets, which cannot tell these four apart, so
-        // this is the family that says whether that heuristic picks the right
-        // strategy when the distribution is heavy tailed.
+        // Ten values with a dominant key at 10, 50, 90 or 99 percent.
         "skew10" | "skew50" | "skew90" | "skew99" => {
             let share: u64 = match pattern {
                 "skew10" => 10,
@@ -494,14 +402,11 @@ fn keys_u32(pattern: &str, len: usize) -> Vec<u32> {
         return keys.into_iter().map(|key| key as u32).collect();
     }
     if pattern == "random_wide" {
-        wide_keys(pattern, len)
-            .into_iter()
-            .map(|x| x as u32)
-            .collect()
+        full_width_u32(len)
     } else {
         base_keys(pattern, len)
             .into_iter()
-            .map(narrow_u32)
+            .map(ordered_u32_key)
             .collect()
     }
 }
@@ -512,7 +417,7 @@ fn keys_u16(pattern: &str, len: usize) -> Vec<u16> {
     }
     base_keys(pattern, len)
         .into_iter()
-        .map(|x| (narrow_u32(x) >> 16) as u16)
+        .map(|x| (ordered_u32_key(x) >> 16) as u16)
         .collect()
 }
 
@@ -521,11 +426,11 @@ fn keys_u64(pattern: &str, len: usize) -> Vec<u64> {
         return keys.into_iter().map(|key| key as u64).collect();
     }
     if pattern == "random_wide" {
-        return full_width_u64(len);
+        full_width_u64(len)
     } else {
         base_keys(pattern, len)
             .into_iter()
-            .map(narrow_u64)
+            .map(spread_u64_key)
             .collect()
     }
 }
@@ -535,55 +440,27 @@ fn keys_u128(pattern: &str, len: usize) -> Vec<u128> {
         return keys;
     }
     if pattern == "random_wide" {
-        // Both halves drawn independently, so the width is the entropy.
         return full_width_u128(len);
     }
-    // Named patterns keep their shape and their order: the pattern lands in the
-    // top 32 bits and the low half is constant. A hashed high half would turn
-    // "ascending" into a random array, which is not what the row claims.
+    // Preserve base-pattern order in the high 32 bits.
     base_keys(pattern, len)
         .into_iter()
-        .map(|x| (narrow_u32(x) as u128) << 96)
+        .map(|x| (ordered_u32_key(x) as u128) << 96)
         .collect()
 }
 
-// The record layouts live in sort_test_tools so the C ABI wrappers and the
-// benchmark use exactly the same field order. The Key impls live in
-// sort_research_rs::other::radix_support, where the trait is defined.
+// Record layouts are shared with the C ABI wrappers.
 
 fn keys_record128(pattern: &str, len: usize) -> Vec<Record128> {
-    // A full-width row draws the key itself; the named patterns keep their shape.
-    let keys: Vec<u64> = if pattern == "random_wide" {
-        full_width_u64(len)
-    } else {
-        base_keys(pattern, len)
-            .into_iter()
-            .map(narrow_u64)
-            .collect()
-    };
-    keys.into_iter()
+    keys_u64(pattern, len)
+        .into_iter()
         .map(|key| Record128::new(key, [0; 120]))
         .collect()
 }
 
 fn keys_record16(pattern: &str, len: usize) -> Vec<Record16> {
-    let keys: Vec<u64> = if pattern == "random_wide" {
-        full_width_u64(len)
-    } else if pattern == "window32_high" {
-        // The same key as the u64 row: the payload is the only difference, so
-        // u64 -> record16 prices record bytes and nothing else.
-        type_space_keys(pattern, len, 64)
-            .unwrap()
-            .into_iter()
-            .map(|key| key as u64)
-            .collect()
-    } else {
-        base_keys(pattern, len)
-            .into_iter()
-            .map(narrow_u64)
-            .collect()
-    };
-    keys.into_iter()
+    keys_u64(pattern, len)
+        .into_iter()
         .map(|key| Record16::new(key, [0; 8]))
         .collect()
 }
@@ -605,11 +482,7 @@ fn summarize(mut times: Vec<Duration>) -> Sample {
     }
 }
 
-/// Appends one line per round when RADIX_RAW names a file.
-///
-/// A ratio cannot be recomputed from a summary, so the raw rounds are what makes a
-/// result checkable later: which key, which variant, which round, how long, and
-/// which commit produced it. The commit is asked of git once per process.
+/// Appends revision,type,pattern,n,variant,round,seconds to RADIX_RAW.
 fn archive_raw(pattern: &str, label: &str, n: usize, name: &str, round: usize, secs: f64) {
     use std::io::Write;
     let Ok(path) = std::env::var("RADIX_RAW") else {
@@ -618,20 +491,20 @@ fn archive_raw(pattern: &str, label: &str, n: usize, name: &str, round: usize, s
     static SHA: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     let sha = SHA.get_or_init(|| {
         std::process::Command::new("git")
-            .args(["rev-parse", "--short", "HEAD"])
+            .args(["describe", "--always", "--dirty", "--abbrev=40"])
             .output()
             .ok()
             .and_then(|out| String::from_utf8(out.stdout).ok())
             .map(|s| s.trim().to_owned())
             .unwrap_or_else(|| "unknown".into())
     });
-    if let Ok(mut file) = std::fs::OpenOptions::new()
+    let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)
-    {
-        let _ = writeln!(file, "{sha},{label},{pattern},{n},{name},{round},{secs:.9}");
-    }
+        .expect("open RADIX_RAW");
+    writeln!(file, "{sha},{label},{pattern},{n},{name},{round},{secs:.9}")
+        .expect("write RADIX_RAW");
 }
 
 fn tournament<T: Clone>(
@@ -686,11 +559,6 @@ fn run<T: Clone + Ord + std::fmt::Debug>(
         variants.retain(|(name, _)| names.iter().any(|wanted| wanted == name));
     }
     assert!(!variants.is_empty(), "no variant matched the filter");
-    if cfg.trace_once {
-        let mut probe = input.clone();
-        (variants[0].1)(&mut probe);
-        return;
-    }
 
     let mut expected = input.clone();
     expected.sort();
@@ -702,10 +570,7 @@ fn run<T: Clone + Ord + std::fmt::Debug>(
     }
 
     let results = tournament(&input, &variants, cfg.rounds, label, pattern);
-    // The median of the interleaved rounds is the reported statistic, not the
-    // minimum: on a shared VM a single fast round is a lucky one, and a ratio taken
-    // from two lucky rounds is not a ratio. The minimum stays in its own column
-    // because it is the only number that is stable when the machine is quiet.
+    // Ratios use medians of the interleaved rounds; minima are shown separately.
     let best = results.iter().map(|r| r.1.median).min().unwrap();
     let bytes = std::mem::size_of::<T>();
     let ascending = input.windows(2).all(|w| w[0] <= w[1]);
@@ -714,7 +579,7 @@ fn run<T: Clone + Ord + std::fmt::Debug>(
         "\n{label} {pattern} n={} ({:.1} MiB) ascending={ascending} descending={descending} distinct={}",
         input.len(),
         (input.len() * bytes) as f64 / (1024.0 * 1024.0),
-        distinct_count(&input),
+        expected.chunk_by(|a, b| a == b).count(),
     );
     println!(
         "{:<30} {:>11} {:>11} {:>8} {:>10}",
@@ -732,102 +597,9 @@ fn run<T: Clone + Ord + std::fmt::Debug>(
     }
 }
 
-fn distinct_count<T: Ord>(input: &[T]) -> usize {
-    let mut seen: Vec<&T> = input.iter().collect();
-    seen.sort_unstable();
-    seen.dedup();
-    seen.len()
-}
-
 // ---------------------------------------------------------------------------
 // Variant tables
 // ---------------------------------------------------------------------------
-
-#[cfg(feature = "rust_block_lsd")]
-fn block_lsd_radix<const R: usize, T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    sort_research_rs::other::rust_block_lsd::sort_with_radix(s, R);
-}
-
-/// The flat counting leaf, with the MSD level inside the tile switched off: same
-/// process, same data, so the two leaf strategies are compared directly instead of
-/// across runs on a shared machine.
-
-#[cfg(feature = "rust_tessera_radix")]
-fn tessera_counting<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    sort_research_rs::other::rust_tessera_radix::sort_with_leaf_plan(s);
-}
-
-/// The other half of the leaf ablation: the MSD level always, the flat plan never.
-
-/// Tile-budget sweep: the knob that sets the auxiliary-space bound.
-#[cfg(feature = "rust_tessera_radix")]
-fn tessera_tile<const BYTES: usize, T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    use sort_research_rs::other::rust_tessera_radix::{sort_with_policy, Policy};
-    sort_with_policy(
-        s,
-        Policy {
-            tile_bytes: BYTES,
-            ..Policy::default()
-        },
-    );
-}
-
-/// Insertion-crossover sweep, in records.
-#[cfg(feature = "rust_tessera_radix")]
-fn tessera_ins<const INS: usize, T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    use sort_research_rs::other::rust_tessera_radix::{sort_with_policy, Policy};
-    sort_with_policy(
-        s,
-        Policy {
-            insertion_max: INS,
-            ..Policy::default()
-        },
-    );
-}
-
-#[cfg(feature = "rust_msd_radix")]
-fn msd_radix<T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    sort_research_rs::other::rust_msd_radix::sort(s);
-}
-
-#[cfg(feature = "cpp_ips2ra")]
-fn ips2ra<T: Ord>(s: &mut [T]) {
-    sort_research_rs::other::cpp_ips2ra::sort(s);
-}
-
-#[cfg(feature = "cpp_dovetail")]
-fn dovetail<T: Ord>(s: &mut [T]) {
-    sort_research_rs::other::cpp_dovetail::sort(s);
-}
-
-#[cfg(feature = "cpp_vqsort")]
-fn vqsort<T: Ord>(s: &mut [T]) {
-    sort_research_rs::other::cpp_vqsort::sort(s);
-}
-
-#[cfg(feature = "cpp_intel_avx512")]
-fn intel_avx512<T: Ord>(s: &mut [T]) {
-    sort_research_rs::other::cpp_intel_avx512::sort(s);
-}
-
-#[cfg(feature = "rust_radsort")]
-fn radsort_direct<T: Ord>(s: &mut [T]) {
-    sort_research_rs::other::rust_radsort::sort(s);
-}
-
-#[cfg(all(feature = "rust_radsort", feature = "rust_block_lsd"))]
-fn radsort_keyed<T>(s: &mut [T])
-where
-    T: sort_research_rs::other::radix_support::Key,
-    T::Value: radsort::Key,
-{
-    sort_research_rs::other::rust_radsort::sort_keyed(s);
-}
-
-#[cfg(feature = "cpp_ips4o")]
-fn ips4o<T: Ord>(s: &mut [T]) {
-    sort_research_rs::unstable::cpp_ips4o::sort(s);
-}
 
 macro_rules! radix_variants {
     ($ty:ty) => {{
@@ -835,64 +607,66 @@ macro_rules! radix_variants {
         let mut v: Vec<(&'static str, fn(&mut [$ty]))> = Vec::new();
         #[cfg(feature = "rust_block_lsd")]
         {
-            v.push(("block_lsd_r8", block_lsd_radix::<8, $ty>));
-            v.push(("block_lsd_r11", block_lsd_radix::<11, $ty>));
+            v.push((
+                "block_lsd_r8",
+                sort_research_rs::other::rust_block_lsd::sort,
+            ));
         }
         #[cfg(feature = "rust_tessera_radix")]
         {
-            v.push(("tessera", |s: &mut [$ty]| {
-                sort_research_rs::other::rust_tessera_radix::sort(s)
-            }));
-            v.push(("tessera_counting", tessera_counting::<$ty>));
-            // The tile budget and the leaf crossovers are swept from here while
-            // tuning; they cost a build matrix, so they stay opt-in.
-            if std::env::var_os("RADIX_AB_LEAVES").is_some() {
-                v.push(("tile_16k", tessera_tile::<16384, $ty>));
-                v.push(("tile_24k", tessera_tile::<24576, $ty>));
-                v.push(("tile_32k", tessera_tile::<32768, $ty>));
-                v.push(("tile_48k", tessera_tile::<49152, $ty>));
-                v.push(("tile_96k", tessera_tile::<98304, $ty>));
-                v.push(("tile_128k", tessera_tile::<131072, $ty>));
-                v.push(("tile_256k", tessera_tile::<262144, $ty>));
-                v.push(("tile_512k", tessera_tile::<524288, $ty>));
-                v.push(("leaf_ins0", tessera_ins::<0, $ty>));
-                v.push(("leaf_ins24", tessera_ins::<24, $ty>));
-                v.push(("leaf_ins128", tessera_ins::<128, $ty>));
-            }
+            v.push((
+                "tessera",
+                sort_research_rs::other::rust_tessera_radix::sort::<$ty>,
+            ));
         }
         #[cfg(feature = "rust_msd_radix")]
         {
-            v.push(("msd_radix", msd_radix::<$ty>));
+            v.push((
+                "msd_radix",
+                sort_research_rs::other::rust_msd_radix::sort::<$ty>,
+            ));
         }
         #[cfg(feature = "cpp_ips2ra")]
         if sort_research_rs::other::cpp_ips2ra::supports_type::<$ty>() {
-            v.push(("ips2ra", ips2ra::<$ty>));
+            v.push(("ips2ra", sort_research_rs::other::cpp_ips2ra::sort::<$ty>));
         }
         #[cfg(feature = "cpp_dovetail")]
         if sort_research_rs::other::cpp_dovetail::supports_type::<$ty>() {
-            v.push(("dovetail", dovetail::<$ty>));
+            v.push((
+                "dovetail",
+                sort_research_rs::other::cpp_dovetail::sort::<$ty>,
+            ));
         }
         #[cfg(feature = "cpp_vqsort")]
         if sort_research_rs::other::cpp_vqsort::supports_type::<$ty>() {
-            v.push(("vqsort", vqsort::<$ty>));
+            v.push(("vqsort", sort_research_rs::other::cpp_vqsort::sort::<$ty>));
         }
         #[cfg(feature = "cpp_intel_avx512")]
         if sort_research_rs::other::cpp_intel_avx512::supports_type::<$ty>() {
-            v.push(("intel_avx512", intel_avx512::<$ty>));
+            v.push((
+                "intel_avx512",
+                sort_research_rs::other::cpp_intel_avx512::sort::<$ty>,
+            ));
         }
         #[cfg(feature = "rust_radsort")]
         if sort_research_rs::other::rust_radsort::supports_type::<$ty>() {
-            v.push(("radsort", radsort_direct::<$ty>));
+            v.push((
+                "radsort",
+                sort_research_rs::other::rust_radsort::sort::<$ty>,
+            ));
         }
         #[cfg(all(feature = "rust_radsort", feature = "rust_block_lsd"))]
         if !sort_research_rs::other::rust_radsort::supports_type::<$ty>()
             && <$ty as sort_research_rs::other::radix_support::Key>::SUPPORTED
         {
-            v.push(("radsort_keyed", radsort_keyed::<$ty>));
+            v.push((
+                "radsort_keyed",
+                sort_research_rs::other::rust_radsort::sort_keyed::<$ty>,
+            ));
         }
         #[cfg(feature = "cpp_ips4o")]
         if std::any::TypeId::of::<$ty>() == std::any::TypeId::of::<u64>() {
-            v.push(("ips4o", ips4o::<$ty>));
+            v.push(("ips4o", sort_research_rs::unstable::cpp_ips4o::sort::<$ty>));
         }
         v
     }};

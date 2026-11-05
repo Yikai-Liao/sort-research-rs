@@ -347,7 +347,7 @@ bench_type_u64_128b = []
 
 large_test_sizes = ["sort_test_tools/large_test_sizes"]
 
-# Experiment harness for the radix tuning sessions.
+# Interleaved radix benchmark harness.
 [[bench]]
 name = "radix_ab"
 harness = false
