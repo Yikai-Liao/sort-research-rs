@@ -133,6 +133,38 @@ fn base_keys(pattern: &str, len: usize) -> Vec<i32> {
             v.truncate(len);
             v
         }
+        // Ascending and descending runs, unequal lengths, in random order, over
+        // overlapping key ranges: what a merge of pre-sorted sources actually looks
+        // like. No probe can accept it (the first inversion is a few records in) and
+        // no run is long enough to pay for a search, so every adaptive decision has
+        // to be made per node from the data in front of it.
+        "mixed_runs" => {
+            // A local generator: the run lengths and directions are part of the
+            // pattern, not of the data, so they must not depend on the key generator.
+            let mut state = 0x5d2b_9c11_7a63_e401u64;
+            let mut below = |limit: usize| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                ((state >> 33) as usize) % limit.max(1)
+            };
+            let keys = patterns::random(len);
+            let mut v: Vec<i32> = Vec::with_capacity(len);
+            while v.len() < len {
+                // 16 to 2064 records: a run is sometimes shorter than a tile and
+                // sometimes several tiles long.
+                let run = (16 + below(2048)).min(len - v.len());
+                let descending = below(2) == 0;
+                let mut part: Vec<i32> = keys[v.len()..v.len() + run].to_vec();
+                if descending {
+                    part.sort_unstable_by(|a, b| b.cmp(a));
+                } else {
+                    part.sort_unstable();
+                }
+                v.extend_from_slice(&part);
+            }
+            v
+        }
         // The same runs, each descending: order exists but the wrong way round,
         // and the probe cannot use it either.
         "blocks_desc" => {

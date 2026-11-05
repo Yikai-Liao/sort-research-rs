@@ -989,6 +989,75 @@ Lesson for the next round, alongside §26's round-count rule: check 100k, 1M and
 10M before believing a routing change, and confirm with `perf stat` instructions
 before arguing about wall-clock percentages.
 
+### 32. The routing model became dimensionless, because the old one was this machine
+
+The model that decided split-versus-stream was fitted to this VM: a hot floor of
+2.5 ns per record, a cold scatter bandwidth of 3.4 GB/s falling as size^0.30 from
+2 MiB, a 3.0 ns cold floor, a split pass at half a scatter pass. Perturbing any one
+of them by 2x, or the tile from 64 to 256 KiB, moved 40-60 of 652 routing lines and
+changed the shape of the recursion from 652 nodes to 396. That is a model of a
+Skylake VM, not of a sorting algorithm, and it cannot be checked on AArch64 or RV64
+from here.
+
+What the router actually needs is which of two totals is smaller, and both totals
+are passes over the same node. So the model is now pass arithmetic:
+
+```
+split iff  2 passes + hot_passes * (0.5 if the child fits the tile else 1) < cold_passes
+```
+
+`SPLIT_PASSES = 2` counts what the split runs -- four read-only passes move half the
+bytes of two read-write passes -- and `CHILD_PASS_SHARE = 0.5` is the only machine
+fact left: what a cache-resident working set is worth. No byte rate, no latency, no
+cache size, no reference size. On a core whose cache helps less, the share moves
+toward 1 and the rule degrades to "split only when it saves a real pass", which is
+the conservative direction; on one where it helps more, the rule under-splits by at
+most one level. There is no calibration that can make it explode.
+
+That is also how pdqsort and ipnsort stay portable, and it is worth stating because
+neither has a bandwidth model to port: pdqsort's decisions are element counts
+(insertion below 24 records, ninther above 128, block partitioning above that) and
+pattern detection; ipnsort adds branchless small-sort networks selected by element
+type and size. Both adapt to *data*, and their few architectural constants sit on
+wide plateaus. A radix sort cannot avoid adapting to *memory*, because its passes
+scatter into 256 streams and the cost of a pass depends on whether those streams
+fit the cache -- but it can express that dependence as a pass ratio, which is what
+this section did.
+
+Equivalence to the calibrated model was checked the only way that is dispositive:
+instructions, 1M and 10M, 33 cells. Random, sorted-99, two values, sparse values,
+zipf, bands, descending blocks, mixed runs, all three widths: every cell within
+3.7 %, most within 0.1 %. The routing is the same routing; it no longer knows the
+machine it is on.
+
+### 33. A workload the suite was missing: unequal runs, both directions, random order
+
+`mixed_runs` concatenates runs of 16 to 2064 random records, each sorted ascending
+or descending at random, over overlapping key ranges. It is what a merge of
+pre-sorted sources sees, and it defeats every array-level shortcut: the ordered
+probe rejects it a few records in, and no run is long enough to pay for a search.
+
+Each cell is mean over 7 rounds, criterion compare, ns per record:
+
+| 1M | tessera | ipnsort | block LSD r8 | std stable |
+| --- | --- | --- | --- | --- |
+| u64 | 18.2 | 24.4 | 35.6 | 46.5 |
+| u128 | 47.8 | 46.8 | 47.3 | 72.3 |
+| u32 | 11.8 | 22.6 | 11.7 | 44.3 |
+| i32 | 11.5 | 22.5 | 11.7 | 44.3 |
+
+| 10M | tessera | ipnsort | block LSD r8 | std stable |
+| --- | --- | --- | --- | --- |
+| u64 | 28.9 | 33.4 | 59.7 | 61.6 |
+| u128 | 56.9 | 58.2 | 55.9 | 112.3 |
+| u32 | 17.8 | 27.4 | 16.0 | 46.7 |
+
+Against ipnsort this is 1.34x at u64 1M and 1.15x at 10M, 1.95x at u32, and a wash at
+u128 (2 % behind at 1M, 2 % ahead at 10M). Against block LSD r8 it is 2x at u64 and
+even at u128 and u32. The u128 cell is the one to watch: a 16-byte record over 15 MiB
+is memory bound, and there block LSD's many-stream scatter is as good as our
+cache-sized tiles, which is the shape of the trade rather than a bug.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

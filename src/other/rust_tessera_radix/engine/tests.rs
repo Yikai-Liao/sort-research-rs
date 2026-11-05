@@ -213,9 +213,9 @@ fn route_table() {
         (8_000_000usize, 1_000_000usize, 8usize, 0.0107f64, true),
         // two values: one pass cannot pay for a split
         (8_000_000, 1_000_000, 1, 0.5303, false),
-        // keys piled into one bucket: the split still wins on the child price,
-        // because a child over a tile is priced at one level, not at its flat count
-        (8_000_000, 1_000_000, 7, 0.9980, true),
+        // keys piled into one bucket: the largest child is over a tile, so it earns
+        // no cache discount and the split saves no pass over the 7 it replaces
+        (8_000_000, 1_000_000, 7, 0.9980, false),
         // a node only just over the tile with a narrow digit
         (65_552, 8_194, 2, 0.0100, false),
         // 99 % sorted: the top digit separates the stragglers
@@ -225,8 +225,9 @@ fn route_table() {
         // The router prices the child at the best case the leaf can reach; see the
         // comment at the call site for the 25 % that assuming otherwise cost.
         let hot = flat.min(MSD_LEVEL_PASSES);
+        let child_fits = (bytes as f64 * largest) as usize <= TILE_BYTES;
         assert_eq!(
-            split_pays(bytes, records, TILE_BYTES, flat, hot, largest),
+            split_pays(flat, hot, child_fits),
             expected,
             "{records} records of {} bytes, {flat} passes, largest {largest}",
             bytes / records

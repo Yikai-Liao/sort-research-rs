@@ -357,27 +357,23 @@ pub fn sort_with_policy<T: Key>(arr: &mut [T], policy: Policy) {
 // threshold. The constants are machine facts about moving record bytes, not
 // properties of a data distribution.
 
-/// A pass costs the same per record whatever the record width, until the memory
-/// term takes over: the per-record work (key, bucket, cursor, store) has a floor
-/// of 2.5 ns, and wide records add their traffic at the L1 write rate. Measured
-/// on cache-resident tiles: 2.3 ns per 4-byte record, 2.6 ns per 8-byte record.
-/// `llvm-mca` on the scatter loop puts its ideal throughput at 2.0 cycles per
-/// record, so a tile pass running at ~6 cycles per record is memory bound rather
-/// than store bound; the floor is what the model needs, not what the hardware
-/// can achieve.
-const HOT_NS_PER_RECORD: f64 = 2.5;
-const HOT_BYTES_PER_NS: f64 = 3.0;
+/// What one MSD split costs, in full passes over the same node.
+///
+/// The split runs four passes -- count, block boundaries, permute, materialize --
+/// and every one of them only reads the node, so together they move half the
+/// bytes two read-write passes would: two passes is the structural price, and it
+/// is the same on any machine, because it counts passes rather than pricing them.
+const SPLIT_PASSES: f64 = 2.0;
 
-/// A cold pass keeps the same per-record floor and streams through the working
-/// set at the scatter bandwidth, fitted to the measured block LSD passes:
-/// 3.4 GB/s at 1.6 MiB, 2.1 at 8 MiB, 1.7 at 16 MiB, 1.05 at 80 MiB. The power
-/// law below is within 25 % of those points; a cold scatter is that slow because
-/// it writes to 256 streams at once, where memcpy reaches ~10 GB/s. Note the
-/// measured floor of 3.0 ns per record: below a few MiB the passes are flat.
-const COLD_BANDWIDTH_PER_NS: f64 = 3.4;
-const COLD_BANDWIDTH_REFERENCE: f64 = 2_097_152.0;
-const COLD_BANDWIDTH_EXPONENT: f64 = 0.30;
-const COLD_NS_PER_RECORD_FLOOR: f64 = 3.0;
+/// One pass over a cache-resident child, as a share of one pass over the node it
+/// came from. This is the only machine fact the routing has left: it says how
+/// much a working set that fits the cache is worth. 0.5 is what a 64 KiB tile
+/// against an 8-80 MiB node measures on Skylake; a core with a weaker cache or a
+/// slower memory path moves it toward 1, and the rule then asks for a split only
+/// when it saves real passes -- the safe direction, and the reason this is a
+/// ratio rather than a bandwidth: no byte rate, latency or cache size enters the
+/// decision, so the same code makes the same kind of choice on AArch64 or RV64.
+const CHILD_PASS_SHARE: f64 = 0.5;
 
 /// How well the split's digit would divide the node: up to
 /// `SPLIT_SAMPLES` keys spread over the node, bucketed exactly as the split
@@ -445,78 +441,20 @@ fn tile_cost(
 const SPLIT_SAMPLES: usize = 1024;
 /// Records read back to back in each sample run.
 const SPLIT_RUN: usize = 32;
-/// A split pass reads the node and writes nothing, so it moves half the bytes of
-/// a pass that reads and writes: measured 15.2 ns for four passes over 80 MiB
-/// (3.8 per pass) against 7.6 for a scatter pass there.
-const SPLIT_READ_SHARE: f64 = 0.5;
-/// Floor for one split pass, in ns per record.
-const SPLIT_NS_PER_RECORD_MIN: f64 = 1.5;
-
-fn hot_ns_per_record(record_bytes: usize) -> f64 {
-    HOT_NS_PER_RECORD.max(record_bytes as f64 / HOT_BYTES_PER_NS)
-}
-
-fn cold_ns_per_record(node_bytes: usize, records: usize) -> f64 {
-    let record_bytes = node_bytes as f64 / records.max(1) as f64;
-    let bandwidth = COLD_BANDWIDTH_PER_NS
-        * (node_bytes as f64 / COLD_BANDWIDTH_REFERENCE).powf(-COLD_BANDWIDTH_EXPONENT);
-    COLD_NS_PER_RECORD_FLOOR.max(record_bytes / bandwidth.min(HOT_BYTES_PER_NS))
-}
-
-/// Cost of one MSD split, in units of a cache-resident pass.
+/// Whether an MSD split costs less than running the passes level by level.
 ///
-/// The split is not bandwidth limited: its scatter writes into 2R blocks that
-/// stay resident, so the block scatter, the materialization of the permutation
-/// and the child-boundary scan together cost about four hot passes per record.
-/// Measured 6.1 ns per 4-byte record and 8.9 ns per 8-byte record, i.e. 1.1-1.5
-/// ns per byte against a hot pass at 0.33 ns per byte.
-const SPLIT_HOT_PASSES: f64 = 4.0;
-
-/// Whether an MSD split costs less than streaming the node cold.
-///
-/// Not a threshold but the two predicted totals: streaming costs
-/// `cold_passes` cold passes, splitting costs the split itself plus
-/// `hot_passes` cache-resident passes for the whole node. Both pass counts are
-/// what this node would really run, so a wide key with sixteen digits and a
-/// narrow one with two are compared on their own work.
-fn split_pays(
-    node_bytes: usize,
-    records: usize,
-    tile_bytes: usize,
-    cold_passes: usize,
-    hot_passes: usize,
-    largest_child: f64,
-) -> bool {
-    if cold_passes < 2 || records == 0 {
+/// Both sides are counted in passes over the node, so nothing about bandwidth,
+/// latency or cache size enters: streaming costs one pass per varying digit;
+/// splitting costs the split itself plus the passes of the child that keeps the
+/// work, each discounted by what a cache-resident working set is worth. A child
+/// too large for the tile earns no discount, which is what makes the rule stop
+/// splitting once the children are still large.
+fn split_pays(cold_passes: usize, hot_passes: usize, child_fits_tile: bool) -> bool {
+    if cold_passes < 2 {
         return false;
     }
-    let hot = hot_ns_per_record(node_bytes / records);
-    let streamed = cold_passes as f64 * cold_ns_per_record(node_bytes, records);
-    // The child that carries most of the records is what the recursion has to
-    // keep working on; the split only pays if moving that work into a smaller
-    // working set is cheaper than the split itself. A child that fits the tile
-    // runs its passes in cache, one that does not is still streaming.
-    let share = largest_child.clamp(1.0 / 256.0, 1.0);
-    let child_bytes = ((node_bytes as f64 * share) as usize).max(1);
-    let child_records = ((records as f64 * share) as usize).max(1);
-    let child_pass = if child_bytes <= tile_bytes {
-        hot
-    } else {
-        cold_ns_per_record(child_bytes, child_records)
-    };
-    // A split pass only reads the node; the scatter goes into resident blocks.
-    // So it costs half of a pass that reads and writes, priced at the bandwidth
-    // this node's size actually gets. The old flat price charged an L2-resident
-    // 305 KiB node the same per pass as an 80 MiB one, which is why the model
-    // refused a second level at 10M that measures 18 % faster.
-    let pass_ns = if node_bytes <= tile_bytes {
-        hot
-    } else {
-        cold_ns_per_record(node_bytes, records)
-    };
-    let split_pass = SPLIT_NS_PER_RECORD_MIN.max(SPLIT_READ_SHARE * pass_ns);
-    let split = SPLIT_HOT_PASSES as f64 * split_pass + hot_passes as f64 * child_pass;
-    split < streamed
+    let share = if child_fits_tile { CHILD_PASS_SHARE } else { 1.0 };
+    SPLIT_PASSES + hot_passes as f64 * share < cold_passes as f64
 }
 
 enum Order {
@@ -776,14 +714,8 @@ impl<T: Key> Context<T> {
         let hot_passes = flat_hot.min(MSD_LEVEL_PASSES);
         // One line per node says everything the routing decided, so a trace diff
         // between two builds is a decision diff.
-        let routed = split_pays(
-            node_bytes,
-            records,
-            self.tile_bytes,
-            cold_passes,
-            hot_passes,
-            largest_child,
-        );
+        let child_bytes = (node_bytes as f64 * largest_child.clamp(0.0, 1.0)) as usize;
+        let routed = split_pays(cold_passes, hot_passes, child_bytes <= self.tile_bytes);
         if trace() {
             eprintln!(
                 "route len={} bytes={} passes={} hot={} largest={:.4} split={}",
