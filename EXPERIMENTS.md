@@ -133,6 +133,8 @@
 | 68 | 少数离群值：采样发现顶端位的少数派，把一端的短 run 抬出去（P3）| 保留 | 1M 中位数（p4 → 本项）：u64 random_sorted99 21.35 → 16.16、random_sorted95 21.95 → 16.11（1.32–1.36x）；random 15.14 → 14.71、zipf13 17.21 → 16.15、two_values/p95zero/sparse8 不动。对照：同样的输入去掉两个哨兵键后是 13.8–14.8，剩下的 ~2 ns 是抬出前的确认扫描。10M 上这个形状消失（前 12 位已把记录分到 10 个桶），21.67 vs 22.47 持平。机制：`sampled_minority` 判顶端位是否只被 ≤1/8 的样本持有；`outlier_run` 确认它只出现在一端的一小段（≤1024）并顺带算出主体 variation（散落的少数派在第一次不一致处退出）；`lift_outlier` 把 run 旋到该在的一端，主体递归，run 插入排序 |
 | 69 | 流式 compact / 双缓冲（P5）| 拒绝 | perf 当前 build 1M（含 harness 校验排序的周期）：memmove 占 u64 random 9.85%、zipf13 11.10%、sorted99 14.46%；“对根节点省一次”最多把这部分砍半 → 5–7%，低于 1.2x 门槛。真正能省的是整棵树在两个缓冲间乒乓（每层 1R+1W 而非 2R+2W），但那要求 MSD 递归接受“数据在 scratch 里”，是引擎重构不是路由改动 |
 | 70 | 近似有序：一趟插入排序，按一个 tile 的键副本定价、按测得的移动率给预算（B19/s70）| 保留 | 独立程序（只排序，无 harness）1M u64：相邻对换 1% 8.89 → 1.05 ns/rec；同样 1% 但远距离对换 10.15 → 9.39（试算超预算，回退）；random 13.43 → 12.95。radix_ab 1M 中位数（s68 → s70）：u64 sorted99 15.37 → 1.36 / u64 sorted95 15.86 → 1.20 / u128 18.75 → 2.95 / u32 8.03 → 0.99；10M：u64 21.67 → 1.65、u128 27.30 → 3.04。其余 cell（random/zipf13/sparse8/mixed_runs/p95zero/runs64/bands8）在噪声内。机制：`probe_order` 判无序后，在**一个 tile 的键副本**上试算插入趟的移动数（预算 1 次移动/记录 = 一趟 radix 的写量）；失败只损失一个 tile 的读，数组一字节未动；成功则以 moves×n/tile 为全数组预算跑记录版插入排序。停下时只发生过交换 → 数组仍是原输入的排列，radix 照常接手；插入排序稳定，两路都稳定 |
+| 71 | Dovetail 式多众数切分：采样出最多 8 个重键，各自给一个桶，轻键同一趟按 digit 分桶（灵感：DovetailSort 的 heavy keys）| **否决（原型，默认关闭）** | 1M u64 中位数：two_values 5.5 → 13.0、zipf13 17.2 → 51.8、sparse8 7.0 → 15.1、p95zero 6.0 → 12.9 ns；random_wide 14.3 → 14.7（中性）。根因两条：(1) 在 block scatter 每条记录多做 rank/分类，实测每次 3–7 ns，直接抵消退休重复键的收益；(2) zipf 根节点只退休约 58%，剩余 42% 仍要分层，且轻键的 top digit 在区间内不分散，反而多一层。Dovetail 用 O(n) 暂存 + merge 支撑它的分桶/合并，搬到 O(√n) 块引擎只剩分类成本。portable SIMD 8 lane rank 在该形状也比标量 partition_point 慢（100k two_values：31.8 → 14.75 ns），说明逐记录 SIMD 比较没有预加载 lanes 不划算。 |
+| 72 | 用 block 引擎返回的桶记录边界，并让子节点 variation 扫描在父节点候选 mask 全部出现过之后提前停止；等值切分同样直接用桶边界 | 保留（默认开启） | A/B（3 轮 × 7 次，1M u64，中位数）：random_wide 13.90 → 12.78、sparse8 8.47 → 7.64、zipf13 16.52 → 15.57 ns/记录；two_values ~持平。record16 26.97 → 25.02、record128 167.29 → 161.67 ns。思想来自 block 置换引擎（IPS²Ra/radsort）本来就持有桶边界：旧代码为了找边界又扫一遍所有 key；现在边界由 partition_digit_with_ends 返回，variation 只在候选位尚未全部出现时继续扫。父节点 split digit 在子节点内恒定，所以候选 mask = 父 varying 去掉 split mask。等值切分的左/右段也由 partition_by 的 ends 直接定位，少一次边界扫描。 |
 
 另有一次"拨乱反正"：§30 和 §36 里原有的 "(Superseded)" 段落（被推翻的旧结论、旧数字）在本次压缩中删除，
 对应的最终结论已写入上表。
@@ -249,3 +251,94 @@ cargo bench --features rust_block_lsd,rust_tessera_radix,cold_benchmarks,bench_t
 - **u128 与 ipnsort 的差距**：比较排序在寄存器里比 16 字节，不是我们能追的。
 - `sort_by` 两个 radix 模块都不支持（显式拒绝）。
 - 已关闭：叶子 flat plan 是否值得保留（§39、§53：值得，但只在低基数 tile 上）。
+
+---
+
+## F. 外部整数排序对照（本轮新增）
+
+这一节只回答三个比较问题，不改 Tessera 的路由或数据结构：
+
+1. 与成熟的不稳定、低额外空间整数 radix 相比，Tessera 在哪里；
+2. 允许稳定的 O(n) 工作区后，性能如何变化；
+3. 在完整 `u64/u128` 值域上，SIMD 排序实现处于什么位置。
+
+### F.1 接入对象
+
+| 适配器 | 上游 | 稳定性 | 额外空间 | 适配类型 |
+| --- | --- | --- | --- | --- |
+| `cpp_ips2ra_unstable` | IPS²Ra `83f6b76` | 不稳定 | 默认 256 桶 × ~2 KiB 块缓冲（~512 KiB 固定）+ 交换块/任务元数据 | `i32/u32/u64`，`Record16/128`（u64 键） |
+| `cpp_dovetail_stable` | DovetailSort `f4630a2`，`PARLAY_SEQUENTIAL` | 稳定 | O(n) 记录暂存数组 | `i32/u32/u64`，`Record16/128`（u64 键） |
+| `cpp_vqsort` | Highway 1.4.0 `2607d3b` | 不稳定 | 无堆分配；~1.2 KiB 栈 + TLS 随机状态 | `i32/u16/u32/u64/u128`，`u128` 是完整 128 位键 |
+| `cpp_intel_avx512` | numpy/x86-simd-sort `6e059b1` | 不稳定 | 上游内部工作区（未计入 Rust 分配器） | `i32/u32/u64` |
+
+`u128` 没有被 IPS²Ra/Dovetail 声明支持：前者采样路径缺 128 位 `clz/ctz`，后者没有单独验证 128 位键。
+`Record128` 是 128 字节记录，不是 VQSort 的 `uint128_t`。
+
+所有 C/C++ 适配器由 `build.rs` 统一用 `clang++` 编译；`cpp_std_gcc4_3` 的历史 GCC 4.3 基线不在本轮清单里。
+IPS²Ra/IPS⁴o 的 TBB include 加了串行构建守卫（不改变算法）。已有 `cpp_ips4o`、
+`rust_radsort` 与 `radsort_keyed` 也已接入 `radix_ab`；它们在 1M 下明显更慢（radsort 63.4、IPS⁴o 40.2
+ns/记录），不放进下面的快表。
+
+### F.2 本机小规模对照
+
+5 轮交错，中位数，ns/记录。机器同 §D.3；共享 VM，比例只看量级。**本节表格只到 1M。**
+
+`u64`，1M：
+
+| 变体 | random | zipf13 | two_values |
+| --- | ---: | ---: | ---: |
+| `cpp_vqsort` | 12.59 | 4.88 | 1.52 |
+| `tessera` | 15.32 | 18.45 | 5.89 |
+| `cpp_intel_avx512` | 17.53 | 7.35 | 1.68 |
+| `ipnsort` | 27.59 | 10.43 | 4.03 |
+| `cpp_ips2ra_unstable` | 29.48 | 26.85 | 24.51 |
+| `cpp_dovetail_stable` | 32.48 | 46.95 | 9.17 |
+
+`u128` / 记录，100k：
+
+| 变体 | u128 random | u128 zipf13 | rec16 random | rec16 zipf13 | rec128 random | rec128 zipf13 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tessera` | 25.57 | 19.12 | 16.04 | 22.22 | 91.60 | 116.17 |
+| `cpp_ips2ra_unstable` | — | — | 28.55 | 29.07 | 106.08 | 144.62 |
+| `cpp_dovetail_stable` | — | — | 37.45 | 60.02 | 171.03 | 175.73 |
+| `cpp_vqsort` | 27.97 | 9.95 | — | — | — | — |
+| `ipnsort` | 41.02 | 11.85 | 31.40 | 10.59 | 127.36 | 62.91 |
+
+要点：
+
+- **VQSort 是完整的 SIMD 上限**：1M `u64` random 比 Tessera 快约 1.22x，zipf13 快约 3.8x，
+  two_values 快约 3.9x。100k `u128` random 上 Tessera 略快（25.6 vs 28.0），zipf13 上 VQSort 仍快 1.9x。
+- **IPS²Ra 不是“低空间就一定更快”**：本机串行配置在 1M `u64` random 比 Tessera 慢约 1.9x；
+  record128 random 也慢 1.16x。它的固定桶缓冲和串行分类成本在 1M 没有摊薄。
+- **Dovetail 的稳定性有明确价格**：O(n) 暂存 + 合并，u64 1M zipf13 为 47.0 vs Tessera 18.5；
+  record128 random 为 171.0 vs 91.6。它在 two_values 上比 Tessera 慢，但仍快于比较排序参考。
+- **x86-simd-sort 与 VQSort 同属 SIMD quicksort 家族**：random 上 VQSort 领先约 1.39x，
+  zipf13 约 1.51x；修正 unsigned 适配后，它的 `u64` 结果可用于完整值域。
+- 早先 g++ 编译的 IPS²Ra `record128` 数字已作废；上表统一为 clang++。
+
+### F.3 空间口径
+
+`bench extra_memory` 只统计 Rust 全局分配器。上面两个 C++ 适配器的 `new/malloc` 与栈空间**没有**被它计入，
+所以不能把它们的额外空间读成 0。IPS²Ra 的固定桶缓冲、Dovetail 的 n 记录暂存数组按上游结构单独报告；
+VQSort 按上游声明为无堆分配。
+
+### F.4 复现
+
+```sh
+# 只跑本轮对照，1M 上限；--variants 精确匹配，避免 10000 前缀误中 10000000
+cargo bench --features rust_block_lsd,rust_tessera_radix,cpp_ips2ra,cpp_dovetail,cpp_vqsort,cpp_intel_avx512 \
+    --bench radix_ab -- --types u64 --patterns random,zipf13,two_values \
+    --sizes 100000,1000000 --rounds 5 \
+    --variants tessera,ips2ra,dovetail,vqsort,intel_avx512,block_lsd_r8,std_stable,ipnsort
+
+# 主 benchmark：BENCH_REGEX 要加 $，否则 ...-10000 也会匹配 ...-10000000
+BENCH_REGEX='^(cpp_ips2ra_unstable|cpp_dovetail_stable|cpp_vqsort|cpp_intel_avx512)-hot-u64-random-10000$' \
+    cargo bench --features cpp_ips2ra,cpp_dovetail,cpp_vqsort,cpp_intel_avx512 --bench bench
+```
+
+验证：`tests/cpp_ips2ra.rs`、`tests/cpp_dovetail.rs` 走标准套件；`tests/cpp_dovetail.rs` 另有
+`Record16/Record128` 等键保序测试；`tests/cpp_vqsort.rs` 检查完整 `u128` 键；
+`tests/cpp_intel_avx512.rs` 检查 `u32/u64` 的无符号顺序。
+
+能力声明顺带修了三处 harness 假设：`basic` 不再对不支持的 `()` 调用排序；
+`observable_is_less_u64` 尊重 `supports_sort_by`；稳定性测试先检查元组类型是否受支持。

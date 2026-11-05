@@ -200,9 +200,30 @@ pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) 
 /// within each bucket. Used by the MSD front end of the hybrid sorts.
 #[cfg(feature = "rust_tessera_radix")]
 pub(crate) fn partition_digit<T: Key>(arr: &mut [T], radix: usize, shift: usize) {
+    partition_digit_inner(arr, radix, shift, false);
+}
+
+/// One stable digit pass that also returns each bucket's cumulative record end.
+/// The MSD front end uses the offsets to walk children without scanning their
+/// keys a second time just to rediscover the bucket boundaries.
+#[cfg(feature = "rust_tessera_radix")]
+pub(crate) fn partition_digit_with_ends<T: Key>(
+    arr: &mut [T],
+    radix: usize,
+    shift: usize,
+) -> Vec<usize> {
+    partition_digit_inner(arr, radix, shift, true)
+}
+
+fn partition_digit_inner<T: Key>(
+    arr: &mut [T],
+    radix: usize,
+    shift: usize,
+    want_ends: bool,
+) -> Vec<usize> {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
-        return;
+        return Vec::new();
     }
     assert!((1..=12).contains(&radix), "radix must be in 1..=12");
     let bits = T::Value::BITS;
@@ -211,15 +232,19 @@ pub(crate) fn partition_digit<T: Key>(arr: &mut [T], radix: usize, shift: usize)
     let mask = (T::Value::from_usize((1usize << width) - 1)) << T::Value::from_usize(shift);
     let block_size = default_block_size(arr.len(), record_bytes, radix);
     let mut sorter = Sorter::new(arr, 1usize << radix, block_size);
-    if let Some(payload) = sorter.step(mask, shift) {
+    let (panic, ends) = sorter.step_with_ends(
+        |record| ((record.key() & mask) >> T::Value::from_usize(shift)).to_usize(),
+        want_ends,
+    );
+    if let Some(payload) = panic {
         // Same recovery contract as `sort`: materialize the permutation, then
         // let the caller's panic continue.
         sorter.compact();
         std::panic::resume_unwind(payload);
     }
     sorter.compact();
+    ends
 }
-
 
 /// One stable partition pass by an arbitrary classifier, for the sorts whose
 /// split is a comparison rather than a digit window.
@@ -232,10 +257,10 @@ pub(crate) fn partition_by<T: Key>(
     arr: &mut [T],
     buckets: usize,
     classify: impl Fn(&T) -> usize,
-) {
+) -> Vec<usize> {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
-        return;
+        return vec![0; buckets];
     }
     assert!(
         buckets.is_power_of_two() && (2..=4096).contains(&buckets),
@@ -245,12 +270,14 @@ pub(crate) fn partition_by<T: Key>(
     let block_size = default_block_size(arr.len(), record_bytes, radix);
     let mut sorter = Sorter::new(arr, buckets, block_size);
     let last = buckets - 1;
-    if let Some(payload) = sorter.step_with(|record| classify(record).min(last)) {
+    let (panic, ends) = sorter.step_with_ends(|record| classify(record).min(last), true);
+    if let Some(payload) = panic {
         // Same recovery contract as `partition_digit`.
         sorter.compact();
         std::panic::resume_unwind(payload);
     }
     sorter.compact();
+    ends
 }
 
 pub(crate) fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
@@ -491,11 +518,29 @@ impl<'a, T> Sorter<'a, T> {
     {
         let shift_bits = T::Value::from_usize(shift);
         self.step_with(|record| ((record.key() & mask) >> shift_bits).to_usize())
+            .0
     }
 
     /// One pass with an arbitrary classifier: every record goes to the bucket
     /// the classifier names, stably. The digit pass is this with a mask.
-    fn step_with<F: FnMut(&T) -> usize>(&mut self, classify: F) -> Option<PanicPayload>
+    fn step_with<F: FnMut(&T) -> usize>(
+        &mut self,
+        classify: F,
+    ) -> (Option<PanicPayload>, Vec<usize>)
+    where
+        T: Key,
+    {
+        self.step_with_ends(classify, false)
+    }
+
+    /// `step_with`, optionally returning cumulative record ends for callers that
+    /// recurse on the buckets. The ordinary digit path does not ask, so it pays
+    /// neither the bucket-table walk nor the allocation.
+    fn step_with_ends<F: FnMut(&T) -> usize>(
+        &mut self,
+        classify: F,
+        want_ends: bool,
+    ) -> (Option<PanicPayload>, Vec<usize>)
     where
         T: Key,
     {
@@ -519,10 +564,10 @@ impl<'a, T> Sorter<'a, T> {
             self.scatter(&mut buckets, &mut counts, &mut position, |_| 0);
         }
         self.active_blocks_end = position.output;
-        self.finish_pass(&buckets, counts);
+        let ends = self.finish_pass(&buckets, counts, want_ends);
         #[cfg(debug_assertions)]
         self.validate();
-        panic
+        (panic, ends)
     }
 
     /// Reserve the first `bucket_count` free blocks, one per bucket, and give
@@ -544,7 +589,31 @@ impl<'a, T> Sorter<'a, T> {
 
     /// Rebuild the logical block order from the order the buckets filled, and
     /// record where each bucket's partially filled last block sits.
-    fn finish_pass(&mut self, buckets: &[BucketWriter<T>], counts: Vec<usize>) {
+    /// Rebuild the block order and return each bucket's cumulative record end.
+    fn finish_pass(
+        &mut self,
+        buckets: &[BucketWriter<T>],
+        counts: Vec<usize>,
+        want_ends: bool,
+    ) -> Vec<usize> {
+        // Record boundaries are not block boundaries: a bucket's last block is
+        // usually partial, and a caller that wants to recurse on bucket slices
+        // needs the record offsets. The cursor knows how much of that last
+        // block is free, so this is one pass over the bucket table, not a pass
+        // over the records.
+        let mut record_ends = if want_ends {
+            Vec::with_capacity(counts.len())
+        } else {
+            Vec::new()
+        };
+        if want_ends {
+            let mut records = 0usize;
+            for (bucket, &blocks) in buckets.iter().zip(counts.iter()) {
+                let free = unsafe { bucket.end.offset_from(bucket.next) as usize };
+                records += blocks * self.blocks.block_size - free;
+                record_ends.push(records);
+            }
+        }
         // A separate starts Vec would allocate once per digit. Counts are dead
         // after scatter, so reuse their allocation for prefix offsets and then
         // advance those offsets while rebuilding the block order.
@@ -577,6 +646,7 @@ impl<'a, T> Sorter<'a, T> {
             .copy_from_slice(&self.block_order[self.active_blocks_end + self.bucket_count..]);
         self.active_blocks_end += self.bucket_count;
         std::mem::swap(&mut self.block_order, &mut self.next_block_order);
+        record_ends
     }
 
     // Pass setup and block reordering need state that scatter does not.

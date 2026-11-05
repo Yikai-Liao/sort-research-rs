@@ -58,7 +58,7 @@
 
 use std::mem::MaybeUninit;
 
-use crate::other::radix_support::{Key, Unsigned};
+use crate::other::radix_support::{Key, RankIn, Unsigned};
 use crate::other::rust_block_lsd::core as block;
 
 type SortKey<T> = <T as Key>::Value;
@@ -149,6 +149,201 @@ const MODE_RUN: usize = 8;
 /// sample sorts 64 keys, about a thousand comparisons against a node of
 /// thousands of records, and finds nothing on random data because no value
 /// repeats there.
+/// Keys a heavy-hitter split samples. Large enough that the top eight values
+/// of a Zipf-shaped node each occur several times, small enough that sorting the
+/// sample is noise against the pass the split replaces.
+const HEAVY_SAMPLE: usize = 512;
+/// Keys read back to back at each sampled position. The same anti-aliasing
+/// argument as `sample`: a value that repeats on a short period must show its
+/// true share, not the share its period gives one stride.
+const HEAVY_RUN: usize = 8;
+/// Minimum sample occurrences before a value gets its own output bucket. Six of
+/// 512 is about 1.2 % of the node; random keys essentially never reach it, while
+/// the tail values a Zipf distribution repeats do.
+const HEAVY_MIN_COUNT: usize = 6;
+/// Most heavy values one split retires. Eight is one SIMD rank comparison wide
+/// and keeps the partition's fan-out near the ordinary 256-bucket split.
+const HEAVY_MAX: usize = 8;
+/// Ceiling for the heavy split's total bucket count, including the light
+/// buckets between heavy values. The ordinary split uses 256 streams; going
+/// wider was measured worse, so the heavy split spends the same budget.
+const HEAVY_BUCKETS_MAX: usize = 256;
+
+/// The heavy values one split will retire, and the layout of its output buckets.
+struct Heavy<T: Key> {
+    len: usize,
+    /// Sorted ascending. A `Vec` rather than an array field: this toolchain's
+    /// layout query ICEs on a struct field whose array length is a path
+    /// constant applied to an associated type.
+    keys: Vec<SortKey<T>>,
+    /// Bits of the light-key digit placed in each interval between heavy keys.
+    light_width: usize,
+    light_shift: usize,
+    light_buckets: usize,
+    /// Buckets the classifier can name.
+    raw_buckets: usize,
+    /// Power-of-two bucket count the block engine is given.
+    buckets: usize,
+}
+
+/// Whether the heavy-hitter split is enabled. It is an experimental,
+/// currently negative path (EXPERIMENTS.md §71); set `RADIX_HEAVY_SPLIT=1` to
+/// measure it.
+fn heavy_split_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    // Experimental and currently negative (see EXPERIMENTS.md §71): the
+    // per-record classifier costs more than the retired duplicates save at the
+    // sizes measured. Off unless a measurement asks for it.
+    *ENABLED.get_or_init(|| {
+        std::env::var_os("RADIX_HEAVY_SPLIT").as_deref() == Some(std::ffi::OsStr::new("1"))
+    })
+}
+
+/// Fills `keys` with short runs spread over `arr`, without padding. Returns
+/// the number of keys written. The caller sorts only the prefix, so a repeated
+/// pad key cannot masquerade as a heavy value.
+fn sample_heavy<T: Key>(arr: &[T], keys: &mut [SortKey<T>]) -> usize {
+    let runs = (keys.len() / HEAVY_RUN).min(arr.len().max(1)).max(1);
+    let step = (arr.len() / runs).max(1);
+    let mut len = 0;
+    for run in 0..runs {
+        let start = run * step;
+        for offset in 0..HEAVY_RUN {
+            let index = start + offset;
+            if index >= arr.len() || len == keys.len() {
+                return len;
+            }
+            keys[len] = arr[index].key();
+            len += 1;
+        }
+    }
+    len
+}
+
+/// Finds up to `HEAVY_MAX` values that each own at least `HEAVY_MIN_COUNT` of
+/// the sample, then lays out a stable partition that gives every heavy value its
+/// own bucket and splits the light records by one digit.
+///
+/// DovetailSort's observation applies unchanged: a radix level cannot finish a
+/// repeated value, because every level moves all its copies again. A sample can
+/// name the values worth retiring, and one partition can retire all of them at
+/// once. Unlike a single-mode equality split, the values do not have to be a
+/// quarter of the node; the sampled tail is enough.
+fn heavy_light_override() -> Option<usize> {
+    use std::sync::OnceLock;
+    static WIDTH: OnceLock<Option<usize>> = OnceLock::new();
+    *WIDTH.get_or_init(|| {
+        std::env::var("RADIX_HEAVY_LIGHT_BITS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|w| (1..=8).contains(w))
+    })
+}
+
+fn detect_heavy<T: Key>(arr: &[T], varying: u128) -> Option<Heavy<T>> {
+    if !heavy_split_enabled() || arr.len() < HEAVY_SAMPLE / 2 {
+        return None;
+    }
+    let zero = SortKey::<T>::from_usize(0);
+    let mut samples = [zero; HEAVY_SAMPLE];
+    let sample_len = sample_heavy(arr, &mut samples);
+    if sample_len < HEAVY_MIN_COUNT {
+        return None;
+    }
+    samples[..sample_len].sort_unstable();
+
+    let mut keys = [zero; HEAVY_MAX];
+    let mut counts = [0usize; HEAVY_MAX];
+    let mut len = 0;
+    let mut heavy_sample_count = 0;
+    let mut index = 0;
+    while index < sample_len {
+        let key = samples[index];
+        let mut next = index + 1;
+        while next < sample_len && samples[next] == key {
+            next += 1;
+        }
+        let count = next - index;
+        if count >= HEAVY_MIN_COUNT {
+            heavy_sample_count += count;
+            if len < HEAVY_MAX {
+                keys[len] = key;
+                counts[len] = count;
+                len += 1;
+            } else {
+                // Keep the most frequent values: replace the smallest count.
+                let mut smallest = 0;
+                for slot in 1..len {
+                    if counts[slot] < counts[smallest] {
+                        smallest = slot;
+                    }
+                }
+                if count > counts[smallest] {
+                    heavy_sample_count -= counts[smallest];
+                    keys[smallest] = key;
+                    counts[smallest] = count;
+                } else {
+                    heavy_sample_count -= count;
+                }
+            }
+        }
+        index = next;
+    }
+    if len == 0 {
+        return None;
+    }
+    // The top-list order is by frequency; the classifier needs key order.
+    for i in 1..len {
+        let key = keys[i];
+        let count = counts[i];
+        let mut hole = i;
+        while hole > 0 && keys[hole - 1] > key {
+            keys[hole] = keys[hole - 1];
+            counts[hole] = counts[hole - 1];
+            hole -= 1;
+        }
+        keys[hole] = key;
+        counts[hole] = count;
+    }
+
+    let top = (u128::BITS - varying.leading_zeros()) as usize;
+    if top == 0 {
+        return None;
+    }
+    // If almost the whole sample is heavy, there is little light data to divide;
+    // a one-bit light digit keeps the table small (two values become five
+    // buckets instead of hundreds). When light records are the majority, spend
+    // the bucket budget on splitting them so they land near tile size in this
+    // same pass.
+    let light_share = sample_len - heavy_sample_count;
+    let mut light_width = if light_share * 8 <= sample_len {
+        1
+    } else {
+        let mut width = 1;
+        while width < top && (len + 1) * (1usize << (width + 1)) + len <= HEAVY_BUCKETS_MAX {
+            width += 1;
+        }
+        width
+    };
+    light_width = light_width.min(top);
+    if let Some(width) = heavy_light_override() {
+        light_width = width.min(top);
+    }
+    let light_buckets = 1usize << light_width;
+    let raw_buckets = (len + 1) * light_buckets + len;
+    let buckets = raw_buckets.next_power_of_two().clamp(2, 4096);
+    Some(Heavy {
+        len,
+        keys: keys[..len].to_vec(),
+        light_width,
+        light_shift: top - light_width,
+        light_buckets,
+        raw_buckets,
+        buckets,
+    })
+}
+
 /// Keys a split node samples: eight short runs spread over the node.
 ///
 /// Short runs, not one key per stride: a single stride aliases with data that
@@ -177,6 +372,17 @@ fn sample<T: Key>(arr: &[T], keys: &mut [SortKey<T>]) {
     }
 }
 
+fn mode_share_override() -> Option<usize> {
+    use std::sync::OnceLock;
+    static SHARE: OnceLock<Option<usize>> = OnceLock::new();
+    *SHARE.get_or_init(|| {
+        std::env::var("RADIX_MODE_SHARE")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|s| (1..=16).contains(s))
+    })
+}
+
 fn sampled_mode<V: Unsigned>(keys: &mut [V]) -> Option<V> {
     let len = keys.len();
     keys.sort_unstable();
@@ -193,7 +399,8 @@ fn sampled_mode<V: Unsigned>(keys: &mut [V]) -> Option<V> {
             count = run;
         }
     }
-    (count * MODE_SHARE >= len).then_some(best)
+    let share = mode_share_override().unwrap_or(MODE_SHARE);
+    (count * share >= len).then_some(best)
 }
 
 /// Whether `bit` separates a minority of the sample, and which side is the
@@ -250,7 +457,11 @@ fn outlier_run<T: Key>(arr: &[T], keys: &[SortKey<T>], bit: SortKey<T>) -> Optio
     if (head == 0) == (tail == 0) {
         return None;
     }
-    let (head_run, len) = if head > 0 { (true, head) } else { (false, tail) };
+    let (head_run, len) = if head > 0 {
+        (true, head)
+    } else {
+        (false, tail)
+    };
     if len == cap {
         return None;
     }
@@ -273,7 +484,10 @@ fn outlier_run<T: Key>(arr: &[T], keys: &[SortKey<T>], bit: SortKey<T>) -> Optio
         head: head_run,
         set: minority_set,
         len,
-        rest: Variation { union, intersection },
+        rest: Variation {
+            union,
+            intersection,
+        },
     })
 }
 
@@ -288,7 +502,6 @@ fn insertion_by_key<T: Key>(arr: &mut [T]) {
         }
     }
 }
-
 
 /// The moves an insertion pass over `keys` would make, or `None` once the
 /// budget is spent.
@@ -391,12 +604,22 @@ impl<T: Key> Variation<T> {
     }
 }
 
-/// Walks the buckets a split just produced, extracting every key once and
-/// accumulating the child's variation while the bucket boundary is still open, so
-/// no child pays for a second scan of its own keys. The boundary comes from
-/// comparing digits rather than from the split's cursor table, which is the
-/// cheaper source here; inside a tile the cursor table was measured 48 % faster,
-/// so the two walks stay separate.
+/// Accumulates a child's key variation, stopping once every bit that can still
+/// vary has been seen in both states.
+///
+/// The parent's split digit is constant inside a child, so it is removed from
+/// the candidate mask before the scan. Random children then need one short
+/// group of keys to expose all remaining bits; a child whose keys are skewed
+/// scans until it has seen the variation or reaches the end. The previous walk
+/// had to scan every record to rediscover the bucket boundaries; the block
+/// engine now returns those offsets, so this pass can stop early.
+fn old_bucket_scan() -> bool {
+    use std::sync::OnceLock;
+    static OLD: OnceLock<bool> = OnceLock::new();
+    *OLD.get_or_init(|| std::env::var_os("RADIX_OLD_BUCKET_SCAN").is_some())
+}
+
+/// Previous boundary-and-variation walk, kept only for the A/B measurement.
 fn for_each_bucket<T: Key>(
     arr: &mut [T],
     digit: Digit,
@@ -428,6 +651,41 @@ fn for_each_bucket<T: Key>(
             },
         );
         start = end;
+    }
+}
+
+fn old_equality_scan() -> bool {
+    use std::sync::OnceLock;
+    static OLD: OnceLock<bool> = OnceLock::new();
+    *OLD.get_or_init(|| std::env::var_os("RADIX_OLD_EQ_SCAN").is_some())
+}
+
+fn scan_variation<T: Key>(arr: &[T], candidate: u128) -> Variation<T> {
+    let first = arr[0].key();
+    let (mut union, mut intersection) = (first, first);
+    if candidate == 0 {
+        return Variation {
+            union,
+            intersection,
+        };
+    }
+    let mut index = 1;
+    while index < arr.len() {
+        let end = (index + 64).min(arr.len());
+        for record in &arr[index..end] {
+            let key = record.key();
+            union |= key;
+            intersection = intersection & key;
+        }
+        let seen = union.to_u128() ^ intersection.to_u128();
+        if seen & candidate == candidate {
+            break;
+        }
+        index = end;
+    }
+    Variation {
+        union,
+        intersection,
     }
 }
 
@@ -502,9 +760,7 @@ pub struct Policy {
     pub tile_bytes: usize,
     /// Tiles at or below this many records are finished with an insertion sort.
     pub insertion_max: usize,
-
 }
-
 
 impl Default for Policy {
     fn default() -> Self {
@@ -852,7 +1108,6 @@ unsafe fn counting_pass<T: Key>(
     largest
 }
 
-
 /// Digit width for a leaf: the widest digit whose cursor table is no larger
 /// than the tile itself.
 ///
@@ -976,6 +1231,15 @@ impl<T: Key> Context<T> {
         // both pay a 64-key sort to look. That price is only worth paying where
         // the pass it may save is much larger: a node at least a few tiles wide.
         if node_bytes >= 4 * self.tile_bytes {
+            // A sample can name several values that a digit level would move
+            // again at every level. Giving each its own bucket retires all of
+            // them in one partition, and the light records are split by the
+            // same pass, so this is a replacement for one ordinary split, not
+            // an extra level.
+            if let Some(heavy) = detect_heavy(arr, varying) {
+                self.heavy_split(arr, heavy);
+                return;
+            }
             let mut keys = [SortKey::<T>::from_usize(0); MODE_SAMPLE];
             sample(arr, &mut keys);
             // A value that a large share of the node repeats cannot be separated
@@ -984,7 +1248,7 @@ impl<T: Key> Context<T> {
             // them. A sampled value splits them out on the first pass and the
             // band is finished by that same pass.
             if let Some(equal) = sampled_mode(&mut keys) {
-                self.equality_split(arr, equal);
+                self.equality_split(arr, equal, varying);
                 return;
             }
             // A top bit that one short run disagrees on does not divide the node
@@ -1047,10 +1311,92 @@ impl<T: Key> Context<T> {
         if trace() {
             eprintln!("  split radix={} shift={}", radix, top - radix);
         }
-        block::partition_digit(arr, digit.width, digit.shift);
-        // Within a bucket every key shares the digits above the split, so they fall
-        // out of the child's variation on their own.
-        for_each_bucket(arr, digit, |child, variation| self.sort_node(child, variation));
+        if old_bucket_scan() {
+            block::partition_digit(arr, digit.width, digit.shift);
+            for_each_bucket(arr, digit, |child, variation| {
+                self.sort_node(child, variation)
+            });
+        } else {
+            let ends = block::partition_digit_with_ends(arr, digit.width, digit.shift);
+            // Within a bucket every key shares the split digit, so those bits are
+            // removed from what the child still has to scan for. The block pass
+            // already knows where each bucket ends; using those ends avoids a
+            // second digit comparison per record.
+            let candidate = varying & !digit.mask::<T>().to_u128();
+            let mut start = 0;
+            for &end in &ends {
+                if end > start {
+                    let child = &mut arr[start..end];
+                    let variation = scan_variation(child, candidate);
+                    self.sort_node(child, variation);
+                }
+                start = end;
+            }
+        }
+    }
+
+    /// One stable partition that retires every sampled heavy value and splits
+    /// the light records by a digit in the same pass.
+    ///
+    /// Bucket order is key order: interval `r` (the light keys between heavy
+    /// values `r-1` and `r`) owns `light_buckets` consecutive buckets, and
+    /// heavy value `r` owns the next one. A light bucket is ordered by the digit
+    /// only inside its interval, which cannot cross a heavy value, so the
+    /// partition is globally ordered and every child can be finished
+    /// independently. Equal keys stay in input order inside every bucket.
+    fn heavy_split(&mut self, arr: &mut [T], heavy: Heavy<T>) {
+        let light_buckets = heavy.light_buckets;
+        let stride = light_buckets + 1;
+        let raw_buckets = heavy.raw_buckets;
+        let len = heavy.len;
+        let keys = &heavy.keys;
+        let shift = heavy.light_shift;
+        let mask = (SortKey::<T>::from_usize(light_buckets - 1)) << SortKey::<T>::from_usize(shift);
+        if trace() {
+            eprintln!(
+                "  heavy n={} keys={} light_bits={} buckets={}",
+                arr.len(),
+                len,
+                heavy.light_width,
+                heavy.buckets
+            );
+        }
+        let ends = block::partition_by(arr, heavy.buckets, |record| {
+            let key = record.key();
+            let rank = if len <= 2 {
+                let mut rank = 0;
+                for &candidate in keys {
+                    rank += (candidate < key) as usize;
+                }
+                rank
+            } else {
+                key.rank_in(keys)
+            };
+            if rank < len && key == keys[rank] {
+                rank * stride + light_buckets
+            } else {
+                let digit = ((key & mask) >> SortKey::<T>::from_usize(shift)).to_usize();
+                rank * stride + digit
+            }
+        });
+        let mut start = 0;
+        for bucket in 0..raw_buckets {
+            let end = ends[bucket];
+            if end > start && bucket % stride != light_buckets {
+                let child = &mut arr[start..end];
+                if child.len() > 1 {
+                    let (union, intersection) = block::varying_key_bits(child);
+                    let variation = Variation {
+                        union,
+                        intersection,
+                    };
+                    if variation.varying() != 0 {
+                        self.sort_node(child, variation);
+                    }
+                }
+            }
+            start = end;
+        }
     }
 
     /// A split around one value: below, equal, above. The equal band needs no
@@ -1061,11 +1407,68 @@ impl<T: Key> Context<T> {
     /// and stop at the band, so the records the split just retired are never
     /// read again: the scan costs the non-equal share, which is the other half
     /// of the trade.
-    fn equality_split(&mut self, arr: &mut [T], equal: SortKey<T>) {
+    fn equality_split(&mut self, arr: &mut [T], equal: SortKey<T>, parent_varying: u128) {
         if trace() {
             eprintln!("  eq key={:#x}", equal.to_u128());
         }
-        block::partition_by(arr, 4, |record| {
+        if old_equality_scan() {
+            block::partition_by(arr, 4, |record| {
+                use std::cmp::Ordering::{Equal, Greater, Less};
+                match record.key().cmp(&equal) {
+                    Less => 0,
+                    Equal => 1,
+                    Greater => 2,
+                }
+            });
+            let mut left = 0;
+            let mut left_variation = Variation {
+                union: equal,
+                intersection: equal,
+            };
+            if arr[0].key() < equal {
+                let mut union = arr[0].key();
+                let mut intersection = union;
+                left = 1;
+                while left < arr.len() && arr[left].key() < equal {
+                    let key = arr[left].key();
+                    union |= key;
+                    intersection = intersection & key;
+                    left += 1;
+                }
+                left_variation = Variation {
+                    union,
+                    intersection,
+                };
+            }
+            let mut right = arr.len();
+            let mut right_variation = Variation {
+                union: equal,
+                intersection: equal,
+            };
+            if arr[right - 1].key() > equal {
+                let mut union = arr[right - 1].key();
+                let mut intersection = union;
+                right -= 1;
+                while right > left && arr[right - 1].key() > equal {
+                    let key = arr[right - 1].key();
+                    union |= key;
+                    intersection = intersection & key;
+                    right -= 1;
+                }
+                right_variation = Variation {
+                    union,
+                    intersection,
+                };
+            }
+            if left > 1 {
+                self.sort_node(&mut arr[..left], left_variation);
+            }
+            if arr.len() - right > 1 {
+                self.sort_node(&mut arr[right..], right_variation);
+            }
+            return;
+        }
+        let ends = block::partition_by(arr, 4, |record| {
             use std::cmp::Ordering::{Equal, Greater, Less};
             match record.key().cmp(&equal) {
                 Less => 0,
@@ -1073,47 +1476,21 @@ impl<T: Key> Context<T> {
                 Greater => 2,
             }
         });
-        let mut left = 0;
-        let mut left_variation = Variation {
-            union: equal,
-            intersection: equal,
-        };
-        if arr[0].key() < equal {
-            let mut union = arr[0].key();
-            let mut intersection = union;
-            left = 1;
-            while left < arr.len() && arr[left].key() < equal {
-                let key = arr[left].key();
-                union |= key;
-                intersection = intersection & key;
-                left += 1;
-            }
-            left_variation = Variation { union, intersection };
+        // Bucket 0 is the less band, bucket 1 the equal band, bucket 2 the
+        // greater band. The block engine already knows the three ends, so the
+        // children do not pay a second boundary scan. Their variation scans
+        // still use the parent's candidate mask and stop as soon as every bit
+        // that can vary has been seen.
+        let less = ends[0];
+        let equal_end = ends[1];
+        if less > 1 {
+            let variation = scan_variation(&arr[..less], parent_varying);
+            self.sort_node(&mut arr[..less], variation);
         }
-        let mut right = arr.len();
-        let mut right_variation = Variation {
-            union: equal,
-            intersection: equal,
-        };
-        if arr[right - 1].key() > equal {
-            let mut union = arr[right - 1].key();
-            let mut intersection = union;
-            right -= 1;
-            while right > left && arr[right - 1].key() > equal {
-                let key = arr[right - 1].key();
-                union |= key;
-                intersection = intersection & key;
-                right -= 1;
-            }
-            right_variation = Variation { union, intersection };
-        }
-        // The sampled value exists in the array, so the band cannot be empty.
-        debug_assert!(right > left, "the sampled key left no equal band");
-        if left > 1 {
-            self.sort_node(&mut arr[..left], left_variation);
-        }
-        if arr.len() - right > 1 {
-            self.sort_node(&mut arr[right..], right_variation);
+        let greater = equal_end;
+        if arr.len() - greater > 1 {
+            let variation = scan_variation(&arr[greater..], parent_varying);
+            self.sort_node(&mut arr[greater..], variation);
         }
     }
 
@@ -1232,7 +1609,13 @@ impl<T: Key> Context<T> {
             // that scan is a measurable share of the bucket's own work.
             if end - start > self.insertion_max {
                 let (union, intersection) = block::varying_key_bits(&arr[start..end]);
-                self.lsd_leaf(&mut arr[start..end], Variation { union, intersection });
+                self.lsd_leaf(
+                    &mut arr[start..end],
+                    Variation {
+                        union,
+                        intersection,
+                    },
+                );
             } else if end > start + 1 {
                 insertion_leaf(&mut arr[start..end]);
             }
