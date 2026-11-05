@@ -1,36 +1,65 @@
-# Brainstorm backlog: status of all 16 ideas
+# Backlog：所有想法的当前状态
 
-Source: the external brainstorm for `948d486`. Every row is either done (with the
-section that proves it), measured negative (with the number that killed it), or open
-with the reason it has not been taken. Nothing here is "planned" without a verdict.
+三份旧文件（`BACKLOG.md` 脑暴 1、`EXPERIMENT-BACKLOG.md`、`BACKLOG-2.md` 脑暴 2）合并于此。
+原文：`git show 3528d08:<文件名>`。证据里的 `sN` 指 `EXPERIMENTS.md` 的 §N。
 
-| idea | status | evidence |
-| --- | --- | --- |
-| 01 single-digit terminal | **done**, decision-neutral | s56: trace identical on 10 cells, instructions +-0.6%, deletes stream_node and sort_with_digits. Form B (fan-out = span) rejected: the block engine sizes its working set from the fan-out. |
-| 02-A node passes varying mask only | open | mechanical but touches 6 sites; Variation::varying() is its only consumer, so this is readability, not work -- and it cannot move a number, which is the bar for every remaining change. |
-| 02-B integer cost condition for a hybrid leaf | **moot** | the hybrid cost model is gone (s53): the leaf decides from passes > MSD_LEVEL_PASSES and distinct > 1. |
-| 03 sampling that cannot pass | **done** | s55: widths >= 10 skipped; trace identical on 8 cells, instructions +-0.03%. |
-| 04 export bucket boundaries | measured at the bar | r6 puts it at ~1.5 ns/record; its variant that folds the aggregates into the permutation was measured slower (s50, +10-16% instructions), and the cursor table this notebook did measure was 48% faster only inside a tile. Open, expected < 5%. |
-| 05 reuse one sample across widths, estimate max share | open | the estimate it would feed no longer exists (s53). Only worth it if a share-based decision comes back. |
-| 06 reuse the block workspace across nodes | open | plausible for many mid-sized children; the split allocates per node today. Not measured. |
-| 07 block size / layout sweep | **done**, negative | s57: RADIX_BLOCK_SCALE over 0.5x-4x spans 1.0-2.1% of instructions, no step near the bar. Fan-out sweeps (s21) and leaf width (s48) were already done. |
-| 08 real MSD-only ablation | **done** | s53: MSD-only is within noise of auto on 14/15 cells and catastrophically better than flat-only on wide records (u128 random 82.1 against 31.2). |
-| 09 indirect tile sort for wide records | open | a specialised path; the tile is the only place this design touches wide payloads, so it is the one place a new structure could pay. |
-| 10 block-boundary mask instead of end pointers | open | hot-loop metadata; unmeasured. |
-| 11 dense bucket numbering for sparse digits | open | pays only when many buckets are empty, which the widening sampler now avoids by construction. |
-| 12 compact the varying bits | open | equivalent to renumbering keys; would change the digit plan for every node. |
-| 13 fuse compact with leaf consumption | rejected | s50 is its cheapest form and it lost. |
-| 14 ordered equal-bucket path for few wide values | open | zipf and few-value cells are where a comparison sort beats us; a separate prototype, not a routing change. |
-| 15 insertion with cached key + one rotation | open | small experiment, no measurement yet. |
-| 16 probe order before the variation scan | **already the case** | probe_order runs first; the variation scan follows it, so the cheap detector already runs before the expensive one. |
+规则：每条必须有结论，要么引用一个测量，要么写明缺哪个测量。没有裁决的条目不得留在这里。
+编号前缀保持各自来源：**E**＝早期实验清单，**B**＝脑暴 1（01–16），**N**＝脑暴 2（N1–N7）。
 
-## What the open rows have in common
+## 1. 已关闭
 
-Every one of them changes *how* work is organised, not *how much* work there is: they
-delete a few instructions per record (10, 02-A), change an allocation policy (06, 07), or
-add a second structure (09, 14). The measured ledger is 4 kept and 5 rejected out of 9
-attempted mechanisms, and the two independent reviews put the remaining headroom at or
-below the 5% bar (r5, r6). The ceiling report says what that means: on this machine the
-design is at its floor for random, sorted and few-value data, and its real gap is heavy
-duplicates, where the answer is a comparison-based partition rather than another radix
-refinement.
+| id | 想法 | 结论 | 证据 |
+| --- | --- | --- | --- |
+| E2 | 在 split 的 scatter 里累计每桶 union/intersection，删掉子节点扫描 | 否决 | s50：指令 +7–16%，u32 1M 10.7 → 20.3 ms。**旧文件里这条还写着 open**，其实就是 s50 |
+| E4 | 12 bit 叶子 digit + 16 位游标 | 否决 | s7、s48：1–2% 差；宽度再扫无一赢 auto >5% |
+| E5 | 预取下一条记录的目标行 | 否决 | s18：慢 25–36% |
+| E6 | 叶子可吃 N× tile 的节点（扩缓冲）| 回滚 | s16：噪声内，且缓冲变 O(n) |
+| E11 | 回退函数 `#[cold]` | 做了又撤 | s15、s31 |
+| E13 | 按 varying 位数选流式 radix（11/8）| 回滚 | gate 几乎不触发，u32 zipf 1M 7.37 vs 7.59。旧文件原话：要更细的 gate 才行 |
+| B01 | 单 digit 终点 | 完成，决策中性 | s56：trace 10 cell 完全相同，指令 ±0.6%，删 `stream_node`/`sort_with_digits`。s54 的否决作废（两 build 数据不同）；fan-out = span 的形式 B 确实不行（block 引擎按 fan-out 定工作集）|
+| B02-B | 混合叶子的整数成本条件 | moot | 混合成本模型已删（s53）|
+| B03 | 不可能通过的加宽采样 | 完成 | s55：宽 ≥10 跳过，指令 ±0.03% |
+| B07 | block 大小扫描 | 否决 | s57：0.5x–4x 只跨 1.0–2.1% 指令 |
+| B08 | 真正的 MSD-only 消融 | 完成 | s53：14/15 cell auto ≈ MSD-only；flat-only u128 random 82.1 vs 31.2 |
+| B13 | 把 compact 融进叶子消费 | 否决 | s50 是它最便宜的形式，输了 |
+| B16 | 先探测顺序再做 variation 扫描 | 本来如此 | `probe_order` 已在前 |
+| N1 | 叶子只需知道"是否出现第二个 digit" | 撤回 | s58 后 guard 要用完整 distinct 数；原来借用 s51 的 0.0% 是比较了错误的对象 |
+| N2-B | 不要每个节点读环境变量 | 完成 | s62：`OnceLock`，不声称性能 |
+| N3 | 平坦叶子一次扫描建所有遍的直方图 / 融进 scatter | 否决 | s61：指令降、墙钟升（u32 random +21.6%）。工作集压力 |
+| 旧"已完成" A–P | Tessera 主体：MSD split+tile 叶子、variation 过滤、digit 收窄、cost-model 路由（后被 s32/s41 替换）、叶子 8→11 bit、单次扫描、32 位游标、插入叶子、tile 扫描、有序探测、u16 游标、按子节点定价、打包窗口等 | 完成 | 全部在 `EXPERIMENTS.md` §B 账本里有一行；融合直方图(H)、12 bit(K)、宽 fan-out(P) 为否决 |
+
+## 2. 仍然开放
+
+共同点：它们改变的是工作**如何组织**，不是工作**有多少**——少几条指令（B10、N2-A）、改分配策略
+（B06、B07）、或加第二套结构（B09、B14）。已测量的账是 9 个机制保留 4、否决 5（脑暴 1 时点）；
+再加 s59–s61 三个"指令降、墙钟升"，预期收益都在 5% 门槛附近，而本机噪声 5–20% 无法分辨。
+所以 **优先做能改变"移动字节数"的**（E1、N6），别做省指令的。
+
+| id | 想法 | 预期 | 备注 |
+| --- | --- | --- | --- |
+| E1 | 把 split 的物化遍和第一遍叶子融合：按桶顺序读 block scratch，直接 scatter 进 tile | −2 ns/记录/层（1M 8%，10M 13%）| 仍是最大的结构项。需要 block 引擎交出每桶的 block 区间。打包窗口(s13)已拿走它原本收益的另一半，**建之前先重测**。注意 s36 教训：避免随机跳链 |
+| E8 | 10M 的 300 KiB 子节点再 split 一层 | ~1 ns/记录 | 两条路线实测差 <1 ns；与 E1 一起重估 |
+| E9 | merge 叶子里的自然 run 检测 | 对 95% 有序 tile 有帮助 | merge 叶子已在 s25 删；只对 ≤384 条的 tile 有意义。多半不值得 |
+| E10 | 插入阈值以下用排序网络 | 极小 | 插入占 1M 排序的 0.5–1% |
+| E12 / B14 | 检测"少量不同值"，按等价类排序；或为少量宽值做有序等值桶路径 | 大（重复键 cell 是我们唯一输给比较排序的形状）| 这是**另一个算法**（比较式 partition），需要独立原型，不是路由改动。检测本身才是难点 |
+| B02-A | 节点遍只处理 varying mask | 不会动数字 | 可读性清理，6 处 |
+| B04 | 导出桶边界 | <5% | ~1.5 ns/记录；s50 的折叠变体慢 10–16% |
+| B05 | 跨宽度复用同一采样 | 低 | 它要喂的估计已不存在(s53)，除非基于占比的决策回来 |
+| B06 | 跨节点复用 block workspace | 未测 | split 每节点都分配；中等大小子节点很多时可能有用 |
+| B09 | 宽记录的间接 tile 排序 | 未测 | 唯一接触宽 payload 的位置，record128 仍落后 ipnsort 的形状 |
+| B10 | block 边界用 mask 替代结束指针 | 未测 | 热循环元数据 |
+| B11 | 稀疏 digit 的稠密桶编号 | 低 | 加宽采样已让空桶稀少 |
+| B12 | 压缩 varying 位（≈键重编号）| 低 | 会改变每个节点的 digit 计划 |
+| B15 | 缓存 key + 一次旋转的插入 | 未测 | 小实验 |
+| N2-A | 单 digit 退出提前到宽度规划和采样之前 | 无 | 控制流整理，不是性能项 |
+| N2-C | 在前缀循环里定位每桶尾块 | <5% | block 引擎改动；删 `finish_pass` 里一遍 active blocks |
+| N4 | 小批量：先算 digit 再稳定 scatter | 低 | 与 s50 同形（scatter 热循环里再加 RMW，10–16%）|
+| N5 | 加宽应购买区分度 | 未测 | 现有钩子即可测：当前 1/4 占用门 vs "再加两位须使桶数涨 k 倍" |
+| N6 | tile 的 MSD 输出交替两个缓冲，省掉拷回 | 未测 | tile 缓冲翻倍（仍 O(1)，但是设计唯一的 scratch）。**N3 之后最有希望的"减字节"项**，但 s61 警告别增工作集 |
+| N7 | digit 已有序时跳过整个置换 | 低 | 每记录多一次读，只在已最便宜的有序 cell 上赚 |
+
+## 3. 约束
+
+- `sort_by` 不支持（两个 radix 模块都显式拒绝）。
+- 任何新机制进入代码前，要在 `EXPERIMENTS.md` 有一个账本行；被否决的要写数字，防止盲目重试。
+- 判定标准见 `EXPERIMENTS.md` §C.1：固定种子、指令数 + 墙钟、至少 5 轮配对、100k/1M/10M 三档。

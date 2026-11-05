@@ -10,3 +10,5 @@
 /*.json
 
 **/__pycache__/
+rustc-ice-*.txt
+/logs/
