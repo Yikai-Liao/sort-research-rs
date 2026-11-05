@@ -911,6 +911,38 @@ Measured, paired, 1M: u32 cells moved 7-16 % faster (random 10.7 -> 9.2, near-so
 +-6 % with the sign flipping between pairs, i.e. inside this machine's noise.
 The u32 direction matches open item 1 (the model under-splits there).
 
+### 30. What the whole simplification round cost: nothing on the common cells
+
+The round changed the level-by-level route's owner, its pricing, the split's digit
+choice, the child's tile price, the panic restore, and removed a knob and a dead
+branch. None of that is worth a line if it moved the shapes a general-purpose sort
+is actually used on, so the whole round was measured against the commit it started
+from, in one interleaved A/B, 15 rounds per cell, 24 common cells:
+
+| 1M cell | before | after | | 1M cell | before | after |
+| --- | --- | --- | --- | --- | --- | --- |
+| u64 random | 19.0 | 19.7 | | u32 random | 9.7 | 8.5 |
+| u64 99 % sorted | 19.0 | 17.6 | | u32 99 % sorted | 6.9 | 6.6 |
+| u64 two values | 4.4 | 4.4 | | u32 two values | 2.8 | 2.6 |
+| u64 eight values | 4.3 | 3.6 | | u32 eight values | 2.5 | 2.5 |
+| u128 random | 33.1 | 30.9 | | u64 ascending | 2.7 | 2.1 |
+| u128 99 % sorted | 30.9 | 28.3 | | u32 ascending | 2.3 | 1.5 |
+| u128 two values | 10.4 | 10.0 | | u64 descending | 5.1 | 4.6 |
+| u128 eight values | 11.2 | 10.2 | | u32 descending | 4.5 | 3.5 |
+
+Worst regression +3.5 % (u64 random), inside the 5 % bar and inside this machine's
+noise; most cells moved the other way. The same cells measured at 7 rounds earlier
+in the round had shown a 39 % "regression" on u32 random that 15 rounds under the
+same pairing turned into a 12 % gain -- the rule from §26 needs the round count to
+be part of the method, not an afterthought.
+
+Rejected in this round, with the reason: merging the two occupancy samplers
+(`sampled_buckets`, a bitmap over 128 strided keys, against `sample_split_shape`,
+counters over runs of 32) would force one storage on both. The leaf needs only
+"how many distinct", the router needs "the largest share", and the leaf's zero-fill
+is already the reason its table is 512 bytes and not 32 KiB (§6). A shared shape
+with two configurations would be the same two answers with a branch in front.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat
