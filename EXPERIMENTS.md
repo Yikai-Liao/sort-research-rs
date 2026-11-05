@@ -1430,6 +1430,21 @@ guard doing its job: it caught a real decision change that nothing else did.
 The check is now the full test command plus the lib target counted separately --
 7 targets, not 6 -- and section 43's claim is corrected to point here.
 
+### 45. Iteration 4 (simplification): the pricing model the router stopped needing
+
+The structural router reads one number, so three symbols died with it: flat_hot (the
+second planner run, priced at a fixed reference width), hot_passes (its only reader
+was the trace), and MODEL_LEAF_RADIX (its only reader was flat_hot). Deleted, with
+their comments -- including the one that explained why the reference width had to stay
+fixed, which was true of a model that no longer exists.
+
+Evidence that nothing moved: instructions 13,045,256,810 against 13,042,184,364 on
+u64+u128 1M (-0.02 %), and the routing trace has the same 2566 route+leaf lines before
+and after. The trace line itself lost its hot field, which is the one visible change.
+
+Engine: 493 -> 490 code lines. Small, and correctly so: what was deleted was not code
+that ran, it was the residue of a model that had already been replaced.
+
 ## Open items
 
 0. **Leaf: does the flat counting plan still earn its place?** The leaf runs flat

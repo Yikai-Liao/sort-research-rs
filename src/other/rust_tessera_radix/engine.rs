@@ -568,11 +568,6 @@ unsafe fn counting_pass<T: Key>(
     }
 }
 
-/// Leaf digit width the routing model prices a split with. Fixed on purpose:
-/// the leaf's real width follows its tile (see `leaf_radix`), and letting that
-/// change the model made a wider leaf re-route whole node classes — u32 10M went
-/// from streamed to split and lost 34 %.
-const MODEL_LEAF_RADIX: usize = 11;
 
 /// Digit width for a leaf: the widest digit whose cursor table is no larger
 /// than the tile itself.
@@ -648,17 +643,11 @@ impl<T: Key> Context<T> {
             self.lsd_leaf(arr, variation);
             return;
         }
-        // Two predicted totals: run the radix passes over the node, or pay for one
-        // split and finish the children in cache. Each route is priced with the
-        // planner it will really run, so the estimate cannot drift from the code.
+        // What the node costs if it is streamed instead of split: the passes its
+        // varying digits need at the split width. That count is the whole rule.
         let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
         let cold_passes = plan_digits_packed(varying, RADIX, &mut scratch_digits);
-        // Priced at the reference width, not at the leaf's own: routing must not
-        // move when the leaf width is tuned, or a wider leaf makes every node look
-        // more worth splitting and the tuning cannot be measured at all.
-        let flat_hot = plan_digits_packed(varying, MODEL_LEAF_RADIX, &mut scratch_digits);
-        // The digit the split would peel, decided once: the split runs it and the
-        // sample prices it, so there is no second answer to which digit that is.
+        // The digit the split would peel, decided once.
         let top = (u128::BITS - varying.leading_zeros()) as usize;
         let radix = split_radix(records, record_bytes, self.tile_bytes)
             .min(top)
@@ -667,22 +656,14 @@ impl<T: Key> Context<T> {
             shift: top - radix,
             width: radix,
         };
-        // What finishing the largest child costs: the best case the leaf can reach,
-        // one level in cache, because that is what the recursion will pay when the
-        // child is a tile. The router cannot sample the child's own window (its top
-        // window is finer than the digit that made it), and pricing it as if that
-        // window were as coarse as the parent's turned every 312 KiB child at 10M
-        // into a streamed node: 25 % slower on u64 10M, measured against the previous
-        // build. The leaf is where the real window is known, and there `tile_cost`
-        // decides with it.
-        let hot_passes = flat_hot.min(MSD_LEVEL_PASSES);
+        // nothing left to price: the rule reads one number.
         // One line per node says everything the routing decided, so a trace diff
         // between two builds is a decision diff.
         let routed = split_pays(cold_passes);
         if trace() {
             eprintln!(
-                "route len={} bytes={} passes={} hot={} split={}",
-                records, node_bytes, cold_passes, hot_passes, routed
+                "route len={} bytes={} passes={} split={}",
+                records, node_bytes, cold_passes, routed
             );
         }
         if !routed {
