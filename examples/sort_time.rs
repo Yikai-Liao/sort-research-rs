@@ -44,8 +44,13 @@ macro_rules! run {
 }
 
 fn main() {
-    let n: usize = std::env::args().nth(1).map(|s| s.parse().unwrap()).unwrap_or(1_000_000);
-    let pattern = std::env::args().nth(2).unwrap_or_else(|| "ascending".into());
+    let n: usize = std::env::args()
+        .nth(1)
+        .map(|s| s.parse().unwrap())
+        .unwrap_or(1_000_000);
+    let pattern = std::env::args()
+        .nth(2)
+        .unwrap_or_else(|| "ascending".into());
 
     // The harness's narrowing maps, so the numbers match radix_ab.
     let u32_keys = |i: usize| -> u32 { (i as i64 + (1 << 31)) as u32 };
@@ -76,11 +81,21 @@ fn main() {
         }
         "random" => {
             let mut next = splitmix();
-            run!(u32, (0..n).map(|_| next() as u32).collect::<Vec<_>>(), "random");
+            run!(
+                u32,
+                (0..n).map(|_| next() as u32).collect::<Vec<_>>(),
+                "random"
+            );
             let mut next = splitmix();
             run!(u64, (0..n).map(|_| next()).collect::<Vec<_>>(), "random");
             let mut next = splitmix();
-            run!(u128, (0..n).map(|_| (next() as u128) << 64 | next() as u128).collect::<Vec<_>>(), "random");
+            run!(
+                u128,
+                (0..n)
+                    .map(|_| (next() as u128) << 64 | next() as u128)
+                    .collect::<Vec<_>>(),
+                "random"
+            );
         }
         other => panic!("unknown pattern {other}"),
     }

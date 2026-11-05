@@ -153,7 +153,11 @@ fn a_key_panic_never_loses_or_duplicates_a_record() {
     // Miri interprets every operation, and this sweeps a panic at every key call of
     // every run, so it gets the two lengths it needs to reach both the insertion and
     // the passing paths and nothing more.
-    let lengths: &[usize] = if cfg!(miri) { &[12, 40] } else { &[20, 300, 2000] };
+    let lengths: &[usize] = if cfg!(miri) {
+        &[12, 40]
+    } else {
+        &[20, 300, 2000]
+    };
     for &len in lengths {
         // Identical data for the probe and for every armed run: the number of
         // key calls depends on the data (insertion is data dependent), and
@@ -183,7 +187,10 @@ fn a_key_panic_never_loses_or_duplicates_a_record() {
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 sort_with_policy(&mut records, Policy::default());
             }));
-            assert!(outcome.is_err(), "len={len} panic_at={panic_at} did not panic");
+            assert!(
+                outcome.is_err(),
+                "len={len} panic_at={panic_at} did not panic"
+            );
             let mut ids: Vec<u64> = records.iter().map(|record| record.id).collect();
             ids.sort_unstable();
             assert_eq!(
@@ -355,7 +362,11 @@ fn skewed_keys_sort() {
     let mut input: Vec<u32> = Vec::new();
     // 98 % zeros, the rest random: the shape is what matters, not the count, so Miri
     // gets a hundredth of the records.
-    let (zeros, stragglers) = if cfg!(miri) { (500, 10) } else { (50_000, 1_000) };
+    let (zeros, stragglers) = if cfg!(miri) {
+        (500, 10)
+    } else {
+        (50_000, 1_000)
+    };
     for _ in 0..zeros {
         input.push(0);
     }
@@ -372,7 +383,11 @@ fn a_nine_bit_node_never_shifts_its_digit_past_the_last_varying_bit() {
     // which would place the digit shift below bit zero. It must stop at the
     // highest varying bit of the node instead.
     let mut rng = Rng(7);
-    let (len, tile) = if cfg!(miri) { (2_000, 1024) } else { (16_384, 1024) };
+    let (len, tile) = if cfg!(miri) {
+        (2_000, 1024)
+    } else {
+        (16_384, 1024)
+    };
     let input: Vec<u64> = (0..len)
         .map(|_| match rng.next() % 3 {
             0 => 0,
@@ -383,14 +398,17 @@ fn a_nine_bit_node_never_shifts_its_digit_past_the_last_varying_bit() {
     check(input, tile);
 }
 
-
 #[test]
 fn a_short_run_below_the_body_is_lifted_out() {
     // Two keys just under the body's top bit, parked in front of it: a split at
     // that bit would move all of the node to separate them, the body's own split
     // then moving it again. The lift finishes the two by insertion and leaves the
     // body one pass. The displaced pairs keep the ordered probe out of the way.
-    let (len, tile) = if cfg!(miri) { (2_048, 256) } else { (32_768, 1_024) };
+    let (len, tile) = if cfg!(miri) {
+        (2_048, 256)
+    } else {
+        (32_768, 1_024)
+    };
     let scale = u32::MAX as u64 / 2 + 1;
     let mut input: Vec<u64> = (0..len as u64).map(|x| (x + (1 << 31)) * scale).collect();
     input[0] = (1 << 31) * scale - 2;
@@ -407,7 +425,11 @@ fn a_short_run_below_the_body_is_lifted_out() {
 fn a_short_run_above_the_body_is_lifted_out_and_rotated_off_the_front() {
     // The mirror image: the run's bit is set, so the lifted records belong after
     // the body and the front of the node is where they must leave from.
-    let (len, tile) = if cfg!(miri) { (2_048, 256) } else { (32_768, 1_024) };
+    let (len, tile) = if cfg!(miri) {
+        (2_048, 256)
+    } else {
+        (32_768, 1_024)
+    };
     let scale = u32::MAX as u64 / 2 + 1;
     let mut input: Vec<u64> = (0..len as u64).map(|x| (x + 1) * scale).collect();
     input[0] = (1 << 31) * scale + 1;
@@ -419,7 +441,6 @@ fn a_short_run_above_the_body_is_lifted_out_and_rotated_off_the_front() {
     }
     check(input, tile);
 }
-
 
 #[test]
 fn pricing_a_pass_counts_the_moves_and_stops_at_the_budget() {
@@ -453,7 +474,11 @@ fn a_budgeted_insertion_pass_keeps_equal_keys_in_order_and_bails_when_spent() {
     let len = records.len();
     assert_eq!(adaptive_insertion(&mut records, len), Some(0));
     assert!(records.windows(2).all(|pair| pair[0].key <= pair[1].key));
-    let ones: Vec<u32> = records.iter().filter(|r| r.key == 1).map(|r| r.index).collect();
+    let ones: Vec<u32> = records
+        .iter()
+        .filter(|r| r.key == 1)
+        .map(|r| r.index)
+        .collect();
     assert_eq!(ones, vec![1, 2]);
 
     // A reversed body spends far more than one move per record: the pass stops
@@ -470,7 +495,11 @@ fn a_budgeted_insertion_pass_keeps_equal_keys_in_order_and_bails_when_spent() {
 fn a_nearly_sorted_array_is_finished_by_the_adaptive_pass() {
     // One displaced pair in a hundred: the radix path used to spend a level on
     // each of them. The adaptive pass prices one tile and then finishes.
-    let (len, tile) = if cfg!(miri) { (2_048, 256) } else { (32_768, 1_024) };
+    let (len, tile) = if cfg!(miri) {
+        (2_048, 256)
+    } else {
+        (32_768, 1_024)
+    };
     let mut input: Vec<u64> = (0..len as u64).collect();
     let mut index = 0;
     while index + 1 < input.len() {
@@ -479,4 +508,3 @@ fn a_nearly_sorted_array_is_finished_by_the_adaptive_pass() {
     }
     check(input, tile);
 }
-

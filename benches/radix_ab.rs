@@ -56,9 +56,7 @@ fn parse_config() -> Config {
             }
             "--rounds" => cfg.rounds = value().parse().expect("bad round count"),
             "--filter" => cfg.filter = Some(value()),
-            "--variants" => {
-                cfg.variants = Some(value().split(',').map(str::to_owned).collect())
-            }
+            "--variants" => cfg.variants = Some(value().split(',').map(str::to_owned).collect()),
             "--trace-once" => cfg.trace_once = true,
             // Passed by the cargo harness for every bench target.
             "--bench" | "--nocapture" | "--test" => {}
@@ -311,7 +309,6 @@ fn full_width_u128(len: usize) -> Vec<u128> {
         .collect()
 }
 
-
 /// Swaps \`swaps\` evenly spread adjacent pairs: an ordered array with that many
 /// displaced elements, which is the shape "sorted, then a few edits" produces.
 fn displaced(mut v: Vec<i32>, swaps: usize) -> Vec<i32> {
@@ -331,7 +328,10 @@ fn displaced(mut v: Vec<i32>, swaps: usize) -> Vec<i32> {
 fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> {
     let keys: Vec<u128> = match pattern {
         // One varying bit, 50/50: the cheapest possible non-trivial input.
-        "type_two_near" => patterns::random(len).into_iter().map(|x| (x & 1) as u128).collect(),
+        "type_two_near" => patterns::random(len)
+            .into_iter()
+            .map(|x| (x & 1) as u128)
+            .collect(),
         // Two values at opposite ends of the key: same cardinality, maximal digit
         // distance, so the digit work is maximal while the comparison work is not.
         "type_two_far" => patterns::random(len)
@@ -339,7 +339,10 @@ fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> 
             .map(|x| if x >= 0 { 0 } else { u128::MAX })
             .collect(),
         // Eight values one bit apart.
-        "type_eight_near" => patterns::random(len).into_iter().map(|x| (x & 7) as u128).collect(),
+        "type_eight_near" => patterns::random(len)
+            .into_iter()
+            .map(|x| (x & 7) as u128)
+            .collect(),
         // Only the top byte varies.
         // The varying byte sits in the target type's own top byte. Placing it at
         // bit 120 unconditionally made u32 and u64 rows all-zero -- the pattern
@@ -367,7 +370,11 @@ fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> 
                 "skew90" => 90,
                 _ => 99,
             };
-            let mask = if bits == 128 { u128::MAX } else { (1u128 << bits) - 1 };
+            let mask = if bits == 128 {
+                u128::MAX
+            } else {
+                (1u128 << bits) - 1
+            };
             let step = mask / 10;
             let mut state = 0x1234_5678_9abc_def1u64 ^ len as u64;
             (0..len)
@@ -384,7 +391,11 @@ fn type_space_keys(pattern: &str, len: usize, bits: usize) -> Option<Vec<u128>> 
         }
         "sparse8_full" => {
             let mut state = 0x9e37_79b9_7f4a_7c15u64 ^ len as u64;
-            let mask = if bits == 128 { u128::MAX } else { (1u128 << bits) - 1 };
+            let mask = if bits == 128 {
+                u128::MAX
+            } else {
+                (1u128 << bits) - 1
+            };
             let picks: Vec<u128> = (0..8)
                 .map(|_| {
                     let hi = splitmix64(&mut state) as u128;
@@ -530,7 +541,11 @@ fn archive_raw(pattern: &str, label: &str, n: usize, name: &str, round: usize, s
             .map(|s| s.trim().to_owned())
             .unwrap_or_else(|| "unknown".into())
     });
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         let _ = writeln!(file, "{sha},{label},{pattern},{n},{name},{round},{secs:.9}");
     }
 }
@@ -552,7 +567,14 @@ fn tournament<T: Clone>(
             (variants[idx].1)(&mut buf);
             let elapsed = start.elapsed();
             samples[idx].push(elapsed);
-            archive_raw(pattern, label, input.len(), variants[idx].0, round, elapsed.as_secs_f64());
+            archive_raw(
+                pattern,
+                label,
+                input.len(),
+                variants[idx].0,
+                round,
+                elapsed.as_secs_f64(),
+            );
         }
     }
     variants
@@ -653,11 +675,10 @@ fn tessera_counting<T: sort_research_rs::other::radix_support::Key>(s: &mut [T])
 
 /// The other half of the leaf ablation: the MSD level always, the flat plan never.
 
-
 /// Tile-budget sweep: the knob that sets the auxiliary-space bound.
 #[cfg(feature = "rust_tessera_radix")]
 fn tessera_tile<const BYTES: usize, T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    use sort_research_rs::other::rust_tessera_radix::{Policy, sort_with_policy};
+    use sort_research_rs::other::rust_tessera_radix::{sort_with_policy, Policy};
     sort_with_policy(
         s,
         Policy {
@@ -670,7 +691,7 @@ fn tessera_tile<const BYTES: usize, T: sort_research_rs::other::radix_support::K
 /// Insertion-crossover sweep, in records.
 #[cfg(feature = "rust_tessera_radix")]
 fn tessera_ins<const INS: usize, T: sort_research_rs::other::radix_support::Key>(s: &mut [T]) {
-    use sort_research_rs::other::rust_tessera_radix::{Policy, sort_with_policy};
+    use sort_research_rs::other::rust_tessera_radix::{sort_with_policy, Policy};
     sort_with_policy(
         s,
         Policy {

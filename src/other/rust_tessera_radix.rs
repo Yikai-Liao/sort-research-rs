@@ -21,4 +21,3 @@ pub fn sort_with_policy<T: Key>(data: &mut [T], policy: Policy) {
 pub fn sort_with_leaf_plan<T: Key>(data: &mut [T]) {
     engine::sort_with_leaf_plan(data);
 }
-
