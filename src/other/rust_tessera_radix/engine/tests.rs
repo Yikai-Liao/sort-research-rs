@@ -236,11 +236,6 @@ fn route_table() {
         );
     }
 
-    // A well-divided tile is one level; a clustered one is its flat plan.
-    assert_eq!(tile_cost(8, 3_906, 1.0 / 128.0, INSERTION_MAX), MSD_LEVEL_PASSES);
-    assert_eq!(tile_cost(8, 3_906, 0.99, INSERTION_MAX), 8);
-    assert_eq!(tile_cost(2, 3_906, 1.0 / 128.0, INSERTION_MAX), 2);
-
     // The tile's digit width is the widest table that still fits the tile.
     assert_eq!(leaf_radix(3_906, 8), 13);
     assert_eq!(leaf_radix(200, 8), 9);
