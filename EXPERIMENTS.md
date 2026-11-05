@@ -139,6 +139,7 @@
 | 74 | 众数切分阈值从 1/4 放宽到 1/3、1/6、1/8（B18） | 否决 | 1M（5 轮中位数，RADIX_MODE_SHARE）：u64 sparse8 8.03 @1/4 → 6.84 @1/6，但 zipf13 15.54 → 21.38；1/8 把 sparse8 推到 19.04。u128/record16 同样出现 sparse 改善、zipf 退化的交叉。没有单一阈值同时赢，保留 1/4。 |
 | 75 | 宽记录叶子的间接 tile 排序：key + u16 index 排好后 gather 一次（B09） | 否决 | 1M（7 轮中位数，强制 RADIX_INDIRECT=1）：record128 random 126.63 → 160.82 ns，zipf 170.58 → 170.71（持平）。16B pair 的 6 趟 counting pass 加 gather 仍不如现有 MSD 叶子；记录宽度不是唯一成本，pass 数与随机 gather 把收益吃掉。 |
 | 76 | 跨节点复用 block workspace（B06） | 否决（噪声内） | 1M 三周期交替（5 轮中位数）：u64 random 13.02 → 13.13、u128 random 23.11 → 24.13、u128 zipf 23.97 → 24.51；record128 zipf/sparse 约 −2%；u64 sparse 7.36 → 6.54 但一轮 5.26 离群。整体方向不一致，保留每节点分配。 |
+| 77 | 等值切分后常数子节点的 all-equal 快路径 | 否决 | 1M 三周期交替（5 轮中位数）：u64 sparse8 6.48 → 5.74、record16 sparse 16.04 → 14.76、record16 p95 9.51 → 8.95；但 u64 zipf13 13.67 → 15.13、record16 zipf 24.97 → 25.71，random/two 持平。低基数但非常数的子节点会被预读一路扫到首个差异，收益与损失交叉，不保留。 |
 
 另有一次"拨乱反正"：§30 和 §36 里原有的 "(Superseded)" 段落（被推翻的旧结论、旧数字）在本次压缩中删除，
 对应的最终结论已写入上表。
