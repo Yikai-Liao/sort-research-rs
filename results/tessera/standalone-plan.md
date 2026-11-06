@@ -3,7 +3,7 @@
 - 日期：2026-11-06
 - 迁移来源：`Yikai-Liao/sort-research-rs` 分支 `exp/radix-opt`，commit `6c0877f`
 - 新仓库：<https://github.com/Yikai-Liao/tessera-sort>（公开，BSD-2-Clause，全英文）
-- 状态：P0 已完成（仓库骨架、README、logo、语义草案、设计与 benchmark 文档、CI、贡献规范）；P1 Stable 移植尚未开始。第 10 节列出待定事项。
+- 状态：已归档（2026-11-06）。P0–P2 已完成：Stable 移植、公开 API、Workspace、重写测试，以及对研究版的迁移性能验收。后续计划改由新仓库自己管理（英文）：路线图见 `ROADMAP.md`，已定决策见 `docs/decisions/`，benchmark 规范见 `docs/development/benchmarking.md`，发版规则见 `RELEASING.md`，Python 绑定见 `docs/proposals/python-binding.md`，迁移验收结果见 `docs/design/port.md`。本文件只保留决策过程，不再更新。
 
 sort-research-rs 只是借来做实验的仓库。Tessera 的引擎和键编码是自己写的，Block 核心改编自 Robert Clausecker 的 BSD-2-Clause 实现。新仓库只迁移这两部分，测试和 benchmark 重写。
 
@@ -50,6 +50,27 @@ Copyright (c) 2026 Yikai Liao <lyk-boya@outlook.com>
 发布前告知 Clausecker，说明这个项目建立在他的 block 算法上。
 
 **贡献规范（已落地）：** DCO 签名（PR 由 CI 逐 commit 检查）；接受 AI 辅助的贡献，要求在 PR 中披露工具、提交者本人读懂并测试、只有人能加 `Signed-off-by`；行为准则以引用方式采用 Contributor Covenant 3.0，不复制原文以保持单一协议；`AGENTS.md` 给编程 agent 的规则。
+
+### 2.1 包版本与发版边界（2026-11-06 定）
+
+同一仓库维护共同设计，各语言包独立版本、独立发版；同一语言内的稳定与不稳定接口共用包版本。只给发布内容实际变化的语言包升级版本号。
+
+| 对象 | 标识 | 用途 |
+|---|---|---|
+| Rust 库 | 如 `0.3.1`，tag `rust/v0.3.1` | Rust API、实现和修复状态 |
+| C++ 库 | 如 `0.1.2`，tag `cpp/v0.1.2` | C++ API、实现和修复状态 |
+| Python 包（计划） | 自己的版本，tag `python/vX.Y.Z` | 绑定、容器适配及所用 Rust 核心状态 |
+| 整个仓库 | 完整 Git commit | 各语言实现、绑定、测试、文档及 benchmark 的共同快照 |
+
+包版本不表示算法代数，不引入必须同步递增的 Tessera 算法版本号。Rust 可以先发布已验证的修复或优化，C++ 保持原版本；共享问题分别跟踪每种语言的受影响、修复和验证状态。只改 benchmark 或文档，不发库版本。
+
+发布流程按 tag 前缀分流；共享测试或语义变化可以触发两种语言的验证，但不强制同步发版。CI/CD 现在就按语言拆成独立、可复用的 workflow：入口按路径检测后并行调用 Rust 与 C++；各语言发版只依赖自己的验证。C++ 尚无实现时明确跳过，后续加入 `cpp/CMakeLists.txt`、CTest 与 CPack 配置后接入。已发布 tag 不移动、同版本内容不覆盖，有问题发下一补丁版本。以后加入 Go 时按实际模块目录命名 tag，例如 `go/tessera/go.mod` 对应 `go/tessera/v0.1.0`。
+
+1.0 后，兼容修复及保持公开契约的内部优化升 patch，新增公开能力升 minor，不兼容接口或行为变化升 major；性能增幅不决定版本级别。0.x 阶段兼容修复和优化升 patch，不兼容变化升 minor 并写明迁移方式，新功能可安排 minor 发布。公开契约包含稳定性、浮点/NaN/正负零顺序、键与记录支持、panic/异常记录保全及承诺的辅助空间性质。
+
+0.1 仍只提供稳定接口；以后加入不稳定接口或替换其内核时，与该语言包共用版本，并核对原有契约、在 changelog 写明实际内核变化。README 用按语言的能力表表达发布状态。benchmark 至少记录 `implementation`、`package_version`、完整 `git_commit`、实际 `kernel`、工具链和构建参数，并标明比较同一 commit 还是各语言最新发布版。未提交实现还需源码哈希或补丁。
+
+新仓库的 `RELEASING.md` 落实这些规则。发版与本次本地迁移分开，本次不创建 commit、tag，也不发布包。
 
 ## 3. 源码迁移清单
 
@@ -178,7 +199,7 @@ benchmark 分成三个用途，各自有固定的工具：
 **变体：**
 
 - `tessera`：当前工作区中的 crate。
-- `tessera_base`：作为基线的已发布版本或 git tag，通过重命名依赖引入（`tessera_base = { package = "tessera-sort", git = "...", tag = "v0.1.0" }`），与当前版本编译进同一个二进制。实施时先确认 Cargo 接受同名包来自 path 和 git 两个来源；如果不接受，改为构建两个二进制，由外层脚本交替调度。
+- `tessera_base`：作为基线的已发布版本或 git tag，通过重命名依赖引入（`tessera_base = { package = "tessera-sort", git = "...", tag = "rust/v0.1.0" }`），与当前版本编译进同一个二进制。实施时先确认 Cargo 接受同名包来自 path 和 git 两个来源；如果不接受，改为构建两个二进制，由外层脚本交替调度。
 - `std_stable`（`slice::sort_by_key`）、`std_unstable`（`sort_unstable_by_key`）。
 - `radsort`，以及可选的其他 crates.io radix 排序（例如 `rdst`、`voracious_radix_sort`），引入前核对各自是否支持对应任务。
 
@@ -262,7 +283,7 @@ benchmark 分成三个用途，各自有固定的工具：
 
 报告脚本 `bench/report/report.py`（只用标准库）从 raw 和 manifest 重新生成 markdown 表格。遇到缺少样本、重复样本、`verified = false`、manifest 不匹配或输入哈希不符时直接失败。
 
-发版时，正式结果用 `zstd` 压缩后作为 GitHub Release 附件保存，不进 Git；仓库只提交生成的 `docs/benchmark-results-vX.Y.md`。
+发版时，正式结果用 `zstd` 压缩后作为 GitHub Release 附件保存，不进 Git；仓库只提交生成的 `docs/benchmark-results-rust-vX.Y.md`。
 
 ### 7.9 构建配置
 
@@ -322,6 +343,7 @@ C++ runner 可以在 Tessera C++ 实现完成之前先接入标准库和这些�
 | P4 C++ runner | 标准库和对照算法接入；生成器通过黄金哈希 | 与 Rust runner 输出同一格式的 raw |
 | P5 C++ 实现 | C++17 header-only，平凡可复制记录；CMake 安装与消费测试 | 通过同一组语义向量；有 Rust 与 C++ 的直接对照 |
 | P6 集成 | 用发布版本重跑 StarRocks / ClickHouse | 结果链接进 README |
+| Python 绑定（独立路线，不等待 P4–P6） | 第 11 节的三类容器、六个函数、wheel 与端到端 benchmark | Python 契约、对象身份、缓冲安全和平台安装验证；独立发版 |
 
 ## 10. 待定事项
 
@@ -329,3 +351,55 @@ C++ runner 可以在 Tessera C++ 实现完成之前先接入标准库和这些�
 
 1. **准备内存上限和每个样本的目标时长（7.6）**按测试机器的内存和 10M 用例的实际耗时确定。
 2. **8 字节记录补测**（P3 runner 完成后）：`{u32 key, u32 row}` 等 8 字节记录上统一缓存的成本；如回退明显，再评估是否加 `unsafe` 的 `_unchecked` 入口。
+
+## 11. Python 绑定计划（2026-11-06 定）
+
+Python 调用 Rust Tessera，不重写算法、不等待 C++。新仓库的 `docs/python-plan.md` 保存英文设计。此处是计划，当前迁移不开始实现绑定。
+
+### 11.1 首版接口与返回类型
+
+三类输入都提供 `values, *, key=None, reverse=False`：
+
+| 操作 | 稳定接口 | 不稳定接口 | 行为 |
+|---|---|---|---|
+| 原地 | `stable_sort` | `unstable_sort` | 修改输入，返回 `None` |
+| 副本 | `stable_sorted` | `unstable_sorted` | 保留输入，返回同家族的新容器 |
+| 索引 | `stable_argsort` | `unstable_argsort` | 不重排输入，返回排序索引 |
+
+`list` 的副本为保留原对象的 `list`，索引为 `list[int]`；`array.array` 副本保留 typecode，索引为 `list[int]`；NumPy 副本保留 dtype，索引为 `np.intp` 数组。NumPy 为可选依赖，只有 list、array 的用户不需要安装它。
+
+不稳定接口首版可以调用稳定 Rust 内核，但明确不保证等键顺序、不承诺更快，benchmark 记录实际内核。这不改变 Rust 0.1 只带稳定接口的范围。
+
+### 11.2 容器适配
+
+- **array.array**：通过 buffer protocol 直接接连续数值缓冲，支持常见整数及 `f`、`d`；检查格式、实际 itemsize、连续性、对齐、可写性、字节序。`l`/`L` 不写死 64 位，不转 Python list、不逐元素创建 Python 数字。
+- **NumPy**：首版为一维 int8/16/32/64、uint8/16/32/64、float32/64。可写、连续、对齐、本机字节序的数组支持直接原地排序；非连续视图和只读数组拒绝原地，但副本及 argsort 按视图逻辑顺序读取，索引相对于视图。未对齐/非本机字节序同样拒绝直接原地路径，副本路径显式转换工作存储并计入成本，输出保留 dtype。多维 axis 后续再加；object、字符串、复数、structured dtype 不直接排序，调用方提取数值列后 argsort。
+- **list**：先保存原对象强引用，每个元素只提取一次数值键，再排序键和索引，最后重排原对象引用；保留对象身份、数值子类、重复引用和稳定等键顺序。成功调用每元素 key 恰好一次，radix 每趟不回调 Python。键提取或验证失败时尚未写回；回调自身副作用不回滚，回调重入修改源 list 的检测与失败契约须在实现前明确。
+
+首版 `key=` 主要服务 list；数组用户优先生成数值键数组后 argsort，以排列整行对象或多个关联列。不另加 `keys=`、`order=`、字段名列表接口。
+
+### 11.3 数值语义
+
+Python int 不默认视为 i64。根据整个输入的范围选能无损容纳所有键的 i64/u64/i128/u128；无统一表示时抛 `OverflowError`，不截断、不自动转浮点。整数/浮点混合键首版要求用户显式统一（如 `key=float`）。字符串、Decimal、Fraction、任意比较对象不直接接受，不静默回退内置排序。
+
+三类容器共用 Python 浮点契约：普通数值正常排序；NaN 升降序都在末尾；正负零视为等键；稳定接口保留 NaN、零和其他等键的输入顺序；保留原始值及 NaN payload 位型。只规范化排序键，不改写原值。`reverse=True` 用降序键编码，不能整体反转结果。该适配契约区别于 Rust 的 `total_cmp`，不将两者混称为同一规则。
+
+### 11.4 实现与缓冲安全
+
+采用 PyO3 + rust-numpy + maturin，拆成 list、标准 buffer、numpy 三个小适配模块，最终调用同一 Rust crate，类型判断留在入口。缓冲导出不自动授予 Rust 独占可变借用；实现前核对选定版本 API，不能照抄有别名安全问题的旧 `PyBuffer::as_slice`/`as_mut_slice` 教程。裸指针转换集中在一处，并写清布局、生命周期和别名不变量。
+
+Python key 和对象引用操作保留解释器访问；Rust 自有键、索引、副本可以 detach；外部缓冲原地路径首版保留 GIL，并要求调用期间任何别名都没有并发访问。GIL 管不住已释放它的 NumPy/C 工作线程，rust-numpy 借用检查也不能覆盖所有外部别名。首版明确依赖 GIL，按选定 PyO3 版本声明（当前写法 `gil_used = true`），free-threaded Python 另行设计验证。
+
+### 11.5 空间与性能
+
+连续数值数组原地路径可保留核心 O(√n) 辅助空间加有界适配存储；副本需要 O(n) 输出，argsort 需要 O(n) 索引，list 适配需要 O(n) 键/索引/引用存储。不能把整个 Python 包统一宣传为 O(√n)。
+
+端到端 benchmark 包含提取、转换、分配、排序与重排：数值 list 对照 `list.sort()`，对象 key 对照 `list.sort(key=...)`，NumPy 原地、副本、argsort 分别对照对应 `kind="stable"` 接口。语义不等价的工况单列，保留 A/A；先验证连续 array/NumPy，再评估 list 净收益，不因底层 Rust 或 radix 就预判更快。
+
+### 11.6 目录、CI/CD 与交付
+
+`python/pyproject.toml`、`python/Cargo.toml`、`python/src/`、`python/python/tessera_sort/`（导出、stub、py.typed）、`python/tests/`、`bench/python/`。Python 自己的包版本和 `python/v…` tag；wheel 记录实际 Rust 核心版本、来源 commit、绑定 commit、ABI、工具链和构建参数。主流 Linux/macOS/Windows 提供 wheel，测试 NumPy 安装和未安装两种环境。首版不暴露 tile、digit、插入阈值等内部参数。
+
+CI/CD 入口预留 Python：Python manifest 出现后启用；Rust 核心变化时验证绑定，但不自动发布 Python；Python tag 只发布 Python 包及其依赖的核心构建，不强制发 Rust/C++。发版前核对 wheel 实际链接的核心来源。
+
+交付顺序：定下编码/返回值/异常契约并审计缓冲独占访问 → 连续 array/NumPy 和 argsort → list 与六个对称接口 → 对象身份、回调次数与失败、整数边界、浮点位型、布局及可选依赖测试 → 端到端测量和 wheel 安装验证。多维 axis、structured dtype、多列直接排序、Python workspace 延后。
