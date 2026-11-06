@@ -36,7 +36,7 @@ Go 实现不列入计划，有真实需求时再评估。
 
 ```
 Copyright (c) 2025, 2026 Robert Clausecker <clausecker@zib.de>
-Copyright (c) 2026 Yikai Liao
+Copyright (c) 2026 Yikai Liao <lyk-boya@outlook.com>
 ```
 
 每个源文件第一行写 `// SPDX-License-Identifier: BSD-2-Clause`。`core.rs` 保留原有的完整通知和上游 revision 链接。README 里引用论文 [Parallel O(sqrt(n)) Overhead LSD Radix Sort](https://arxiv.org/abs/2607.05302) 和上游 C 实现。
@@ -114,7 +114,7 @@ impl<T> Workspace<T> {   // 另实现 Default
 - 未直接测量 8 字节 key + 行号记录（`{u32, u32}`）；u32 键数组在 random 16K–1M 上统一缓存慢 3.0–4.4%，P3 runner 完成后补测。
 - `RadixKey` 是封闭 trait，首版覆盖 `u8..u128`、`i8..i128`、`f32`、`f64` 和 `Reverse<K>`。
 - 不提供任意比较器的 `sort_by`，不支持的键在编译期报错。
-- 0.1 是否同时提供 `unstable_sort` 系列见第 10 节。
+- 0.1 不提供 `unstable_sort` 系列（2026-11-06 定）。以后加入是新增函数，不破坏兼容性；语义文档先保留不稳定契约的定义。
 
 ### 5.2 语义（写入 `conformance/semantics.md`）
 
@@ -325,7 +325,7 @@ C++ runner 可以在 Tessera C++ 实现完成之前先接入标准库和这些�
 
 ## 10. 待定事项
 
-1. **0.1 是否同时提供 `unstable_sort` 系列。** 提供的话，稳定性契约从第一版就定下来，但要多维护一组 API 和测试，而且没有性能收益；以后再加是新增函数，不会破坏兼容性。
-2. **`LICENSE` 中的版权署名：** 目前写的是 `Yikai Liao`，未加邮箱，待确认。
-3. **准备内存上限和每个样本的目标时长（7.6）**按测试机器的内存和 10M 用例的实际耗时确定。
-4. **8 字节记录补测**（P3 runner 完成后）：`{u32 key, u32 row}` 等 8 字节记录上统一缓存的成本；如回退明显，再评估是否加 `unsafe` 的 `_unchecked` 入口。
+已定（2026-11-06）：0.1 不带 `unstable_sort`；`LICENSE` 署名为 `Yikai Liao <lyk-boya@outlook.com>`。
+
+1. **准备内存上限和每个样本的目标时长（7.6）**按测试机器的内存和 10M 用例的实际耗时确定。
+2. **8 字节记录补测**（P3 runner 完成后）：`{u32 key, u32 row}` 等 8 字节记录上统一缓存的成本；如回退明显，再评估是否加 `unsafe` 的 `_unchecked` 入口。
