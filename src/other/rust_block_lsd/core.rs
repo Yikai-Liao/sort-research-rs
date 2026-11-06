@@ -40,6 +40,10 @@
 use super::key::{Key, Unsigned};
 use std::{marker::PhantomData, mem::MaybeUninit, ptr};
 
+/// Widest digit, in bits, that one pass accepts. Callers that choose their own
+/// digit width (the Tessera engine) bound it by this constant.
+pub(crate) const MAX_RADIX_BITS: usize = 12;
+
 type SortKey<T> = <T as Key>::Value;
 type PanicPayload = Box<dyn std::any::Any + Send>;
 
@@ -52,7 +56,7 @@ struct ScatterPosition {
 /// # Block LSD stable sort
 ///
 /// Sort by converted radix key, preserving the order of equal keys.
-/// `radix` is the number of bits per digit (1..=12); 8 is recommended. The
+/// `radix` is the number of bits per digit (1..=[`MAX_RADIX_BITS`]); 8 is recommended. The
 /// block size is chosen from the input length and element size.
 ///
 /// For n elements of s bytes and R = 2^radix buckets, the block size in elements
@@ -82,7 +86,10 @@ pub fn sort<T>(arr: &mut [T], radix: usize)
 where
     T: Key,
 {
-    assert!((1..=12).contains(&radix), "radix must be in 1..=12");
+    assert!(
+        (1..=MAX_RADIX_BITS).contains(&radix),
+        "radix must be in 1..=MAX_RADIX_BITS"
+    );
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
         return;
@@ -180,7 +187,10 @@ fn partition_digit_inner<T: Key>(
     if arr.len() < 2 || record_bytes == 0 {
         return Vec::new();
     }
-    assert!((1..=12).contains(&radix), "radix must be in 1..=12");
+    assert!(
+        (1..=MAX_RADIX_BITS).contains(&radix),
+        "radix must be in 1..=MAX_RADIX_BITS"
+    );
     let bits = T::Value::BITS;
     assert!(shift < bits, "digit shift outside the key");
     let width = radix.min(bits - shift);
@@ -208,8 +218,8 @@ pub(crate) fn partition_by<T: Key>(
         return vec![0; buckets];
     }
     assert!(
-        buckets.is_power_of_two() && (2..=4096).contains(&buckets),
-        "bucket count must be a power of two in 2..=4096"
+        buckets.is_power_of_two() && (2..=1usize << MAX_RADIX_BITS).contains(&buckets),
+        "bucket count must be a power of two in 2..=2^MAX_RADIX_BITS"
     );
     let last = buckets - 1;
     partition_pass(
@@ -382,7 +392,7 @@ struct Sorter<'a, T> {
     block_order: Vec<u32>,
     next_block_order: Vec<u32>,
     // Bucket IDs for output blocks, used to build next_block_order after scatter.
-    // u16 holds bucket IDs for digit widths up to 12.
+    // u16 holds bucket IDs for digit widths up to MAX_RADIX_BITS.
     bucket_ids: Vec<u16>,
     partial_blocks: Vec<PartialBlock>,
     active_blocks_end: usize,

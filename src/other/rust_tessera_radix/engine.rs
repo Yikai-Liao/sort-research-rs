@@ -5,6 +5,12 @@
 //! or an end run separated by the highest varying bit. Tiles finish with insertion,
 //! an MSD partition, or LSD counting passes over reusable scratch.
 //!
+//! Vocabulary: a *node* is a slice larger than the tile budget; it is split by
+//! a stable block partition. A *tile* fits the budget and is finished here, with
+//! insertion sort, a tile-local MSD partition, or LSD counting passes. A *digit*
+//! is the window of key bits one pass handles ([`Digit`]); a *cursor table*
+//! holds one `u16` position per bucket.
+//!
 //! Constant bits are skipped. Wide keys whose variation fits one 64-bit half use
 //! a narrowed view. The block engine uses O(sqrt(n)) scratch; tile scratch is bounded.
 //! For deterministic keys, equal keys retain their input order and key panics
@@ -25,13 +31,13 @@ type KeyValue<T> = <T as Key>::Value;
 /// Initial split width; also the block engine's tuned width.
 const SPLIT_BITS: usize = 8;
 
-/// Split fan-out is bounded by the block engine's 12-bit tables.
-const MAX_SPLIT_BITS: usize = 12;
+/// Split fan-out is bounded by the block engine's widest digit.
+const MAX_SPLIT_BITS: usize = block::MAX_RADIX_BITS;
 
-/// A 128-key sample cannot fill a quarter of the buckets at 10 bits or more.
-const WIDENING_SAMPLE_BITS: usize = 10;
 /// At 14 bits the u16 cursor table occupies 32 KiB.
 const MAX_TILE_DIGIT_BITS: usize = 14;
+/// Maximum cursor table length.
+const MAX_DIGIT_BUCKETS: usize = 1 << MAX_TILE_DIGIT_BITS;
 /// Narrowest digit a leaf may use.
 const MIN_TILE_DIGIT_BITS: usize = 6;
 /// Default tile size in bytes of records; a tile always holds at least one record.
@@ -79,7 +85,8 @@ const MODE_SHARE_DENOMINATOR: usize = 4;
 /// Consecutive keys per sampled run.
 const MODE_SAMPLE_RUN_LEN: usize = 8;
 
-/// Samples eight runs of eight keys, avoiding stride aliasing with periodic keys.
+/// Fills `keys` with runs of `MODE_SAMPLE_RUN_LEN` consecutive keys spread over
+/// the node, which avoids stride aliasing with periodic keys.
 fn sample_keys<T: Key>(arr: &[T], keys: &mut [KeyValue<T>]) {
     let runs = keys.len() / MODE_SAMPLE_RUN_LEN;
     let step = (arr.len() / runs).max(1);
@@ -100,7 +107,7 @@ fn sample_keys<T: Key>(arr: &[T], keys: &mut [KeyValue<T>]) {
     keys[len..].fill(first);
 }
 
-/// Finds a key repeated by at least a quarter of the sample.
+/// Finds a key repeated by at least `1 / MODE_SHARE_DENOMINATOR` of the sample.
 /// Leaves the sample sorted; later uses may only depend on the multiset.
 fn sample_mode<V: Unsigned>(keys: &mut [V]) -> Option<V> {
     let len = keys.len();
@@ -114,14 +121,18 @@ fn sample_mode<V: Unsigned>(keys: &mut [V]) -> Option<V> {
     (best.len() * MODE_SHARE_DENOMINATOR >= len).then_some(best[0])
 }
 
+/// A side holding at most `1 / MINORITY_DENOMINATOR` of the sample is the minority.
+const MINORITY_DENOMINATOR: usize = 8;
+
 /// Whether `bit` separates a minority of the sample, and which side is the
 /// minority: `true` when the records with the bit set are the few.
 fn sample_minority_bit<V: Unsigned>(keys: &[V], bit: V) -> Option<bool> {
     let zero = V::from_usize(0);
     let set = keys.iter().filter(|key| (**key & bit) != zero).count();
-    if set * 8 <= keys.len() {
+    let clear = keys.len() - set;
+    if set * MINORITY_DENOMINATOR <= keys.len() {
         Some(true)
-    } else if set * 8 >= keys.len() * 7 {
+    } else if clear * MINORITY_DENOMINATOR <= keys.len() {
         Some(false)
     } else {
         None
@@ -231,8 +242,11 @@ fn budgeted_insertion_sort<T, K: Ord>(
     Some(swaps)
 }
 
-/// Maximum cursor table length.
-const MAX_DIGIT_BUCKETS: usize = 1 << MAX_TILE_DIGIT_BITS;
+/// Number of bits needed to represent `value`; 0 for 0.
+#[inline]
+fn bit_len(value: u128) -> usize {
+    (u128::BITS - value.leading_zeros()) as usize
+}
 
 /// One pass worth of key bits: `width` bits starting at `shift`.
 #[derive(Clone, Copy)]
@@ -301,14 +315,14 @@ fn top_window(remaining: u128, width: usize) -> (Digit, u128) {
 /// clears, counts and walks a quarter of the bucket slots. Gaps keep the wide
 /// windows, which jump over them.
 fn plan_digits(varying: u128, width: usize, digits: &mut [Digit]) -> usize {
-    let top = (u128::BITS - varying.leading_zeros()) as usize;
+    let top = bit_len(varying);
     // Passes left to tile the contiguous run over; `None` keeps fixed windows.
     let mut even = (varying.count_ones() as usize == top).then_some(top.div_ceil(width));
     let mut remaining = varying;
     let mut len = 0;
     while remaining != 0 {
         let window_width = match even {
-            Some(left) if left > 0 => ((remaining.ilog2() as usize) + 1).div_ceil(left),
+            Some(left) if left > 0 => bit_len(remaining).div_ceil(left),
             // Gaps keep windows of the full budget that jump over them.
             _ => width,
         };
@@ -342,6 +356,15 @@ struct Sorter<T> {
     // only after a complete cached pass; non-Copy scratch may hold stale bytes.
     scratch: Vec<MaybeUninit<T>>,
     tile_bytes: usize,
+}
+
+impl<T> Sorter<T> {
+    fn new(tile_bytes: usize) -> Self {
+        Sorter {
+            scratch: Vec::new(),
+            tile_bytes,
+        }
+    }
 }
 
 /// Sorts by converted radix key, stably, in O(n) time and O(sqrt(n)) auxiliary
@@ -405,7 +428,7 @@ fn sort_with_tile_bytes<T: Key>(arr: &mut [T], tile_bytes: usize) {
         }
     }
 
-    if T::Value::BITS > 64 && T::Value::BITS <= 128 {
+    if T::Value::BITS > 64 {
         if varying >> 64 == 0 {
             sort_key_half::<0, T>(arr, varying, tile_bytes);
             return;
@@ -415,11 +438,7 @@ fn sort_with_tile_bytes<T: Key>(arr: &mut [T], tile_bytes: usize) {
             return;
         }
     }
-    let mut sorter = Sorter {
-        scratch: Vec::new(),
-        tile_bytes,
-    };
-    sorter.sort_node(arr, varying);
+    Sorter::new(tile_bytes).sort_node(arr, varying);
 }
 
 /// Narrows at the root only; descendants retain the same key view.
@@ -428,11 +447,7 @@ fn sort_key_half<const SHIFT: usize, T: Key>(arr: &mut [T], varying: u128, tile_
     // reference used during sorting, with identical length, layout and alignment.
     let narrowed: &mut [KeyHalf<SHIFT, T>] =
         unsafe { &mut *(arr as *mut [T] as *mut [KeyHalf<SHIFT, T>]) };
-    let mut sorter = Sorter::<KeyHalf<SHIFT, T>> {
-        scratch: Vec::new(),
-        tile_bytes,
-    };
-    sorter.sort_node(narrowed, varying >> SHIFT);
+    Sorter::new(tile_bytes).sort_node(narrowed, varying >> SHIFT);
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -609,8 +624,8 @@ fn choose_split_digit<T: Key>(arr: &[T], top: usize, tile_bytes: usize) -> Digit
 
     // Widen a concentrated top window until a quarter of its buckets are sampled.
     while width < top && width + 2 <= MAX_SPLIT_BITS {
-        // At larger widths the sample cannot meet the occupancy threshold.
-        if width < WIDENING_SAMPLE_BITS {
+        // At larger widths the sample cannot fill a quarter of the buckets.
+        if (1usize << width) <= 4 * DIGIT_SAMPLE_LEN {
             let probe = Digit {
                 shift: top - width,
                 width,
@@ -644,7 +659,7 @@ impl<T: Key> Sorter<T> {
         }
         // One digit finishes a narrow span; wider spans benefit from tiled children.
         let low = varying.trailing_zeros() as usize;
-        let top = (u128::BITS - varying.leading_zeros()) as usize;
+        let top = bit_len(varying);
         let span = top - low;
 
         if span <= SPLIT_BITS {
@@ -858,6 +873,10 @@ impl<T: Key> Sorter<T> {
             // The tile is non-empty, so its sample is non-empty too. Repeats in
             // the sample cap the split; a sample with no repeats at all is limited
             // by its length, not by the keys, so the digit's buckets apply.
+            // `max(1)` is redundant in value but not in codegen: it tells the
+            // optimizer the divisor below is non-zero, and removing it measured
+            // as a slower `sort_tile` (an extra zero check and different register
+            // allocation).
             let distinct = sample_distinct_digits(arr, digit).max(1);
             let fanout = if distinct >= DIGIT_SAMPLE_LEN.min(len) {
                 1usize << digit.width
@@ -873,6 +892,7 @@ impl<T: Key> Sorter<T> {
                 largest /= fanout;
             }
             // The tile holds more than INSERTION_MAX records, so the loop ran.
+            // As above, `max(1)` is kept for the optimizer, not for the value.
             let level_cost = depth.max(1) + MSD_FINISH_PASSES;
             if level_cost < passes {
                 self.partition_tile(arr, digit, varying);
