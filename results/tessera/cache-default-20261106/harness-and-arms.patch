@@ -1,0 +1,76 @@
+diff --git a/benches/radix_ab.rs b/benches/radix_ab.rs
+index f5ce627..64421ac 100644
+--- a/benches/radix_ab.rs
++++ b/benches/radix_ab.rs
+@@ -523,21 +523,18 @@ fn tournament<T: Clone>(
+     // Batched rounds sort prepared copies, so the copies never enter the timed
+     // region and every sort still sees unordered input.
+     let mut bufs: Vec<Vec<T>> = (0..batch.max(1)).map(|_| input.to_vec()).collect();
+-    let mut buf = input.to_vec();
+     for round in 0..rounds {
+         for i in 0..variants.len() {
+             let idx = (round + i) % variants.len();
+-            let start = Instant::now();
+-            let elapsed = if batch > 1 {
+-                for buf in bufs.iter_mut() {
+-                    (variants[idx].1)(buf);
+-                }
+-                start.elapsed() / batch as u32
+-            } else {
++            // Restore every buffer outside the timed region.
++            for buf in bufs.iter_mut() {
+                 buf.clone_from_slice(input);
+-                (variants[idx].1)(&mut buf);
+-                start.elapsed()
+-            };
++            }
++            let start = Instant::now();
++            for buf in bufs.iter_mut() {
++                (variants[idx].1)(buf);
++            }
++            let elapsed = start.elapsed() / bufs.len() as u32;
+             samples[idx].push(elapsed);
+             archive_raw(
+                 pattern,
+@@ -633,6 +630,18 @@ macro_rules! radix_variants {
+                 "tessera",
+                 sort_research_rs::other::rust_tessera_radix::sort::<$ty>,
+             ));
++            v.push((
++                "tessera_a2",
++                sort_research_rs::other::rust_tessera_radix::sort::<$ty>,
++            ));
++            v.push((
++                "tessera_copy",
++                sort_research_rs::other::rust_tessera_radix::sort_copy::<$ty>,
++            ));
++            v.push((
++                "tessera_cached",
++                sort_research_rs::other::rust_tessera_radix::sort_cached::<$ty>,
++            ));
+         }
+         #[cfg(feature = "rust_msd_radix")]
+         {
+diff --git a/src/other/rust_tessera_radix.rs b/src/other/rust_tessera_radix.rs
+index 9738276..d66a57d 100644
+--- a/src/other/rust_tessera_radix.rs
++++ b/src/other/rust_tessera_radix.rs
+@@ -6,3 +6,18 @@
+ mod engine;
+ 
+ radix_adapter!("rust_tessera_stable_radix", |data| engine::sort(data));
++
++// Experiment arms: an identical copy of the engine measures code-placement
++// noise; the cached copy forces bucket-id caching for Copy records too.
++#[allow(unused_imports)]
++mod engine_copy;
++#[allow(unused_imports)]
++mod engine_cached;
++
++pub fn sort_copy<T: crate::other::radix_support::Key>(data: &mut [T]) {
++    engine_copy::sort(data)
++}
++
++pub fn sort_cached<T: crate::other::radix_support::Key>(data: &mut [T]) {
++    engine_cached::sort(data)
++}

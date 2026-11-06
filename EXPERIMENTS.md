@@ -6,6 +6,8 @@
 [热点审计](results/tessera/cleanup/archive/index-audit.md)；可 Copy／不可 Copy 记录与
 不确定 key 的安全修复及性能验收在
 [results/tessera/safety-20261105](results/tessera/safety-20261105/README.md)。
+Tessera 迁出为独立仓库 [tessera-sort](https://github.com/Yikai-Liao/tessera-sort)，迁移计划见
+[results/tessera/standalone-plan.md](results/tessera/standalone-plan.md)。
 
 ## A. 当前实现
 
@@ -178,12 +180,14 @@ block 大小增长，tile 缓冲有固定上界。公开适配器提供 `sort` /
 | 102 | 去掉 Copy 分类缓存能省多少（上界测量） | 关闭 | 同进程开关强制 cache=false（键稳定时安全）测其上界：u32 4096 +0.9%、16384 −5.1%、65536 −0.8%、1M +0.4%（负值才是收益）。缓存只在首个 Copy 趟写 2 字节/记录，后续趟本来就重算键，所以"每趟读 32 KiB"不成立。收益 ≤5% 且只在一个规模，不值当改写成"越界守卫 + 插入回落"并重推安全不变量 |
 | 103 | 小数组继续收窄表宽 | 关闭 | 128/256/512 上 wide 与 8 位基本持平（11.38/11.40、8.61/8.42、7.45/7.42），7 位以下全面变慢；1024 起 8 位是 12.57 vs wide 7.82。小数组的差距在入口（探测 + 试算 + 一次分配），不在表宽；n≤48 直接走插入，剩余可压缩空间约 15%，绝对量 <15 ns |
 | 104 | 可读性重构的零退化检验（基线 `747d9f5`；每个候选单独编译，先逐函数比较指令流再做配对计时，5 周期×60 cell） | 部分采用 | **采用（C1）**：`MAX_RADIX_BITS` 取代复制的 12、`bit_len`、`Sorter::new`、少数派比例改名、`WIDENING_SAMPLE_BITS` 改为由 `DIGIT_SAMPLE_LEN` 推出、去掉恒真的 `BITS <= 128`、模块词汇表；166 个 Tessera/block 函数除断言消息长度立即数外指令流逐条一致，函数起始地址对 32 取模与基线相同；AB 中位数 0.994，最大 1.039。**不得删 `sort_tile` 里的两处 `.max(1)`**：值上冗余，但向优化器保证除数非零，删后多一个零检查分支并重排寄存器，u64 128 的 zipf11／random_d256 慢 8–11%（15 周期复测，AA≈0.99）。断言消息改成带 `{}` 的格式串也会令 `partition_digit_inner` 变大 33 字节，已改回字面量。**未采用**：离群段改存目的端并用 `split_at_mut`、`sort_child` 合并子节点递归（C2）。热函数指令流不变，但 `probe_order`／`sort::<u32>` 起始地址对 32 取模从 0 变 16，u32 随机 4096 慢 10.8%、降序 65536 慢 24%、u64 随机 4096 慢 21%（AA≈1）；与对齐相关，因果未证。把 `partition_tile`／`sort_tile` 的 pass 分派合并为 `run_pass`、`RestoreTile` 持有备用缓冲、把根部预处理抽成 `finish_if_ordered`／`sort_nearly_ordered`：改动了 `sort_tile`、`sort::<T>`，未在对齐受控的条件下单独计时，不采用。后续对照（不采用，仅作测量参考）：同源码仅换编译选项，基线 vs C2 变慢的 cell 数为 无选项 16、`-Zmin-function-alignment=64` 1、`-C llvm-args=-x86-branches-within-32B-boundaries` 3（含 1 个 AA 噪声）；但 64 对齐本身让基线 17/60 cell 变慢（最多 +15.5%）、几个 cell 变快，不是免费优化；u32 random_d256 4096 上 `idq.mite_uops` 占比 7%（无选项）→33%（64 对齐）→6%（JCC 缓解），说明 Skylake-SP（Xeon Gold 6140）的 DSB／JCC erratum 是位置敏感的主因之一，但 JCC 缓解后仍剩 3 格差异，未查清，不可当作已解决。结论：会改机器码的重构无法用逐 cell A/B 证明零退化，且 `-Z` 选项在 Stable 下不可用，故 C2 及 `run_pass`／`finish_if_ordered` 抽取均放弃；只接受指令流逐条一致的改动。**harness 注意**：`radix_ab --batch N>1` 只克隆一次缓冲，第一轮后反复排序已排序数据，不能用于比较，须用 `--batch 1` |
+| 105 | Copy 记录也走桶号缓存的成本（独立仓库 API 决定；同一二进制 A1/A2/逐字副本/全缓存副本，5 周期，[记录](results/tessera/cache-default-20261106/README.md)） | 度量 | cached/A：u32 random 16K–1M +3.0–4.4%；u64 1K–4K −2.1–4.0%、random 64K +2.7%；record16 random 16K–1M 最多 +3.5%，skewed 1K–4K −1.9–3.4%；record128 在 ±1.4% 内。放置对照本身最大偏离 4%（u64 random 1M 0.960）。新库 `stable_sort_by_key` 对所有类型存桶号，`stable_sort` 不存。本轮 harness 改为每次计时前在计时外恢复全部缓冲：原 `--batch 1` 把 `clone_from_slice` 计入耗时，与 C 节约定不符，历史 `--batch 1` 比值因此被稀释。 |
 
 ## C. 测量与生成器约定
 
 - 固定 `OVERRIDE_SEED=1`，绑同一 CPU，交替 A/B，以 A/A 估计当轮波动。
   比较逐 cell 结果，报告中位数和所有原始轮次；单次 min 不作为收益依据。
-- 计时仅包含排序。生成、clone、参考排序和 distinct 统计均在计时外；clone 后的小数组
+- 计时仅包含排序。生成、clone、参考排序和 distinct 统计均在计时外（`radix_ab` 的
+  `--batch 1` 实际把恢复输入的 clone 计入耗时，`--batch N>1` 不恢复输入，见 §104、§105）；clone 后的小数组
   可能驻留缓存，不能直接把 1M→10M 的变化解释成算法缩放。
 - `random_wide` 在 u64/u128 使用独立 SplitMix64 draw；普通命名分布由 i32 保序映射到
   目标宽度，u128 的低 96 bit 恒定。`type_*`、`small12`、`window32_high` 等直接构造目标位型。
