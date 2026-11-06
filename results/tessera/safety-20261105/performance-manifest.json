@@ -1,0 +1,4581 @@
+{
+  "baseline_commit": "2aa312d1cda9359e0b187bf1dde893baf219b564",
+  "source_sha256": {
+    "Cargo.toml": "d51be419dd219aa58ff4c5711eba7b86be4e54e136571bd9bb04f364688ff01a",
+    "Cargo.lock": "aa9e50c9d64a2e09645f6c9a142a27c8786eeb7233c35bf46bda1fc1b850b913",
+    "src/lib.rs": "72c06ce85ba4f79e99ef49dadced5e44b5201c3fb6d7750da888dbe01de8b0cd",
+    "src/other/radix_support.rs": "7f932ed784f49bc24722a86239c8a6d08dc45cd9f20bb0131b0a13598de34cab",
+    "src/other/rust_block_lsd/core.rs": "ba87c33963b69fcf79fa0d79f79961b9e9ac82895f5e4a86477aac2f1f9f25ca",
+    "src/other/rust_msd_radix/mod.rs": "cb59a203ccf1672149c2d2497519ef9f70cd3376bfe57075eae5526622910f16",
+    "src/other/rust_tessera_radix/engine.rs": "1803dd09b8d4dee30629dd28c7451e5bb68c1292f9f910b5a8d152526335962b",
+    "src/other/rust_tessera_radix/engine/tests.rs": "f452fae07dcfa14156f8786aa4e2f5ab341d22f651f21bbe99bc540fdaab9901",
+    "tests/radix_safety.rs": "84b2179f103cad707f3b4dccf81917d70a5df25e1fa9e7ab84487e7dd4aefa7f",
+    "tests/radix_owned.rs": "5747f81acf5e187be3c73f9bb98f6519c0a0a9ac69136092f4b611ead0d47d76",
+    "tests/radix_views.rs": "741effc97ebe52fbb07c1d7a6f8db0356a8cff942bcb3265bbe0607624e2c0ca",
+    "benches/radix_ab.rs": "c49aec01d8d3c08591d11ea81e0ffce668ad085ad15b0f04be7ac97230467ea0"
+  },
+  "binary_sha256": "a8f0bfff2d5da77155f5789cbf383e4d7ac4b906c1a3679bb262ff59f71a978c",
+  "harness_sha256": "fa38b80a3817d81a9336b79305d47bbfdda697d67090c0e237565a64b071a93c",
+  "cpu": 2,
+  "blocks": 5,
+  "seed": 1,
+  "cases": [
+    [
+      "u32",
+      "random_wide",
+      64,
+      "tessera"
+    ],
+    [
+      "u32",
+      "random_wide",
+      4096,
+      "tessera"
+    ],
+    [
+      "u32",
+      "random_wide",
+      1000000,
+      "tessera"
+    ],
+    [
+      "u64",
+      "random_wide",
+      64,
+      "tessera"
+    ],
+    [
+      "u64",
+      "random_wide",
+      4096,
+      "tessera"
+    ],
+    [
+      "u64",
+      "random_wide",
+      1000000,
+      "tessera"
+    ],
+    [
+      "u128",
+      "random_wide",
+      64,
+      "tessera"
+    ],
+    [
+      "u128",
+      "random_wide",
+      4096,
+      "tessera"
+    ],
+    [
+      "u128",
+      "random_wide",
+      1000000,
+      "tessera"
+    ],
+    [
+      "record16",
+      "random_wide",
+      64,
+      "tessera"
+    ],
+    [
+      "record16",
+      "random_wide",
+      4096,
+      "tessera"
+    ],
+    [
+      "record16",
+      "random_wide",
+      1000000,
+      "tessera"
+    ],
+    [
+      "record128",
+      "random_wide",
+      64,
+      "tessera"
+    ],
+    [
+      "record128",
+      "random_wide",
+      4096,
+      "tessera"
+    ],
+    [
+      "record128",
+      "random_wide",
+      1000000,
+      "tessera"
+    ],
+    [
+      "u64",
+      "sparse8",
+      100000,
+      "tessera"
+    ],
+    [
+      "u64",
+      "ascending",
+      1000000,
+      "tessera"
+    ],
+    [
+      "u64",
+      "descending",
+      1000000,
+      "tessera"
+    ],
+    [
+      "u64",
+      "random_sorted99",
+      1000000,
+      "tessera"
+    ],
+    [
+      "record128",
+      "zipf13",
+      100000,
+      "tessera"
+    ],
+    [
+      "u32",
+      "random_wide",
+      100000,
+      "msd_radix"
+    ],
+    [
+      "u64",
+      "random_wide",
+      100000,
+      "msd_radix"
+    ],
+    [
+      "u128",
+      "random_wide",
+      100000,
+      "msd_radix"
+    ],
+    [
+      "record16",
+      "random_wide",
+      100000,
+      "msd_radix"
+    ],
+    [
+      "record128",
+      "random_wide",
+      100000,
+      "msd_radix"
+    ],
+    [
+      "u64",
+      "two_values_near",
+      100000,
+      "msd_radix"
+    ],
+    [
+      "u64",
+      "random_wide",
+      64,
+      "tessera_custom_copy"
+    ],
+    [
+      "u64",
+      "random_wide",
+      4096,
+      "tessera_custom_copy"
+    ],
+    [
+      "u64",
+      "random_wide",
+      1000000,
+      "tessera_custom_copy"
+    ],
+    [
+      "record16",
+      "random_wide",
+      64,
+      "tessera_custom_copy"
+    ],
+    [
+      "record16",
+      "random_wide",
+      4096,
+      "tessera_custom_copy"
+    ],
+    [
+      "record16",
+      "random_wide",
+      1000000,
+      "tessera_custom_copy"
+    ],
+    [
+      "record128",
+      "random_wide",
+      64,
+      "tessera_custom_copy"
+    ],
+    [
+      "record128",
+      "random_wide",
+      4096,
+      "tessera_custom_copy"
+    ],
+    [
+      "record128",
+      "random_wide",
+      1000000,
+      "tessera_custom_copy"
+    ],
+    [
+      "u128",
+      "random_wide",
+      1000000,
+      "tessera_custom_copy"
+    ],
+    [
+      "u64",
+      "random_wide",
+      100000,
+      "msd_custom_copy"
+    ],
+    [
+      "record16",
+      "random_wide",
+      100000,
+      "msd_custom_copy"
+    ],
+    [
+      "record128",
+      "random_wide",
+      100000,
+      "msd_custom_copy"
+    ],
+    [
+      "owned16",
+      "random_wide",
+      100000,
+      "tessera"
+    ],
+    [
+      "owned16",
+      "random_wide",
+      100000,
+      "msd_radix"
+    ],
+    [
+      "owned128",
+      "random_wide",
+      100000,
+      "tessera"
+    ],
+    [
+      "owned128",
+      "random_wide",
+      100000,
+      "msd_radix"
+    ],
+    [
+      "owned16",
+      "random_wide",
+      4096,
+      "tessera"
+    ],
+    [
+      "owned128",
+      "random_wide",
+      4096,
+      "tessera"
+    ]
+  ],
+  "rounds": "5001 for n<=64, 501 for n<=4096, 11 for record128, 31 otherwise",
+  "aggregation": "median per-round mean(B1,B2)/mean(A1,A2), then median of five blocks; AA similarly A2/A1",
+  "arm_order": [
+    "A1",
+    "B1",
+    "A2",
+    "B2"
+  ],
+  "schedule": [
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "sparse8",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "ascending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "zipf13",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "two_values_near",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "sparse8",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "ascending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "zipf13",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "two_values_near",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "sparse8",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "ascending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "zipf13",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "two_values_near",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "sparse8",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "ascending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "zipf13",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "two_values_near",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "sparse8",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "ascending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "zipf13",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "two_values_near",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "64",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "5001"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera_custom_copy_A1,tessera_custom_copy_B1,tessera_custom_copy_A2,tessera_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_custom_copy_A1,msd_custom_copy_B1,msd_custom_copy_A2,msd_custom_copy_B2",
+        "--rounds",
+        "11"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "100000",
+        "--variants",
+        "msd_radix_A1,msd_radix_B1,msd_radix_A2,msd_radix_B2",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned16",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "block": 4,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-safety-20261105/paired-bench",
+        "--types",
+        "owned128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "4096",
+        "--variants",
+        "tessera_A1,tessera_B1,tessera_A2,tessera_B2",
+        "--rounds",
+        "501"
+      ]
+    }
+  ],
+  "status": "complete",
+  "raw_sha256": "95b6e1eee3c6533957cfe375edeca6f026f06db93a58387beb8432cf910e512e"
+}

@@ -1,4 +1,4 @@
-//! Stable radix sort with block partitions above a 64 KiB tile budget.
+//! Stable radix sort with block partitions above a default 64 KiB tile budget.
 //!
 //! Ordered inputs return or reverse stably; nearly ordered inputs get a budgeted
 //! insertion pass. Large nodes partition by an MSD digit, a sampled repeated key,
@@ -7,11 +7,17 @@
 //!
 //! Constant bits are skipped. Wide keys whose variation fits one 64-bit half use
 //! a narrowed view. The block engine uses O(sqrt(n)) scratch; tile scratch is bounded.
-//! Equal keys retain their input order, and key panics preserve the record set.
+//! For deterministic keys, equal keys retain their input order and key panics
+//! preserve the record set.
+//!
+//! Each recursive tile MSD level keeps a cursor table of up to 32 KiB on the
+//! stack. Depth is bounded by ceil(key bits / MIN_TILE_DIGIT_BITS), at most 22
+//! levels for u128. Actual frames depend on the compiler; callers on small-stack
+//! threads must budget for these tables as well as ordinary call frames.
 
 use std::mem::MaybeUninit;
 
-use crate::other::radix_support::{Key, Unsigned};
+use crate::other::radix_support::{Key, RecordType, Unsigned};
 use crate::other::rust_block_lsd::core as block;
 
 type KeyValue<T> = <T as Key>::Value;
@@ -28,17 +34,17 @@ const WIDENING_SAMPLE_BITS: usize = 10;
 const MAX_TILE_DIGIT_BITS: usize = 14;
 /// Narrowest digit a leaf may use.
 const MIN_TILE_DIGIT_BITS: usize = 6;
-/// Maximum tile size in bytes of records.
+/// Default tile size in bytes of records; a tile always holds at least one record.
 const TILE_BYTES: usize = 64 * 1024;
-/// One tile partition costs five traversals (histogram, scatter, copy back);
-/// three two-traversal LSD passes are its break-even.
+/// Cost model: charge a tile MSD level as three flat LSD passes, including
+/// the copy back and child variation scans.
 const MSD_LEVEL_PASSES: usize = 3;
-/// Tiles at or below this many records are finished with an insertion sort
-/// instead of paying for a bucket table per remaining digit.
+/// Tiles and buckets at or below this many records are finished with an
+/// insertion sort instead of paying for a bucket table per remaining digit.
 const INSERTION_MAX: usize = 48;
 /// u16 cursors bound a tile to 65535 records.
 const MAX_TILE_RECORDS: usize = u16::MAX as usize;
-/// Keys a leaf samples to judge whether its top window divides the tile.
+/// Keys an occupancy sample reads to judge whether a digit divides its range.
 const DIGIT_SAMPLE_LEN: usize = 128;
 
 /// Counts distinct digits in an evenly spaced sample.
@@ -46,7 +52,7 @@ fn sample_distinct_digits<T: Key>(arr: &[T], digit: Digit) -> usize {
     let mask = digit.mask::<T>();
     let shift = T::Value::from_usize(digit.shift);
 
-    let mut seen = [0u64; MAX_TILE_BUCKETS / 64];
+    let mut seen = [0u64; MAX_DIGIT_BUCKETS / 64];
     let sample_len = DIGIT_SAMPLE_LEN.min(arr.len());
     let step = (arr.len() / sample_len).max(1);
     let mut distinct = 0;
@@ -93,6 +99,7 @@ fn sample_keys<T: Key>(arr: &[T], keys: &mut [KeyValue<T>]) {
 }
 
 /// Finds a key repeated by at least a quarter of the sample.
+/// Leaves the sample sorted; later uses may only depend on the multiset.
 fn sample_mode<V: Unsigned>(keys: &mut [V]) -> Option<V> {
     let len = keys.len();
     keys.sort_unstable();
@@ -223,7 +230,7 @@ fn budgeted_insertion_sort<T, K: Ord>(
 }
 
 /// Maximum cursor table length.
-const MAX_TILE_BUCKETS: usize = 1 << MAX_TILE_DIGIT_BITS;
+const MAX_DIGIT_BUCKETS: usize = 1 << MAX_TILE_DIGIT_BITS;
 
 /// One pass worth of key bits: `width` bits starting at `shift`.
 #[derive(Clone, Copy)]
@@ -239,7 +246,8 @@ impl Digit {
     }
 }
 
-/// Capacity for packed digit windows over a 128-bit key.
+/// Capacity for packed digit windows over a 128-bit key. A bound of 22 is
+/// sufficient, but shrinking this array awaits an isolated performance check.
 const MAX_DIGITS: usize = 48;
 
 /// Scans until all candidate bits have appeared in both states, or the input ends.
@@ -292,6 +300,7 @@ fn plan_digits(varying: u128, width: usize, digits: &mut [Digit]) -> usize {
 /// A layout-preserving view of a wide key's varying 64-bit half.
 /// The discarded half is constant across the root, so order and equality are preserved.
 #[repr(transparent)]
+#[derive(Clone, Copy)]
 struct KeyHalf<const SHIFT: usize, T: Key>(T);
 
 impl<const SHIFT: usize, T: Key> Key for KeyHalf<SHIFT, T> {
@@ -303,6 +312,8 @@ impl<const SHIFT: usize, T: Key> Key for KeyHalf<SHIFT, T> {
 }
 
 struct Sorter<T> {
+    // Copy values in this prefix stay initialized across tiles. Grow its length
+    // only after a complete cached pass; non-Copy scratch may hold stale bytes.
     scratch: Vec<MaybeUninit<T>>,
     tile_bytes: usize,
 }
@@ -320,7 +331,7 @@ fn sort_with_tile_bytes<T: Key>(arr: &mut [T], tile_bytes: usize) {
     }
     let tile_bytes = tile_bytes
         .max(record_bytes)
-        .min(MAX_TILE_RECORDS * record_bytes);
+        .min(MAX_TILE_RECORDS.saturating_mul(record_bytes));
     // Probe before the variation scan so ordered inputs pay only one full read.
     let sampled = probe_order(arr);
     match sampled {
@@ -472,55 +483,76 @@ fn insertion_sort<T: Key>(arr: &mut [T]) {
 /// Histogram, prefix sum, then stable scatter. Returns the largest bucket.
 ///
 /// # Safety
-/// `source` holds `len` initialized records; `destination` has `len` writable
-/// slots in a separate allocation. `cursor` has room for `1 << digit.width`
-/// entries. `len <= u16::MAX`, as enforced by the tile-size clamp.
+/// Source holds len initialized records; destination has len writable slots in
+/// a separate allocation, and cursor has MAX_DIGIT_BUCKETS u16 slots. For cached
+/// passes, any cache_tail is disjoint from records and holds len aligned u16s.
+/// For uncached passes, T is Copy and destination is already fully initialized.
+/// 0 < len <= u16::MAX. Partial non-Copy output must not be read or dropped.
 #[inline]
-unsafe fn counting_pass<T: Key>(
+unsafe fn counting_pass<T: Key, const CACHED: bool>(
     source: *const T,
     destination: *mut T,
     len: usize,
     digit: Digit,
     cursor: *mut u16,
+    cache_tail: *mut u16,
 ) -> u16 {
     let mask = digit.mask::<T>();
     let shift = T::Value::from_usize(digit.shift);
     let buckets = 1usize << digit.width;
+    let bucket_ids = if CACHED && len + buckets <= MAX_DIGIT_BUCKETS {
+        cursor.add(buckets)
+    } else {
+        cache_tail
+    };
     for slot in 0..buckets {
         // SAFETY: the caller guarantees room for `buckets` entries.
         *cursor.add(slot) = 0;
     }
+    let mut largest = 0u16;
     for index in 0..len {
         // SAFETY: the caller guarantees `len` initialized records.
         let key = (*source.add(index)).key();
         let bucket = ((key & mask) >> shift).to_usize();
+        if CACHED {
+            // SAFETY: the scratch tail has len aligned u16 slots.
+            *bucket_ids.add(index) = bucket as u16;
+        }
         // SAFETY: the digit mask keeps the index below `buckets`, and no bucket
         // can hold more than `len <= u16::MAX` records.
-        *cursor.add(bucket) += 1;
+        let count = *cursor.add(bucket) + 1;
+        *cursor.add(bucket) = count;
+        largest = largest.max(count);
     }
     let mut offset = 0u16;
-    let mut largest = 0u16;
     for slot in 0..buckets {
         // SAFETY: as above.
         let count = *cursor.add(slot);
         *cursor.add(slot) = offset;
         offset += count;
-        largest = largest.max(count);
     }
     for index in 0..len {
-        // SAFETY: the caller guarantees `len` initialized records; the cursor
-        // counts the records already placed in this bucket, so it stays inside
-        // that bucket's output interval and below `len`.
-        unsafe {
-            let record = source.add(index);
-            let key = (*record).key();
-            let bucket = ((key & mask) >> shift).to_usize();
-            let slot = *cursor.add(bucket);
-            *cursor.add(bucket) = slot.wrapping_add(1);
-            // Limit the target index to the destination tile.
-            let target = (slot as usize).min(len - 1);
-            std::ptr::write(destination.add(target), std::ptr::read(record));
-        }
+        let record = source.add(index);
+        let bucket = if !CACHED {
+            // Copy records use an already initialized destination. A changing key
+            // may duplicate values, but cannot create invalid or uninitialized T.
+            (((*record).key() & mask) >> shift).to_usize()
+        } else {
+            // SAFETY: histogram initialized every cached classification before
+            // any record was copied. Scatter runs no user code on this path.
+            *bucket_ids.add(index) as usize
+        };
+        let slot = *cursor.add(bucket);
+        *cursor.add(bucket) = slot.wrapping_add(1);
+        let target = if CACHED {
+            slot as usize
+        } else {
+            (slot as usize).min(len - 1)
+        };
+        // SAFETY: cached classifications give disjoint output intervals. The
+        // uncached Copy path keeps every destination slot initialized even if
+        // classifications change; clamping keeps all writes in the allocation.
+        std::ptr::write(destination.add(target), std::ptr::read(record));
     }
     largest
 }
@@ -531,7 +563,7 @@ fn tile_digit_bits(records: usize, record_bytes: usize) -> usize {
     let tile_bytes = records.saturating_mul(record_bytes);
     // The widest table that still fits: `2 * 2^width` bytes of cursors.
     let widest = (tile_bytes / 2).max(1).ilog2() as usize;
-    // Limit empty-bucket work to at most two bits above the record count.
+    // Limit empty-bucket work to at most eight times the record count.
     let by_records = records.max(1).ilog2() as usize + 3;
     widest
         .min(by_records)
@@ -646,8 +678,9 @@ impl<T: Key> Sorter<T> {
             let key = record.key();
             usize::from(key >= equal) + usize::from(key > equal)
         };
+        // Three outcomes need four buckets because `partition_by` takes powers
+        // of two; the fourth is unused, so the greater band runs to the end.
         let ends = block::partition_by(arr, 4, classify);
-        // The block engine supplies the boundaries of all three bands.
         for range in [0..ends[0], ends[1]..arr.len()] {
             let child = &mut arr[range];
             if child.len() > 1 {
@@ -685,25 +718,69 @@ impl<T: Key> Sorter<T> {
         insertion_sort(lifted);
     }
 
-    fn reserve_scratch(&mut self, len: usize) {
+    fn reserve_scratch(&mut self, len: usize, cache: bool, buckets: usize) -> (*mut T, *mut u16) {
+        // Cached digits first use the unused suffix of the existing cursor
+        // table. Larger caches share the record allocation, without another
+        // allocation or zero initialization. Initialized Copy scratch needs no cache.
+        let tail = cache && len + buckets > MAX_DIGIT_BUCKETS;
+        if tail {
+            let bytes = std::mem::size_of::<T>();
+            let extra = (len * std::mem::size_of::<u16>() + 1).div_ceil(bytes);
+            let required = len
+                .checked_add(extra)
+                .expect("tile scratch capacity overflow");
+            if self.scratch.capacity() < required {
+                self.scratch.reserve_exact(required - self.scratch.len());
+            }
+        }
         if self.scratch.len() < len {
             self.scratch.reserve_exact(len - self.scratch.len());
-            self.scratch.resize_with(len, MaybeUninit::<T>::uninit);
+            if !T::COPY {
+                self.scratch.resize_with(len, MaybeUninit::<T>::uninit);
+            }
         }
+        let records = self.scratch.as_mut_ptr().cast::<T>();
+        let ids = if tail {
+            // SAFETY: capacity includes len records followed by 2*len+1 bytes.
+            // u16 alignment needs at most one byte; the regions do not overlap.
+            unsafe {
+                let start = records.add(len).cast::<u8>();
+                start
+                    .add(start.align_offset(std::mem::align_of::<u16>()))
+                    .cast::<u16>()
+            }
+        } else {
+            std::ptr::null_mut()
+        };
+        (records, ids)
     }
 
-    /// Partitions a tile through scratch, copies back, then finishes each bucket.
+    /// Partitions a tile through scratch, then finishes each bucket.
     fn partition_tile(&mut self, arr: &mut [T], digit: Digit, varying: u128) {
         let len = arr.len();
-        self.reserve_scratch(len);
-        let scratch = self.scratch.as_mut_ptr().cast::<T>();
-        let mut counts = MaybeUninit::<[u16; MAX_TILE_BUCKETS]>::uninit();
+        let cache = !T::COPY || self.scratch.len() < len;
+        let (scratch, cache_tail) = self.reserve_scratch(len, cache, 1 << digit.width);
+        let mut counts = MaybeUninit::<[u16; MAX_DIGIT_BUCKETS]>::uninit();
         let counts_ptr = counts.as_mut_ptr().cast::<u16>();
-        // SAFETY: scratch has room for len records in a separate allocation.
-        // A key panic leaves the complete source tile intact.
-        let largest = unsafe { counting_pass(arr.as_ptr(), scratch, len, digit, counts_ptr) };
-        // SAFETY: scratch now holds the complete record set; the tile holds stale copies.
-        unsafe { std::ptr::copy_nonoverlapping(scratch, arr.as_mut_ptr(), len) };
+        let tile = arr.as_mut_ptr();
+        let mut guard = RestoreTile {
+            tile,
+            len,
+            source: tile,
+        };
+        let mut destination = scratch;
+        let largest = unsafe {
+            if cache {
+                guard.pass::<true>(&mut destination, digit, counts_ptr, cache_tail)
+            } else {
+                guard.pass::<false>(&mut destination, digit, counts_ptr, cache_tail)
+            }
+        };
+        if T::COPY && cache {
+            // SAFETY: the cached pass initialized every reserved record slot.
+            unsafe { self.scratch.set_len(len) };
+        }
+        drop(guard);
         // With insertion-sized buckets, whole-tile insertion has the same inversion
         // count as separate bucket sorts and skips the boundary walk.
         if largest as usize <= INSERTION_MAX {
@@ -748,6 +825,7 @@ impl<T: Key> Sorter<T> {
         );
         // Use an MSD partition only when it costs strictly fewer passes.
         if passes > MSD_LEVEL_PASSES {
+            // The tile is non-empty, so its sample is non-empty too.
             let distinct = sample_distinct_digits(arr, digits[0]);
             // Estimate the partition depth from sampled occupancy until the largest
             // child fits insertion; each level costs MSD_LEVEL_PASSES flat passes.
@@ -758,37 +836,59 @@ impl<T: Key> Sorter<T> {
                 depth += 1;
                 largest /= distinct;
             }
+            // The tile holds more than INSERTION_MAX records, so the loop ran.
             let level_cost = MSD_LEVEL_PASSES * depth.max(1);
             if level_cost < passes {
                 self.partition_tile(arr, digits[0], varying);
                 return;
             }
         }
-        self.reserve_scratch(len);
-        let scratch_ptr = self.scratch.as_mut_ptr().cast::<T>();
+        // A Copy buffer needs cached classification only while its initialized
+        // prefix grows. Later passes and tiles reuse valid Copy values directly.
+        let mut cache = !T::COPY || self.scratch.len() < len;
+        let buckets = if cache {
+            let width = if T::COPY {
+                digits[passes - 1].width
+            } else {
+                digits[..passes]
+                    .iter()
+                    .map(|digit| digit.width)
+                    .max()
+                    .unwrap()
+            };
+            1 << width
+        } else {
+            0
+        };
+        let (scratch_ptr, cache_tail) = self.reserve_scratch(len, cache, buckets);
         debug_assert!(len <= MAX_TILE_RECORDS);
-        // The counting pass initializes only the used prefix of the cursor table.
-        let mut counts = MaybeUninit::<[u16; MAX_TILE_BUCKETS]>::uninit();
+        let mut counts = MaybeUninit::<[u16; MAX_DIGIT_BUCKETS]>::uninit();
         let counts_ptr = counts.as_mut_ptr().cast::<u16>();
-
-        // Restore the live source on normal return and on key panic.
         let tile = arr.as_mut_ptr();
         let mut guard = RestoreTile {
             tile,
             len,
             source: tile,
         };
-        let mut destination: *mut T = scratch_ptr;
+        let mut destination = scratch_ptr;
         for &digit in digits[..passes].iter().rev() {
-            // SAFETY: source holds the complete record set; destination has room
-            // for len records in a separate allocation. Both buffers remain live.
-            unsafe { counting_pass(guard.source, destination, len, digit, counts_ptr) };
-            std::mem::swap(&mut guard.source, &mut destination);
+            // One branch per pass keeps each scatter loop free of the decision.
+            if cache {
+                unsafe { guard.pass::<true>(&mut destination, digit, counts_ptr, cache_tail) };
+                if T::COPY {
+                    // SAFETY: the cached pass initialized the scratch prefix.
+                    unsafe { self.scratch.set_len(len) };
+                    cache = false;
+                }
+            } else {
+                unsafe { guard.pass::<false>(&mut destination, digit, counts_ptr, cache_tail) };
+            }
         }
     }
 }
 
-/// `source` holds the complete record set from the last successful pass.
+/// `source` holds initialized records from the last successful pass. Cached
+/// passes preserve the record set; a changing Copy key may give arbitrary values.
 /// Restores it to the tile if it resides in scratch.
 struct RestoreTile<T> {
     tile: *mut T,
@@ -796,11 +896,36 @@ struct RestoreTile<T> {
     source: *mut T,
 }
 
+impl<T: Key> RestoreTile<T> {
+    /// Safety: both buffers have len slots; cursor has MAX_DIGIT_BUCKETS slots.
+    /// For an uncached pass, T is Copy and both buffers are initialized. If the
+    /// cursor suffix cannot fit cached IDs, cache_tail has len aligned u16 slots.
+    #[inline]
+    unsafe fn pass<const CACHED: bool>(
+        &mut self,
+        destination: &mut *mut T,
+        digit: Digit,
+        cursor: *mut u16,
+        cache_tail: *mut u16,
+    ) -> u16 {
+        let largest = counting_pass::<T, CACHED>(
+            self.source,
+            *destination,
+            self.len,
+            digit,
+            cursor,
+            cache_tail,
+        );
+        std::mem::swap(&mut self.source, destination);
+        largest
+    }
+}
+
 impl<T> Drop for RestoreTile<T> {
     fn drop(&mut self) {
         if self.source != self.tile {
-            // SAFETY: source holds the complete set in scratch; tile holds stale
-            // copies, and the two allocations do not overlap.
+            // SAFETY: source holds initialized records in scratch; tile holds
+            // Copy values or stale non-Copy bytes. The allocations do not overlap.
             unsafe {
                 std::ptr::copy_nonoverlapping(self.source, self.tile, self.len);
             }

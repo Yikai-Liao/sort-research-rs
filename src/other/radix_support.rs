@@ -44,12 +44,26 @@ macro_rules! unsigned {
 ///
 /// `key` must return a deterministic key matching the record's `Ord`, including
 /// equality. The backend preserves input order for equal converted keys.
-/// If extraction panics, the adapters restore a permutation of the original
+/// For deterministic keys, if extraction panics, the adapters restore a permutation of the original
 /// records before resuming the panic; their order is unspecified.
+/// A changing key may produce an unspecified result or a panic, but must not
+/// compromise memory safety.
 pub trait Key {
     type Value: Unsigned;
     const SUPPORTED: bool = true;
     fn key(&self) -> Self::Value;
+}
+
+// A private, compiler-selected property. Unlike needs_drop, Copy excludes
+// ownership of exclusive borrows as well as resources with destructors.
+pub(crate) trait RecordType: Key {
+    const COPY: bool;
+}
+impl<T: Key> RecordType for T {
+    default const COPY: bool = false;
+}
+impl<T: Key + Copy> RecordType for T {
+    const COPY: bool = true;
 }
 
 unsigned!(u8, u16, u32, u64, u128, usize);

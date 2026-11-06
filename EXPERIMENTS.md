@@ -3,7 +3,9 @@
 当前实现是 `src/other/rust_tessera_radix/engine.rs`；分支 `exp/radix-opt`。
 本文件保留设计、历史判决和复现方法。最新清理的验证与原始轮次在
 [results/tessera/cleanup](results/tessera/cleanup/README.md)，采样和索引审计见
-[热点审计](results/tessera/cleanup/archive/index-audit.md)。
+[热点审计](results/tessera/cleanup/archive/index-audit.md)；可 Copy／不可 Copy 记录与
+不确定 key 的安全修复及性能验收在
+[results/tessera/safety-20261105](results/tessera/safety-20261105/README.md)。
 
 ## A. 当前实现
 
@@ -32,8 +34,9 @@ block 大小增长，tile 缓冲有固定上界。公开适配器提供 `sort` /
 实验用 `Policy`、叶子消融入口、宽度／融合／block-size 环境开关、tile／插入阈值变体和
 两个临时 example 已删除。有效的 MSD、LSD、插入和等值分区路径继续保留。
 
-本轮还修复 block 分区的 panic 恢复：panic 时根据已写桶记录数和已消费输入块重建块内偏移，未物化时恢复完整记录排列。
-不实现 Drop 的记录也可能持有独占引用，因此同样需要恢复。tile 的 `RestoreTile` 用唯一 `source` 指针标识完整记录集，必要时将其恢复到 tile。公开 `Unsigned` 保留同类型移位右操作数约束，内部也使用键类型的移位量。标准库的 `split_first` 用于遍历桶边界；稳定逆序和离群 run 的 `reverse`、`rotate` 是已有算法操作。
+上一轮修复了 block 分区的 panic 恢复：panic 时根据已写桶记录数和已消费输入块重建块内偏移，未物化时恢复完整记录排列。
+
+本轮修复可 Copy 与不可 Copy 记录在不确定 key 下的内存安全，不实现 Drop 的记录可能持有独占引用，因此与非 Copy 走同一保护。私有 `RecordType` 只按真实 `Copy` 能力分派，不按 `needs_drop` 推断，也不维护可信类型名单。非 Copy 在 histogram 缓存 u16 分类，scatter 不再调用 key；Copy 的 `scratch` 前缀在一次成功趟后保持有效，首趟借分类缓存写满，之后的趟与 tile 直接复用，记录搬运遍数与基线相同。tile 的 `RestoreTile` 用唯一 `source` 指针标识完整记录集，必要时将其恢复到 tile。公开 `Unsigned` 保留同类型移位右操作数约束，内部也使用键类型的移位量。标准库的 `split_first` 用于遍历桶边界；稳定逆序和离群 run 的 `reverse`、`rotate` 是已有算法操作。
 
 ### 阅读历史数字
 
@@ -152,6 +155,9 @@ block 大小增长，tile 缓冲有固定上界。公开适配器提供 `sort` /
 | 86 | scatter 依赖链微基准（方案 4） | 否决（前提不成立） | 1M 同记录/同桶大小，只改桶号顺序：random 9.03、runs8 7.33、runs64 8.12、runs4096 5.41、mixed_runs 5.81 ns/记录；同桶连续更快。寄存器游标缓存：7.94/5.54/5.06/4.61/4.81，未进真实引擎。mixed_runs 的慢不在游标依赖链。 |
 | 87 | 叶子分支/CPU 成本（方案 5） | 关闭 | perf stat 1M u64（21 次排序）：random_wide 5.27M branch-misses（0.25/记录）、zipf 6.87M（0.33）、f64_normal 11.36M（0.54）；插入叶子已是最便宜收尾（s65 比逐桶快 14.7%），改它上限低于 1.2x。5c 与 s69/B13 的 E1 变体同族，不重开。 |
 | 88 | 宽记录间接叶子 + 原地环应用（方案 6） | 否决 | record128 1M 5 轮：random_wide 138.59→181.12 ms（+30.7%）、zipf 200.40→194.64（−2.9%）、sparse 116.22→119.19（+2.6%）、two 79.61→77.42（−2.8%）。pairs 63 KiB、sort 在 L2，但 506 KiB 的随机置换吃掉第二层 split 的节省。附带 512 KiB tile（按记录字节特化）1M random 约 6–8%，10M 持平，按“不做类型特化”否决。 |
+| 89 | Copy 记录在不确定 key 下必须不产生未初始化槽 | 保留 | 方案是把源 tile 先整块拷入 scratch 再 scatter（奇数 p 的拷入代替拷回，偶数 p 加缓存），配对矩阵（45 工况 5 block，A/A 中位 1.0000）里 Copy 路径 0.86–1.01，非 Copy owned16/128 为 0.941–0.976。随后改为 scratch 前缀复用：首个更大 tile 的首趟借分类缓存写满，之后直接复用，少一次每 tile 拷入，遍数与基线相同。 |
+| 90 | 分类决策放在 `pass` 内（运行时 bool）还是按 const 泛型单态化 | 保留 const 泛型 | 运行时 bool 版把两条 scatter 循环塞进同一个未内联函数：u32 random_wide 1M 1.055（5/5 block > 1）、u32 4096 约 1.00、record16 64 0.958；`pass::<CACHED>` + 调用点分支后分别为 1.002、0.979、0.843。只改一处决策位置，不用为类型或 key 复制排序实现。 |
+| 91 | `largest` 在前缀和循环还是直方图循环累加 | 保留直方图 | 前缀和版 u64 random_wide 4096 1.072、record128 random_wide 4096 1.020、u32 random_wide 1M 1.019–1.037；直方图版 0.971／0.972／1.002。tile 小、digit 宽时桶表约为记录数的四倍，逐桶累加比逐记录更贵。`largest` 只用于“整 tile 插入”判断。 |
 
 ## C. 测量与生成器约定
 

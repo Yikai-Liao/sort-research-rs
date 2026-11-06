@@ -1,0 +1,305 @@
+{
+  "status": "passed",
+  "base_commit": "2aa312d1cda9359e0b187bf1dde893baf219b564",
+  "source_sha256": {
+    "Cargo.toml": "d51be419dd219aa58ff4c5711eba7b86be4e54e136571bd9bb04f364688ff01a",
+    "Cargo.lock": "aa9e50c9d64a2e09645f6c9a142a27c8786eeb7233c35bf46bda1fc1b850b913",
+    "src/lib.rs": "72c06ce85ba4f79e99ef49dadced5e44b5201c3fb6d7750da888dbe01de8b0cd",
+    "src/other/radix_support.rs": "7f932ed784f49bc24722a86239c8a6d08dc45cd9f20bb0131b0a13598de34cab",
+    "src/other/rust_block_lsd/core.rs": "ba87c33963b69fcf79fa0d79f79961b9e9ac82895f5e4a86477aac2f1f9f25ca",
+    "src/other/rust_msd_radix/mod.rs": "cb59a203ccf1672149c2d2497519ef9f70cd3376bfe57075eae5526622910f16",
+    "src/other/rust_tessera_radix/engine.rs": "1803dd09b8d4dee30629dd28c7451e5bb68c1292f9f910b5a8d152526335962b",
+    "src/other/rust_tessera_radix/engine/tests.rs": "f452fae07dcfa14156f8786aa4e2f5ab341d22f651f21bbe99bc540fdaab9901",
+    "tests/radix_safety.rs": "84b2179f103cad707f3b4dccf81917d70a5df25e1fa9e7ab84487e7dd4aefa7f",
+    "tests/radix_owned.rs": "5747f81acf5e187be3c73f9bb98f6519c0a0a9ac69136092f4b611ead0d47d76",
+    "tests/radix_views.rs": "741effc97ebe52fbb07c1d7a6f8db0356a8cff942bcb3265bbe0607624e2c0ca",
+    "benches/radix_ab.rs": "c49aec01d8d3c08591d11ea81e0ffce668ad085ad15b0f04be7ac97230467ea0"
+  },
+  "rustc": "rustc 1.101.0-nightly (a30aa9064 2026-10-08)\nbinary: rustc\ncommit-hash: a30aa9064df6a504b6a323c6884a2f4cfbfff666\ncommit-date: 2026-10-08\nhost: x86_64-unknown-linux-gnu\nrelease: 1.101.0-nightly\nLLVM version: 23.1.3\n",
+  "cpu": 4,
+  "commands": [
+    {
+      "log": "release-lib.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "test",
+        "--release",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix",
+        "--lib"
+      ],
+      "environment": {},
+      "started_unix": 1793941967.8042097,
+      "exit_code": 0,
+      "elapsed_seconds": 0.5541524887084961,
+      "log_sha256": "eb6e3f0e339243c50f05fdcd08fdb62f5c5d84d4d49dcb6d618cac15a73f175e",
+      "passed_counts": [
+        24
+      ]
+    },
+    {
+      "log": "release-integration.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "test",
+        "--release",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix",
+        "--test",
+        "block_lsd_functionality",
+        "--test",
+        "tessera_functionality",
+        "--test",
+        "radix_owned",
+        "--test",
+        "radix_views",
+        "--test",
+        "radix_safety"
+      ],
+      "environment": {},
+      "started_unix": 1793941968.3608363,
+      "exit_code": 0,
+      "elapsed_seconds": 110.7278847694397,
+      "log_sha256": "85816af847f471d8fc76fc7364375f7ecbeb475131d5422f436b41b1aef4a352",
+      "passed_counts": [
+        233,
+        3,
+        13,
+        13,
+        233
+      ]
+    },
+    {
+      "log": "asan.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "test",
+        "--release",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix",
+        "--lib",
+        "--test",
+        "radix_owned",
+        "--test",
+        "radix_views",
+        "--test",
+        "radix_safety"
+      ],
+      "environment": {
+        "CARGO_TARGET_DIR": "/root/code/sort-research-rs/logs/tessera-cleanup/asan-target",
+        "RUSTFLAGS": "-Zsanitizer=address"
+      },
+      "started_unix": 1793942079.0927389,
+      "exit_code": 0,
+      "elapsed_seconds": 146.66739678382874,
+      "log_sha256": "97e0bdf4ea3ee9858ab91f24a4e29b4ed254075516831c94d0ab4e321ec582c9",
+      "passed_counts": [
+        24,
+        3,
+        13,
+        13
+      ]
+    },
+    {
+      "log": "miri-regressions.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "miri",
+        "test",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix",
+        "--test",
+        "radix_safety"
+      ],
+      "environment": {},
+      "started_unix": 1793942225.7636838,
+      "exit_code": 0,
+      "elapsed_seconds": 92.82854962348938,
+      "log_sha256": "e22eba0c6118068c10e92dd7c30e2eb8822f40f622352ab830a34e82a9e0f1e1",
+      "passed_counts": [
+        13
+      ]
+    },
+    {
+      "log": "miri-views.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "miri",
+        "test",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix",
+        "--test",
+        "radix_views",
+        "tessera::"
+      ],
+      "environment": {},
+      "started_unix": 1793942318.5965014,
+      "exit_code": 0,
+      "elapsed_seconds": 171.29955053329468,
+      "log_sha256": "cded656b6194d24566a848304d9e2c6fd2c4de6d4f525e576e5e350d85fad1a6",
+      "passed_counts": [
+        6
+      ]
+    },
+    {
+      "log": "miri-owned.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "miri",
+        "test",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix",
+        "--test",
+        "radix_owned",
+        "tessera_owners"
+      ],
+      "environment": {},
+      "started_unix": 1793942489.90083,
+      "exit_code": 0,
+      "elapsed_seconds": 47.50115609169006,
+      "log_sha256": "5767061a6f85183ac2d236c206d57a8be5e872738f7ac1c878aa155c19f23351",
+      "passed_counts": [
+        1
+      ]
+    },
+    {
+      "log": "miri-panic_preserves_records.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "miri",
+        "test",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix",
+        "--lib",
+        "other::rust_tessera_radix::engine::tests::panic_preserves_records",
+        "--",
+        "--exact"
+      ],
+      "environment": {},
+      "started_unix": 1793942537.4059591,
+      "exit_code": 0,
+      "elapsed_seconds": 41.712403297424316,
+      "log_sha256": "72b69c5bf5e4a6bf09958f60dcb2b14c5415893594c60d2778562f53f186bbec",
+      "passed_counts": [
+        1
+      ]
+    },
+    {
+      "log": "miri-split_panic_recovers.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "miri",
+        "test",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix",
+        "--lib",
+        "other::rust_tessera_radix::engine::tests::split_panic_recovers",
+        "--",
+        "--exact"
+      ],
+      "environment": {},
+      "started_unix": 1793942579.121285,
+      "exit_code": 0,
+      "elapsed_seconds": 169.0046088695526,
+      "log_sha256": "e07d0829d376e096eacce44564bf2998ff7c550d155270295f8c86c1b9931dc6",
+      "passed_counts": [
+        1
+      ]
+    },
+    {
+      "log": "miri-tile_partition_caches_changed_keys.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "miri",
+        "test",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix",
+        "--lib",
+        "other::rust_tessera_radix::engine::tests::tile_partition_caches_changed_keys",
+        "--",
+        "--exact"
+      ],
+      "environment": {},
+      "started_unix": 1793942748.1302907,
+      "exit_code": 0,
+      "elapsed_seconds": 2.74821138381958,
+      "log_sha256": "1cca5aeb7193e01bd6ce4a1fc6d2ca9b701a27ab85f663dbad6c2b25152633cc",
+      "passed_counts": [
+        1
+      ]
+    },
+    {
+      "log": "miri-digit_plan_fits_capacity_for_sparse_and_dense_keys.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "miri",
+        "test",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix",
+        "--lib",
+        "other::rust_tessera_radix::engine::tests::digit_plan_fits_capacity_for_sparse_and_dense_keys",
+        "--",
+        "--exact"
+      ],
+      "environment": {},
+      "started_unix": 1793942750.8812685,
+      "exit_code": 0,
+      "elapsed_seconds": 2.716902732849121,
+      "log_sha256": "e62a55b1d46c7080fa888ccd503d890d77c5ea1a28332804796a0dcc174375d5",
+      "passed_counts": [
+        1
+      ]
+    },
+    {
+      "log": "clippy.log",
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "cargo",
+        "clippy",
+        "--all-targets",
+        "--features",
+        "rust_tessera_radix,rust_msd_radix"
+      ],
+      "environment": {},
+      "started_unix": 1793942753.6006196,
+      "exit_code": 0,
+      "elapsed_seconds": 5.254303216934204,
+      "log_sha256": "8be496f6d5d8ba83814f3cdec07750a1febf9e49545a2591a1ceacd687aad903",
+      "passed_counts": []
+    }
+  ]
+}

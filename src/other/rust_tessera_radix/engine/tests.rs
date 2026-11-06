@@ -176,6 +176,142 @@ fn split_panic_recovers() {
 }
 
 #[test]
+fn tile_partition_caches_changed_keys() {
+    use std::cell::Cell;
+
+    struct Borrowed<'a> {
+        id: usize,
+        slot: &'a mut usize,
+        calls: &'a Cell<usize>,
+    }
+    impl Key for Borrowed<'_> {
+        type Value = u64;
+        fn key(&self) -> u64 {
+            let call = self.calls.get() + 1;
+            self.calls.set(call);
+            u64::from(call > 64)
+        }
+    }
+    let calls = Cell::new(0);
+    let mut slots: Vec<_> = (0..64).collect();
+    let mut records: Vec<_> = slots
+        .iter_mut()
+        .enumerate()
+        .map(|(id, slot)| Borrowed {
+            id,
+            slot,
+            calls: &calls,
+        })
+        .collect();
+    let mut sorter = Sorter {
+        scratch: Vec::new(),
+        tile_bytes: TILE_BYTES,
+    };
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sorter.partition_tile(&mut records, Digit { shift: 0, width: 1 }, 1);
+    }));
+    assert!(outcome.is_ok());
+    assert_eq!(calls.get(), 64);
+    for (id, record) in records.iter_mut().enumerate() {
+        assert_eq!(record.id, id);
+        assert_eq!(*record.slot, id);
+        *record.slot += 64;
+    }
+    drop(records);
+    assert_eq!(slots, (64..128).collect::<Vec<_>>());
+}
+
+#[test]
+fn copy_scratch_reuse_keeps_initialized_records() {
+    use std::cell::Cell;
+    #[derive(Clone, Copy)]
+    struct Record<'a> {
+        id: usize,
+        payload: &'a usize,
+        calls: &'a Cell<usize>,
+        changing: &'a Cell<bool>,
+    }
+    impl Key for Record<'_> {
+        type Value = u64;
+        fn key(&self) -> u64 {
+            let call = self.calls.get() + 1;
+            self.calls.set(call);
+            if self.changing.get() {
+                u64::from(call > 64)
+            } else {
+                (self.id % 2) as u64
+            }
+        }
+    }
+    let calls = Cell::new(0);
+    let changing = Cell::new(false);
+    let payloads: Vec<_> = (0..64).collect();
+    let build = || {
+        payloads
+            .iter()
+            .enumerate()
+            .map(|(id, payload)| Record {
+                id,
+                payload,
+                calls: &calls,
+                changing: &changing,
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut sorter = Sorter {
+        scratch: Vec::new(),
+        tile_bytes: TILE_BYTES,
+    };
+    let mut warm = build();
+    sorter.sort_tile(&mut warm, 1);
+    assert_eq!(
+        calls.get(),
+        64,
+        "new scratch must use cached classification"
+    );
+    drop(warm);
+    calls.set(0);
+    changing.set(true);
+    let mut input = build();
+    sorter.sort_tile(&mut input, 1);
+    assert_eq!(
+        calls.get(),
+        128,
+        "initialized scratch must avoid another cache"
+    );
+    for row in input {
+        assert!(row.id < 64);
+        assert_eq!(*row.payload, row.id);
+    }
+}
+
+#[test]
+fn digit_plan_fits_capacity_for_sparse_and_dense_keys() {
+    for width in MIN_TILE_DIGIT_BITS..=MAX_TILE_DIGIT_BITS {
+        // Sparse single-bit digits still consume a full planning window. The
+        // six-bit spacing reaches the 22-entry bound, including a short tail.
+        let sparse = (0..128)
+            .step_by(width)
+            .fold(0, |mask, bit| mask | (1u128 << bit));
+        for varying in [u128::MAX, sparse, 1, 1 << 127] {
+            let mut digits = [Digit { shift: 0, width: 0 }; MAX_DIGITS];
+            let passes = plan_digits(varying, width, &mut digits);
+            assert!(passes <= (128usize).div_ceil(width));
+            let mut covered = 0;
+            for digit in &digits[..passes] {
+                let mask = digit.mask::<u128>();
+                assert_eq!(covered & mask, 0);
+                covered |= mask;
+            }
+            assert_eq!(covered & varying, varying);
+            if width == MIN_TILE_DIGIT_BITS && varying == sparse {
+                assert_eq!(passes, (128usize).div_ceil(MIN_TILE_DIGIT_BITS));
+            }
+        }
+    }
+}
+
+#[test]
 fn key_widths_and_tile_boundaries() {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
     // Miri interprets every byte moved, so it gets the boundary lengths that decide a
@@ -404,7 +540,10 @@ fn budgeted_insertion() {
     // Near-sorted: finishes, and payloads stay in input order inside equal keys.
     let mut records = items(&[0, 1, 1, 2, 3, 3, 4, 5]);
     let len = records.len();
-    assert_eq!(budgeted_insertion_sort(&mut records, len, Key::key), Some(0));
+    assert_eq!(
+        budgeted_insertion_sort(&mut records, len, Key::key),
+        Some(0)
+    );
     assert!(records.windows(2).all(|pair| pair[0].key <= pair[1].key));
     let ones: Vec<u32> = records
         .iter()

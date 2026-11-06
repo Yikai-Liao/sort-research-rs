@@ -13,8 +13,9 @@
 //! finished with a key comparison insertion sort.
 
 use std::cmp::Ordering;
+use std::mem::ManuallyDrop;
 
-use super::radix_support::{Key, Unsigned};
+use super::radix_support::{Key, RecordType, Unsigned};
 use super::rust_block_lsd::core as block;
 
 type SortKey<T> = <T as Key>::Value;
@@ -92,23 +93,62 @@ fn permute<T: Key>(
     buckets: usize,
 ) {
     let mut next = *borders;
+    let len = arr.len();
+    let base = arr.as_mut_ptr();
     for bucket in 0..buckets {
         while next[bucket] < borders[bucket + 1] {
-            // Pick up the record sitting at this bucket's write cursor and put
-            // it where it belongs; repeat with whatever that slot displaced.
-            let mut record = unsafe { std::ptr::read(arr.as_ptr().add(next[bucket])) };
-            let mut target = ((record.key() & mask) >> shift).to_usize();
+            // The original slot is a hole until the guard writes back the
+            // carried record, including any edits made by a panicking key.
+            let hole = unsafe { base.add(next[bucket]) };
+            let mut guard = PermutationHole {
+                record: ManuallyDrop::new(unsafe { std::ptr::read(hole) }),
+                hole,
+            };
+            let mut target = ((guard.record.key() & mask) >> shift).to_usize();
             while target != bucket {
-                let slot = next[target];
-                next[target] += 1;
-                let displaced = unsafe { std::ptr::read(arr.as_ptr().add(slot)) };
-                unsafe { std::ptr::write(arr.as_mut_ptr().add(slot), record) };
-                record = displaced;
-                target = ((record.key() & mask) >> shift).to_usize();
+                // The private caller's mask guarantees target < buckets <= 256
+                // for every key answer. Keep the record check, and remove the
+                // redundant cursor-table bounds check from the normal loop.
+                debug_assert!(target < buckets);
+                let cursor = unsafe { next.get_unchecked_mut(target) };
+                let slot = *cursor;
+                let limit = if T::COPY {
+                    len
+                } else {
+                    // SAFETY: target + 1 <= buckets < borders.len().
+                    unsafe { *borders.get_unchecked(target + 1) }
+                };
+                assert!(
+                    slot < limit,
+                    "radix key changed between histogram and permutation"
+                );
+                // SAFETY: non-Copy targets stay inside another bucket, away from
+                // the hole. Copy targets may read stale but still valid values.
+                // Both paths check the allocation boundary before access.
+                guard.record = ManuallyDrop::new(unsafe {
+                    std::ptr::replace(base.add(slot), std::ptr::read(&*guard.record))
+                });
+                *cursor += 1;
+                target = ((guard.record.key() & mask) >> shift).to_usize();
             }
-            unsafe { std::ptr::write(arr.as_mut_ptr().add(next[bucket]), record) };
+            drop(guard);
             next[bucket] += 1;
         }
+    }
+}
+
+/// Owns the record carried through a permutation cycle. Non-Copy records never
+/// read the hole; normal completion and unwinding both fill it with this owner.
+struct PermutationHole<T> {
+    record: ManuallyDrop<T>,
+    hole: *mut T,
+}
+
+impl<T> Drop for PermutationHole<T> {
+    fn drop(&mut self) {
+        // SAFETY: hole points to the cycle's original, still-unfilled slot.
+        // ManuallyDrop prevents a second drop of the owner moved back into it.
+        unsafe { std::ptr::copy_nonoverlapping(&*self.record, self.hole, 1) };
     }
 }
 

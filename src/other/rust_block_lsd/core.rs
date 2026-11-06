@@ -145,6 +145,9 @@ pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) 
     scaled.max(BLOCK_BYTES_FLOOR / record_bytes).max(1)
 }
 
+/// Receives a bucket as soon as its records are contiguous in the input.
+type Visit<'a, T> = &'a mut dyn FnMut(&mut [T]);
+
 /// One stable partition pass by the digit selected by `shift` and `radix`.
 ///
 /// The engine keeps its records scattered over physical blocks; after this call
@@ -162,7 +165,7 @@ pub(crate) fn partition_digit_with_ends<T: Key>(
     arr: &mut [T],
     radix: usize,
     shift: usize,
-    visit: &mut dyn FnMut(&mut [T]),
+    visit: Visit<'_, T>,
 ) -> Vec<usize> {
     partition_digit_inner(arr, radix, shift, Some(visit))
 }
@@ -171,7 +174,7 @@ fn partition_digit_inner<T: Key>(
     arr: &mut [T],
     radix: usize,
     shift: usize,
-    visit: Option<&mut dyn FnMut(&mut [T])>,
+    visit: Option<Visit<'_, T>>,
 ) -> Vec<usize> {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
@@ -223,7 +226,7 @@ fn partition_pass<T: Key>(
     buckets: usize,
     classify: impl Fn(&T) -> usize,
     want_ends: bool,
-    visit: Option<&mut dyn FnMut(&mut [T])>,
+    visit: Option<Visit<'_, T>>,
 ) -> Vec<usize> {
     let radix = buckets.trailing_zeros() as usize;
     let block_size = default_block_size(arr.len(), std::mem::size_of::<T>(), radix);
@@ -544,9 +547,9 @@ impl<'a, T> Sorter<'a, T> {
         (buckets, vec![1; self.bucket_count])
     }
 
-    /// Rebuild the logical block order from the order the buckets filled, and
-    /// record where each bucket's partially filled last block sits.
-    /// Rebuild the block order and return each bucket's cumulative record end.
+    /// Rebuild the logical block order from the order the buckets filled,
+    /// record each bucket's partially filled last block, and return each
+    /// bucket's cumulative record end.
     fn finish_pass(
         &mut self,
         buckets: &[BucketWriter<T>],
@@ -692,7 +695,7 @@ impl<'a, T> Sorter<'a, T> {
     fn compact_with(
         &mut self,
         ends: &[usize],
-        mut visit: Option<&mut dyn FnMut(&mut [T])>,
+        mut visit: Option<Visit<'_, T>>,
     ) -> Option<PanicPayload> {
         // Sorting is finished. Reuse the output buffer as the inverse map:
         // physical block ID -> position in block_order.
