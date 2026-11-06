@@ -18,7 +18,7 @@ LLVM-MCA 19 的 Skylake-AVX512 模型从原 window、checked range 与 unchecked
 | singleton 等值段修复 | 5.007 | 5.007 | 每记录 |
 | 正常 scatter | 13.023 | 13.023 | 每 4 记录；两版 BRT 11.3 |
 
-scatter 片段少了 spill，但模型吞吐不变。模型不包括真实 CPU 的缓存和代码布局，不能据此解释整体 ELF 的实测差异。
+scatter 片段少了 spill，但模型吞吐不变。模型不包括真实 CPU 的缓存和代码布局。
 
 ## Probe 隔离与后续候选
 
@@ -32,6 +32,6 @@ scatter 片段少了 spill，但模型吞吐不变。模型不包括真实 CPU �
 
 Probe/try_fold 候选在正式冻结前只修改了两处注释。独立 ELF 审计确认最终 `c4196d51…` 与前一 ELF `764f6b42…` 的整个 `.text` 完全一致，Probe 和 confirm 的实际机器指令也与 MCA 输入逐字节一致；见[验证记录](final-probe-mca/analysis.json)。
 
-新候选的 Probe 模型为每采样对 15 指令、17 uops、4.011 周期、BRT 3.0；原 window 和 fold-window 均为 18 指令、20 uops、4.510 周期、BRT 3.5。`try_fold` 消除了 `Chain::is_sorted_by` helper 调用，confirm 扫描进入 root 内联，但模型未显示吞吐收益：fold 两版均为 2.003 周期/记录，原 window 为 1.672、旧 unchecked 为 1.631，均为 7 指令、7 uops、BRT 1.2。模型不能证明内联边界变化是整体运行时间差异的全部原因；[模型输入与结果](fold-probe-mca/analysis.json)供复核。
+新候选的 Probe 模型为每采样对 15 指令、17 uops、4.011 周期、BRT 3.0；原 window 和 fold-window 均为 18 指令、20 uops、4.510 周期、BRT 3.5。`try_fold` 消除了 `Chain::is_sorted_by` helper 调用，confirm 扫描进入 root 内联，但模型未显示吞吐收益：fold 两版均为 2.003 周期/记录，原 window 为 1.672、旧 unchecked 为 1.631，均为 7 指令、7 uops、BRT 1.2。[模型输入与结果](fold-probe-mca/analysis.json)供复核；整体运行时间差异的原因未确证。
 
 正式冻结版的长复查与 15 block 随机专项结果见[最终报告](../README.md#最终性能对照)和[随机汇总](sparse-final-randomized-summary.csv)。长复查 AB 为 1.05008，随机专项为 1.01520；根因未确证。

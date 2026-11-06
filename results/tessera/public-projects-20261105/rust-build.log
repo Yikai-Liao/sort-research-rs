@@ -1,0 +1,17 @@
+warning: use of deprecated struct `zipf::ZipfDistribution`: prefer rand_distr::Zipf
+  --> /root/code/sort-research-rs/sort_test_tools/src/patterns.rs:10:11
+   |
+10 | use zipf::ZipfDistribution;
+   |           ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated struct `zipf::ZipfDistribution`: prefer rand_distr::Zipf
+  --> /root/code/sort-research-rs/sort_test_tools/src/patterns.rs:51:20
+   |
+51 |         let dist = ZipfDistribution::new(len, f64::from_bits(exponent_bits)).unwrap();
+   |                    ^^^^^^^^^^^^^^^^
+
+warning: `sort_test_tools` (lib) generated 2 warnings
+   Compiling tessera-public-project-screen v0.1.0 (/root/code/sort-research-rs/results/tessera/public-projects-20261105)
+    Finished `release` profile [optimized + debuginfo] target(s) in 9.60s

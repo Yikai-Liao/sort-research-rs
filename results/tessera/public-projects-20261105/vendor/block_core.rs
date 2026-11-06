@@ -1,0 +1,1032 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Copyright (c) 2025, 2026 Robert Clausecker <clausecker@zib.de>
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+//
+// 1. Redistributions of source code must retain the above copyright
+//    notice, this list of conditions and the following disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright
+//    notice, this list of conditions and the following disclaimer in the
+//    documentation and/or other materials provided with the distribution.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+// IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+// TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+// TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+
+//! Stable block LSD radix sort adapted from Robert Clausecker's
+//! BSD-2-Clause C implementation, `radixsort_permuted.c`.
+//! Reference revision: f69e816c3cd79d312cd67aea5b9cf1c338c1b371.
+//! <https://github.com/clausecker/radsort/blob/f69e816c3cd79d312cd67aea5b9cf1c338c1b371/radixsort_permuted.c>
+//! <https://arxiv.org/abs/2607.05302>
+//!
+//! Ownership invariant: the active block sequence contains exactly one logical
+//! owner of every record. Other physical copies are stale bytes, never dropped
+//! or borrowed as records. Key extraction borrows only a live source record.
+//! Scratch is MaybeUninit<T>; before returning or resuming a key panic, compact
+//! moves every live owner back into the input slice. Payloads need no Copy/Clone.
+
+use super::key::{Key, Unsigned};
+use std::{marker::PhantomData, mem::MaybeUninit, ptr};
+
+type SortKey<T> = <T as Key>::Value;
+type PanicPayload = Box<dyn std::any::Any + Send>;
+
+// Logical input and output block cursors for the current pass.
+struct ScatterPosition {
+    input: usize,
+    output: usize,
+}
+
+/// # Block LSD stable sort
+///
+/// Sort by converted radix key, preserving the order of equal keys.
+/// `radix` is the number of bits per digit (1..=12); 8 is recommended. The
+/// block size is chosen from the input length and element size.
+///
+/// For n elements of s bytes and R = 2^radix buckets, the block size in elements
+/// is `max(1, ceil(4 * sqrt(9*n / (2*R*s))), floor(1024/s))`. This balances the
+/// block scratch and descriptor storage with an approximately 1 KiB block
+/// floor. The coefficient is tuned for radix 8, not proven optimal.
+///
+/// This single-threaded sort uses O(sqrt(n)) auxiliary space for fixed radix
+/// and record size. Nonconstant inputs use the block backend at every size;
+/// constant digits are skipped.
+///
+/// # Panics
+///
+/// Panics on invalid parameters or unrepresentable allocation sizes or block
+/// indices. If key extraction panics, the original record set is retained,
+/// including payloads, and its order is unspecified.
+///
+/// # Example
+///
+/// ```
+/// use sort_research_rs::other::rust_block_lsd::sort;
+/// let mut arr = [42u32, 7, 42, 0, u32::MAX];
+/// sort(&mut arr);
+/// assert_eq!(arr, [0, 7, 42, 42, u32::MAX]);
+/// ```
+pub fn sort<T>(arr: &mut [T], radix: usize)
+where
+    T: Key,
+{
+    assert!((1..=12).contains(&radix), "radix must be in 1..=12");
+    let record_bytes = std::mem::size_of::<T>();
+    if arr.len() < 2 || record_bytes == 0 {
+        return;
+    }
+    sort_with_block_size(
+        arr,
+        radix,
+        default_block_size(arr.len(), record_bytes, radix),
+    );
+}
+
+/// Sorts with an explicit block size. `sort` derives one from the input; the
+/// reference implementation uses a fixed 512. Exposed so tests and benchmarks can
+/// pin the configuration instead of guessing it from `n`.
+pub fn sort_with_block_size<T>(arr: &mut [T], radix: usize, block_size: usize)
+where
+    T: Key,
+{
+    let varying = varying_key_bits::<T>(arr);
+    if varying == 0 {
+        return;
+    }
+    // The C reference has four byte passes. Derive masks from the converted
+    // key width to handle wide keys and partial digits without truncation.
+    let bits = T::Value::BITS;
+    let range = 1usize << radix;
+    let levels = bits.div_ceil(radix);
+    let mut sorter = Sorter::new(arr, range, block_size);
+    for level in 0..levels {
+        let shift = level * radix;
+        let width = radix.min(bits - shift);
+        let mask = T::Value::from_usize((1usize << width) - 1) << T::Value::from_usize(shift);
+        if varying & mask.to_u128() != 0 {
+            if let Some(payload) = sorter.step(mask, shift) {
+                // Finish materializing a permutation before resuming the user's
+                // panic. This uses existing blocks, without an O(n) backup.
+                sorter.compact();
+                std::panic::resume_unwind(payload);
+            }
+        }
+    }
+    sorter.compact();
+}
+
+/// Balances 2*R*b*record_bytes scratch against about 9*n/b bytes of block tables.
+/// Four times the minimum-cost block size reduces rollover work; a 1 KiB floor
+/// limits metadata for small records.
+pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) -> usize {
+    const SQRT_SCALE: f64 = 4.0;
+    const BLOCK_BYTES_FLOOR: usize = 1024;
+    let range = 1usize << radix;
+    let descriptor_bytes = 9.0 * len as f64;
+    let scratch_bytes_per_element = 2.0 * range as f64 * record_bytes as f64;
+    let balanced = (descriptor_bytes / scratch_bytes_per_element).sqrt();
+    // Favor larger blocks to reduce descriptor and rollover work, at the cost
+    // of more scratch. The factor 4 is tuned for radix 8. A roughly 1 KiB floor
+    // limits bookkeeping when the square-root optimum gives tiny blocks;
+    // records larger than that still need at least one element per block.
+    let scaled = (SQRT_SCALE * balanced).ceil() as usize;
+    scaled.max(BLOCK_BYTES_FLOOR / record_bytes).max(1)
+}
+
+/// One stable partition pass by the digit selected by `shift` and `radix`.
+///
+/// The engine keeps its records scattered over physical blocks; after this call
+/// the slice again holds them contiguously, ordered by that digit and stable
+/// within each bucket. Used by the MSD front end of the hybrid sorts.
+#[cfg(feature = "rust_tessera_radix")]
+pub(crate) fn partition_digit<T: Key>(arr: &mut [T], radix: usize, shift: usize) {
+    partition_digit_inner(arr, radix, shift, None);
+}
+
+/// Returns cumulative bucket ends. Visits each nonempty bucket after materialization.
+/// Slices shorter than two records and zero-sized records return no ends.
+#[cfg(feature = "rust_tessera_radix")]
+pub(crate) fn partition_digit_with_ends<T: Key>(
+    arr: &mut [T],
+    radix: usize,
+    shift: usize,
+    visit: &mut dyn FnMut(&mut [T]),
+) -> Vec<usize> {
+    partition_digit_inner(arr, radix, shift, Some(visit))
+}
+
+fn partition_digit_inner<T: Key>(
+    arr: &mut [T],
+    radix: usize,
+    shift: usize,
+    visit: Option<&mut dyn FnMut(&mut [T])>,
+) -> Vec<usize> {
+    let record_bytes = std::mem::size_of::<T>();
+    if arr.len() < 2 || record_bytes == 0 {
+        return Vec::new();
+    }
+    assert!((1..=12).contains(&radix), "radix must be in 1..=12");
+    let bits = T::Value::BITS;
+    assert!(shift < bits, "digit shift outside the key");
+    let width = radix.min(bits - shift);
+    let shift = T::Value::from_usize(shift);
+    let mask = (T::Value::from_usize((1usize << width) - 1)) << shift;
+    partition_pass(
+        arr,
+        1usize << radix,
+        move |record| ((record.key() & mask) >> shift).to_usize(),
+        visit.is_some(),
+        visit,
+    )
+}
+
+/// Returns cumulative bucket ends, clamping classifications to the last bucket.
+/// Short and zero-sized slices return zero ends.
+#[cfg(feature = "rust_tessera_radix")]
+pub(crate) fn partition_by<T: Key>(
+    arr: &mut [T],
+    buckets: usize,
+    classify: impl Fn(&T) -> usize,
+) -> Vec<usize> {
+    let record_bytes = std::mem::size_of::<T>();
+    if arr.len() < 2 || record_bytes == 0 {
+        return vec![0; buckets];
+    }
+    assert!(
+        buckets.is_power_of_two() && (2..=4096).contains(&buckets),
+        "bucket count must be a power of two in 2..=4096"
+    );
+    let last = buckets - 1;
+    partition_pass(
+        arr,
+        buckets,
+        move |record| classify(record).min(last),
+        true,
+        None,
+    )
+}
+
+fn partition_pass<T: Key>(
+    arr: &mut [T],
+    buckets: usize,
+    classify: impl Fn(&T) -> usize,
+    want_ends: bool,
+    visit: Option<&mut dyn FnMut(&mut [T])>,
+) -> Vec<usize> {
+    let radix = buckets.trailing_zeros() as usize;
+    let block_size = default_block_size(arr.len(), std::mem::size_of::<T>(), radix);
+    let mut sorter = Sorter::new(arr, buckets, block_size);
+    let (panic, ends) = sorter.step_with_ends(classify, want_ends);
+    if let Some(payload) = panic {
+        // Same recovery contract as `partition_digit`.
+        sorter.compact();
+        std::panic::resume_unwind(payload);
+    }
+    if let Some(payload) = sorter.compact_with(&ends, visit) {
+        std::panic::resume_unwind(payload);
+    }
+    ends
+}
+
+pub(crate) fn varying_key_bits<T: Key>(arr: &[T]) -> u128 {
+    let dummy = &arr[0];
+    // The C reference always scatters every digit. Sparse and repeated keys
+    // would pay for passes that cannot change their order. Union/intersection
+    // identifies those digits without allocating a histogram or adding a
+    // BitXor bound to Unsigned.
+    let mut union = dummy.key();
+    let mut intersection = union;
+    let full_mask = u128::MAX >> (128 - T::Value::BITS);
+    // A full pre-scan adds work to wide random inputs. Stop after this prefix
+    // if every key bit already varies; otherwise use one uninterrupted,
+    // vectorizable scan for sparse or skewed keys. The reference implementation
+    // has no such scan and always scatters every digit; this pass turns whole
+    // passes into no-ops on constant digits, and costs one early-exiting read
+    // of the first 1025 records otherwise.
+    let boundary = arr.len().min(1025);
+    for item in &arr[1..boundary] {
+        let key = item.key();
+        union |= key;
+        intersection = intersection & key;
+    }
+    if union.to_u128() ^ intersection.to_u128() != full_mask {
+        for item in &arr[boundary..] {
+            let key = item.key();
+            union |= key;
+            intersection = intersection & key;
+        }
+    }
+    union.to_u128() ^ intersection.to_u128()
+}
+
+/// Branch hint for a condition that is almost never true, without a nightly
+/// feature. The cold marker tells the optimiser to keep this path out of line,
+/// so the hot loop falls through on the common case instead of taking a jump
+/// over the rare one. Same shape as the `branches` crate.
+#[cold]
+#[inline(never)]
+fn cold_path() {}
+
+#[inline]
+fn unlikely(condition: bool) -> bool {
+    if condition {
+        cold_path();
+    }
+    condition
+}
+
+#[derive(Clone, Copy)]
+struct PartialBlock {
+    order_index: usize,
+    // Only this prefix contains initialized records.
+    len: usize,
+}
+
+struct BucketWriter<T> {
+    next: *mut T,
+    end: *mut T,
+}
+
+// Unlike C's fixed integer pairs, generic T may contain invalid zero bit patterns.
+// Reserve uninitialized slots and read only recorded live prefixes. The borrow
+// marker retains exclusive input access while raw pointers address the two fixed
+// allocations; physical IDs name scratch first, then full input blocks.
+struct BlockStorage<'a, T> {
+    input: *mut T,
+    input_len: usize,
+    block_size: usize,
+    scratch_blocks: usize,
+    block_count: usize,
+    scratch: Vec<MaybeUninit<T>>,
+    input_borrow: PhantomData<&'a mut [T]>,
+}
+
+impl<'a, T> BlockStorage<'a, T> {
+    fn new(input: &'a mut [T], bucket_count: usize, block_size: usize) -> Self {
+        let scratch_blocks = 2 * bucket_count;
+        let full_blocks = input.len() / block_size;
+        let block_count = full_blocks
+            .checked_add(scratch_blocks)
+            .expect("block count overflow");
+        assert!(block_count <= u32::MAX as usize);
+        let scratch_len = scratch_blocks
+            .checked_mul(block_size)
+            .expect("scratch size overflow");
+        let mut scratch = Vec::with_capacity(scratch_len);
+        scratch.resize_with(scratch_len, MaybeUninit::<T>::uninit);
+        // The input tail has no full physical block. Start it in scratch;
+        // the first bucket_count scratch blocks remain free for output.
+        let tail_len = input.len() % block_size;
+        // SAFETY: the source has tail_len initialized records and the disjoint
+        // scratch destination has room for at least that many records.
+        unsafe {
+            ptr::copy_nonoverlapping(
+                input.as_ptr().add(full_blocks * block_size),
+                scratch
+                    .as_mut_ptr()
+                    .cast::<T>()
+                    .add(bucket_count * block_size),
+                tail_len,
+            );
+        }
+        Self {
+            input: input.as_mut_ptr(),
+            input_len: input.len(),
+            block_size,
+            scratch_blocks,
+            block_count,
+            scratch,
+            input_borrow: PhantomData,
+        }
+    }
+
+    fn block_ptr(&mut self, physical: usize) -> *mut T {
+        assert!(physical < self.block_count);
+        // SAFETY: the bounds check selects a full block in one of the two
+        // allocations, which stay alive and are never resized during sorting.
+        unsafe {
+            if physical < self.scratch_blocks {
+                self.scratch
+                    .as_mut_ptr()
+                    .cast::<T>()
+                    .add(physical * self.block_size)
+            } else {
+                self.input
+                    .add((physical - self.scratch_blocks) * self.block_size)
+            }
+        }
+    }
+}
+
+// At pass boundaries, block_order maps logical order to physical storage.
+// Its bucket_count..active_blocks_end range holds the current record sequence;
+// the prefix and suffix are free blocks. partial_blocks records short prefixes.
+struct Sorter<'a, T> {
+    blocks: BlockStorage<'a, T>,
+    bucket_count: usize,
+    block_order: Vec<u32>,
+    next_block_order: Vec<u32>,
+    // Bucket IDs for output blocks, used to build next_block_order after scatter.
+    // u16 holds bucket IDs for digit widths up to 12.
+    bucket_ids: Vec<u16>,
+    partial_blocks: Vec<PartialBlock>,
+    active_blocks_end: usize,
+    input_materialized: bool,
+}
+
+impl<'a, T> Sorter<'a, T> {
+    fn new(input: &'a mut [T], bucket_count: usize, block_size: usize) -> Self {
+        let full_blocks = input.len() / block_size;
+        let tail_len = input.len() % block_size;
+        let blocks = BlockStorage::new(input, bucket_count, block_size);
+        let active_blocks_end = bucket_count + full_blocks + 1;
+        let mut block_order = vec![0; blocks.block_count];
+        for (i, block) in block_order.iter_mut().enumerate() {
+            *block = if i < bucket_count {
+                i
+            } else if i < active_blocks_end - 1 {
+                i + bucket_count
+            } else {
+                i - (active_blocks_end - 1) + bucket_count
+            } as u32;
+        }
+        let mut partial_blocks = vec![
+            PartialBlock {
+                order_index: blocks.block_count,
+                len: 0
+            };
+            bucket_count
+        ];
+        partial_blocks[0] = PartialBlock {
+            order_index: active_blocks_end - 1,
+            len: tail_len,
+        };
+        let block_count = blocks.block_count;
+        Self {
+            blocks,
+            bucket_count,
+            block_order,
+            next_block_order: vec![0; block_count],
+            bucket_ids: vec![0; block_count],
+            partial_blocks,
+            active_blocks_end,
+            input_materialized: false,
+        }
+    }
+
+    fn next_block_len(&self, logical: usize, partial: &mut usize) -> usize {
+        if *partial < self.partial_blocks.len()
+            && self.partial_blocks[*partial].order_index == logical
+        {
+            let length = self.partial_blocks[*partial].len;
+            *partial += 1;
+            length
+        } else {
+            self.blocks.block_size
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    fn validate(&self) {
+        let mut seen = vec![false; self.block_order.len()];
+        for &physical in &self.block_order {
+            assert!(!seen[physical as usize]);
+            seen[physical as usize] = true;
+        }
+        assert!(self.active_blocks_end <= self.block_order.len());
+        assert!(self
+            .partial_blocks
+            .windows(2)
+            .all(|p| p[0].order_index < p[1].order_index));
+        assert!(self
+            .partial_blocks
+            .iter()
+            .all(|p| p.order_index >= self.bucket_count
+                && p.order_index < self.active_blocks_end
+                && p.len < self.blocks.block_size));
+        let mut partial = 0;
+        let total: usize = (self.bucket_count..self.active_blocks_end)
+            .map(|i| self.next_block_len(i, &mut partial))
+            .sum();
+        assert_eq!(total, self.blocks.input_len);
+    }
+
+    /// One digit pass: scatter every record into its bucket, then rebuild the
+    /// block order from the order the buckets filled.
+    fn step(&mut self, mask: SortKey<T>, shift: usize) -> Option<PanicPayload>
+    where
+        T: Key,
+    {
+        let shift = T::Value::from_usize(shift);
+        self.step_with_ends(
+            move |record| ((record.key() & mask) >> shift).to_usize(),
+            false,
+        )
+        .0
+    }
+
+    /// Scatters one pass, optionally returning cumulative ends for recursion.
+    fn step_with_ends<F: FnMut(&T) -> usize>(
+        &mut self,
+        classify: F,
+        want_ends: bool,
+    ) -> (Option<PanicPayload>, Vec<usize>)
+    where
+        T: Key,
+    {
+        let (mut buckets, mut counts) = self.begin_pass();
+        let mut position = ScatterPosition {
+            input: self.bucket_count,
+            output: self.bucket_count,
+        };
+        // The classifier is moved into the closure, not borrowed: a digit closure
+        // keeps its mask and shift in registers only when the scatter owns it. A
+        // &mut here cost 40 % on a digit-only sort (sparse8, 10M).
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.scatter(&mut buckets, &mut counts, &mut position, 0, classify);
+        }))
+        .err();
+        if panic.is_some() {
+            // Reconstruct the offset in the current input block: records written
+            // across all buckets minus records in fully consumed input blocks.
+            let written: usize = buckets
+                .iter()
+                .zip(&counts)
+                .map(|(bucket, &blocks)| {
+                    // SAFETY: both pointers delimit the same reserved block.
+                    let free = unsafe { bucket.end.offset_from(bucket.next) as usize };
+                    blocks * self.blocks.block_size - free
+                })
+                .sum();
+            let mut partial = 0;
+            let before: usize = (self.bucket_count..position.input)
+                .map(|input| self.next_block_len(input, &mut partial))
+                .sum();
+            let offset = written - before;
+            // Do not call a failed extractor again. Appending every unread
+            // record to bucket zero completes a valid (unsorted) pass. Recycling
+            // still follows the original read-before-reserve protocol.
+            self.scatter(&mut buckets, &mut counts, &mut position, offset, |_| 0);
+        }
+        self.active_blocks_end = position.output;
+        let ends = self.finish_pass(&buckets, counts, want_ends);
+        #[cfg(debug_assertions)]
+        self.validate();
+        (panic, ends)
+    }
+
+    /// Reserve the first `bucket_count` free blocks, one per bucket, and give
+    /// every bucket an empty write cursor. Counts start at one because that
+    /// block is already assigned to the bucket.
+    fn begin_pass(&mut self) -> (Vec<BucketWriter<T>>, Vec<usize>) {
+        let mut buckets = Vec::with_capacity(self.bucket_count);
+        for i in 0..self.bucket_count {
+            let out = self.blocks.block_ptr(self.block_order[i] as usize);
+            // SAFETY: block_ptr() returns storage for block_size elements.
+            buckets.push(BucketWriter {
+                next: out,
+                end: unsafe { out.add(self.blocks.block_size) },
+            });
+            self.bucket_ids[i] = i as u16;
+        }
+        (buckets, vec![1; self.bucket_count])
+    }
+
+    /// Rebuild the logical block order from the order the buckets filled, and
+    /// record where each bucket's partially filled last block sits.
+    /// Rebuild the block order and return each bucket's cumulative record end.
+    fn finish_pass(
+        &mut self,
+        buckets: &[BucketWriter<T>],
+        counts: Vec<usize>,
+        want_ends: bool,
+    ) -> Vec<usize> {
+        // Record boundaries are not block boundaries: a bucket's last block is
+        // usually partial, and a caller that wants to recurse on bucket slices
+        // needs the record offsets. The cursor knows how much of that last
+        // block is free, so this is one pass over the bucket table, not a pass
+        // over the records.
+        let mut record_ends = if want_ends {
+            Vec::with_capacity(counts.len())
+        } else {
+            Vec::new()
+        };
+        if want_ends {
+            let mut records = 0usize;
+            for (bucket, &blocks) in buckets.iter().zip(counts.iter()) {
+                let free = unsafe { bucket.end.offset_from(bucket.next) as usize };
+                records += blocks * self.blocks.block_size - free;
+                record_ends.push(records);
+            }
+        }
+        // A separate starts Vec would allocate once per digit. Counts are dead
+        // after scatter, so reuse their allocation for prefix offsets and then
+        // advance those offsets while rebuilding the block order.
+        let mut starts = counts;
+        let mut start = self.bucket_count;
+        for count in &mut starts {
+            let next = start + *count;
+            *count = start;
+            start = next;
+        }
+        for i in 0..self.active_blocks_end {
+            let b = self.bucket_ids[i] as usize;
+            let j = starts[b];
+            starts[b] += 1;
+            self.next_block_order[j] = self.block_order[i];
+            let base = self.blocks.block_ptr(self.block_order[i] as usize);
+            // SAFETY: next/end belong to the same block-sized allocation.
+            if unsafe { base.add(self.blocks.block_size) } == buckets[b].end {
+                self.partial_blocks[b] = PartialBlock {
+                    order_index: j,
+                    len: unsafe { buckets[b].next.offset_from(base) as usize },
+                };
+            }
+        }
+        assert!(self.active_blocks_end + self.bucket_count <= self.block_order.len());
+        self.next_block_order[..self.bucket_count].copy_from_slice(
+            &self.block_order[self.active_blocks_end..self.active_blocks_end + self.bucket_count],
+        );
+        self.next_block_order[self.active_blocks_end + self.bucket_count..]
+            .copy_from_slice(&self.block_order[self.active_blocks_end + self.bucket_count..]);
+        self.active_blocks_end += self.bucket_count;
+        std::mem::swap(&mut self.block_order, &mut self.next_block_order);
+        record_ends
+    }
+
+    // Pass setup and block reordering need state that scatter does not.
+    // Keep their optimization regions separate so that state does not force
+    // digit masks and bucket cursors out of registers in the hot loop.
+    #[inline(never)]
+    fn scatter<F: FnMut(&T) -> usize>(
+        &mut self,
+        buckets: &mut [BucketWriter<T>],
+        counts: &mut [usize],
+        position: &mut ScatterPosition,
+        first_offset: usize,
+        mut classify: F,
+    ) {
+        let mut begin = first_offset;
+        let mut partial = self
+            .partial_blocks
+            .partition_point(|p| p.order_index < position.input);
+        while position.input < self.active_blocks_end {
+            let input = position.input;
+            let source = self.blocks.block_ptr(self.block_order[input] as usize);
+            let length = self.next_block_len(input, &mut partial);
+            let mut write = |offset: usize| {
+                // SAFETY: only the initialized, unread suffix is read. Blocks
+                // become output only after all of their input records are read.
+                // Borrow the actual live record. Never materialize a second T:
+                // it may own a String, Box, Rc, or other non-Copy payload.
+                // This borrow ends before the bitwise move below.
+                let b = classify(unsafe { &*source.add(offset) });
+                // SAFETY: bucket_count is 1 << radix and mask keeps the width
+                // bits below radix, so the index is in bounds; the check would
+                // otherwise run once per record in the hot loop.
+                let bucket = unsafe { buckets.get_unchecked_mut(b) };
+                let next = bucket.next;
+                let end = bucket.end;
+                // SAFETY: next is an unused cell of a reserved output block;
+                // source and destination may overlap, so use ptr::copy.
+                let next = unsafe {
+                    ptr::copy(source.add(offset), next, 1);
+                    next.add(1)
+                };
+                bucket.next = next;
+                if unlikely(next == end) {
+                    debug_assert!(position.output <= input);
+                    let out = self
+                        .blocks
+                        .block_ptr(self.block_order[position.output] as usize);
+                    *bucket = BucketWriter {
+                        next: out,
+                        end: unsafe { out.add(self.blocks.block_size) },
+                    };
+                    self.bucket_ids[position.output] = b as u16;
+                    counts[b] += 1;
+                    position.output += 1;
+                }
+            };
+            // Four records per bucket-cursor reload. Measured cheaper than one
+            // record at a time on 8 byte records; the size scaling keeps the
+            // reload amortization for wider records without spilling cursors.
+            let group =
+                (4 * std::mem::size_of::<usize>() / std::mem::size_of::<T>().max(1)).clamp(1, 4);
+            let complete = begin + (length - begin) / group * group;
+            for start in (begin..complete).step_by(group) {
+                for offset in 0..group {
+                    write(start + offset);
+                }
+            }
+            for offset in complete..length {
+                write(offset);
+            }
+            position.input += 1;
+            begin = 0;
+        }
+    }
+
+    fn compact(&mut self) {
+        let _ = self.compact_with(&[], None);
+    }
+
+    /// Materializes the active sequence into input. When bucket ends are given,
+    /// `visit` is called on each bucket as soon as its records are contiguous in
+    /// input, so a leaf can consume the bucket while it is still cache-hot.
+    /// A callback panic does not interrupt materialization: the remaining
+    /// buckets are copied without callbacks and the payload is returned after
+    /// the input slice is a complete permutation again.
+    fn compact_with(
+        &mut self,
+        ends: &[usize],
+        mut visit: Option<&mut dyn FnMut(&mut [T])>,
+    ) -> Option<PanicPayload> {
+        // Sorting is finished. Reuse the output buffer as the inverse map:
+        // physical block ID -> position in block_order.
+        let mut block_positions = std::mem::take(&mut self.next_block_order);
+        for i in 0..self.block_order.len() {
+            block_positions[self.block_order[i] as usize] = i as u32;
+        }
+        let input_ptr = self.blocks.input;
+        let mut remaining = ends;
+        let mut begin = 0;
+        let mut callback_panic = None;
+        let mut visit_due = |written: usize| {
+            let Some(callback) = visit.take() else {
+                return;
+            };
+            while let Some((&end, tail)) = remaining.split_first() {
+                if end > written {
+                    break;
+                }
+                if end > begin {
+                    // SAFETY: this bucket is fully materialized and no longer a
+                    // copy source; its input slice does not overlap scratch.
+                    let bucket = unsafe {
+                        std::slice::from_raw_parts_mut(input_ptr.add(begin), end - begin)
+                    };
+                    if let Err(payload) =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(bucket)))
+                    {
+                        callback_panic = Some(payload);
+                        return;
+                    }
+                }
+                begin = end;
+                remaining = tail;
+            }
+            visit = Some(callback);
+        };
+        let mut start = 0;
+        let mut partial = 0;
+        let mut free_logical = 0;
+        let mut free_physical = self.block_order[free_logical] as usize;
+        for destination in self.blocks.scratch_blocks..self.block_order.len() {
+            let input = destination - self.bucket_count;
+            let mut output = block_positions[destination] as usize;
+            let source = self.block_order[input] as usize;
+            if output > input && output < self.active_blocks_end {
+                debug_assert!(
+                    free_logical < self.bucket_count || free_logical >= self.active_blocks_end
+                );
+                let from = self.blocks.block_ptr(destination);
+                let to = self.blocks.block_ptr(free_physical);
+                // SAFETY: both physical IDs are valid full blocks. Free block
+                // receives live output which would otherwise be overwritten.
+                // ptr::copy preserves uninitialized padding without reading it
+                // as T; later element reads use only the live prefix.
+                unsafe {
+                    ptr::copy(from, to, self.blocks.block_size);
+                }
+                self.block_order[free_logical] = destination as u32;
+                self.block_order[output] = free_physical as u32;
+                block_positions[free_physical] = output as u32;
+                block_positions[destination] = free_logical as u32;
+                free_logical = output;
+                output = block_positions[destination] as usize;
+            }
+            let length = self.next_block_len(input, &mut partial);
+            let from = self.blocks.block_ptr(source);
+            assert!(start + length <= self.blocks.input_len);
+            // Completed partials can only shorten preceding output: start <=
+            // (destination - scratch_blocks) * block_size, and
+            // start + length never exceeds this destination block's end.
+            // Any still-live destination block was evacuated above; earlier
+            // physical destinations are already consumed.
+            // SAFETY: length valid source elements are moved into the next
+            // logical output interval. ptr::copy permits overlap as memmove.
+            unsafe {
+                ptr::copy(from, self.blocks.input.add(start), length);
+            }
+            self.block_order[input] = destination as u32;
+            self.block_order[output] = source as u32;
+            block_positions[source] = output as u32;
+            block_positions[destination] = input as u32;
+            start += length;
+            visit_due(start);
+            if input != output {
+                free_physical = source;
+                free_logical = output;
+            }
+        }
+        for input in self.block_order.len() - self.bucket_count..self.active_blocks_end {
+            let source = self.block_order[input] as usize;
+            assert!(source < self.blocks.scratch_blocks);
+            let length = self.next_block_len(input, &mut partial);
+            let from = self.blocks.block_ptr(source);
+            assert!(start + length <= self.blocks.input_len);
+            unsafe {
+                ptr::copy(from, self.blocks.input.add(start), length);
+            }
+            start += length;
+            visit_due(start);
+        }
+        visit_due(start);
+        debug_assert!(visit.is_none() || remaining.is_empty());
+        assert_eq!(start, self.blocks.input_len);
+        self.input_materialized = true;
+        callback_panic
+    }
+}
+
+impl<T> Drop for Sorter<'_, T> {
+    fn drop(&mut self) {
+        // At pass boundaries the directory is a complete owning sequence.
+        // Restore it even if unwinding starts outside key extraction (for
+        // example an allocation failure with an unwinding error handler).
+        if !self.input_materialized {
+            self.compact();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn digit_widths_and_block_edges() {
+        // Miri interprets every instruction and every 8-bit pass fills
+        // 2*256*block_size bucket slots, so it runs a reduced shape: a partial
+        // final digit (3), a full byte digit (8), one small block, and inputs
+        // up to one block plus one.
+        let radixes: &[usize] = if cfg!(miri) {
+            &[3, 8]
+        } else {
+            &[1, 2, 3, 4, 5, 6, 7, 8]
+        };
+        let block_sizes: &[usize] = if cfg!(miri) {
+            &[3]
+        } else {
+            &[1, 3, 17, 64, 128]
+        };
+        let max_len = if cfg!(miri) { 129 } else { 1025 };
+        for &radix in radixes {
+            for &block_size in block_sizes {
+                for len in [
+                    2,
+                    block_size * 2 - 1,
+                    block_size * 2,
+                    block_size * 2 + 1,
+                    max_len,
+                ] {
+                    let mut input: Vec<u128> = (0..len)
+                        .map(|i| {
+                            // Exercise low and high bits, including a partial final digit.
+                            let x = (i as u128).wrapping_mul(0x9e3779b97f4a7c15);
+                            (x << 64) | (x.rotate_left(17) % 311)
+                        })
+                        .collect();
+                    let mut expected = input.clone();
+                    expected.sort();
+                    sort_with_block_size(&mut input, radix, block_size);
+                    assert_eq!(
+                        input, expected,
+                        "radix={radix}, block={block_size}, len={len}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unwind_preserves_owners() {
+        use std::{cell::Cell, rc::Rc};
+        struct Owned {
+            key: u64,
+            id: usize,
+            payload: Box<usize>,
+            drops: Rc<Cell<usize>>,
+        }
+        impl Key for Owned {
+            type Value = u64;
+            fn key(&self) -> u64 {
+                self.key
+            }
+        }
+        impl Drop for Owned {
+            fn drop(&mut self) {
+                self.drops.set(self.drops.get() + 1);
+            }
+        }
+        let drops = Rc::new(Cell::new(0));
+        let mut data: Vec<_> = (0..1025)
+            .map(|id| Owned {
+                key: (id % 7) as u64,
+                id,
+                payload: Box::new(id),
+                drops: drops.clone(),
+            })
+            .collect();
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut sorter = Sorter::new(&mut data, 256, 3);
+            assert!(sorter.step(255, 0).is_none());
+            std::panic::panic_any(17usize);
+        }))
+        .unwrap_err();
+        assert_eq!(panic.downcast_ref::<usize>(), Some(&17));
+        assert_eq!(drops.get(), 0);
+        data.sort_unstable_by_key(|v| v.id);
+        assert!(data
+            .iter()
+            .enumerate()
+            .all(|(i, v)| v.id == i && *v.payload == i));
+        drop(data);
+        assert_eq!(drops.get(), 1025);
+    }
+
+    #[test]
+    fn float_total_order() {
+        macro_rules! check {
+            ($float:ty, $bits:ty, $nan:expr, $negative_nan:expr) => {{
+                let radixes: &[usize] = if cfg!(miri) {
+                    &[8]
+                } else {
+                    &[1, 2, 3, 4, 5, 6, 7, 8]
+                };
+                let cyclic_len = if cfg!(miri) { 129 } else { 1025 };
+                let random_len = if cfg!(miri) { 64 } else { 4096 };
+                for &radix in radixes {
+                    let special: [$bits; 8] = [
+                        <$float>::NEG_INFINITY.to_bits(),
+                        (-1.0 as $float).to_bits(),
+                        (-0.0 as $float).to_bits(),
+                        (0.0 as $float).to_bits(),
+                        (1.0 as $float).to_bits(),
+                        <$float>::INFINITY.to_bits(),
+                        $nan,
+                        $negative_nan,
+                    ];
+                    let mut input: Vec<_> = special
+                        .into_iter()
+                        .cycle()
+                        .take(cyclic_len)
+                        .chain((0..random_len).map(|i| (i as $bits).wrapping_mul(0x9e3779b9)))
+                        .map(<$float>::from_bits)
+                        .collect();
+                    let mut expected = input.clone();
+                    expected.sort_by(<$float>::total_cmp);
+                    // The automatic block size has a ~1 KiB floor, which costs
+                    // 2*256*block_size slot writes per pass. Miri uses an
+                    // explicit small block instead; the floor is covered by the
+                    // release and ASan runs.
+                    if cfg!(miri) {
+                        sort_with_block_size(&mut input, radix, 3);
+                    } else {
+                        sort(&mut input, radix);
+                    }
+                    assert_eq!(
+                        input.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+                        expected.iter().map(|x| x.to_bits()).collect::<Vec<_>>()
+                    );
+                }
+            }};
+        }
+        check!(f32, u32, 0x7fc00001, 0xffc00002);
+        check!(f64, u64, 0x7ff8000000000001, 0xfff8000000000002);
+    }
+
+    #[test]
+    fn bucket_ends() {
+        let mut data: Vec<u64> = (0..257)
+            .map(|i| (i as u64).wrapping_mul(2_654_435_761))
+            .collect();
+        let mut expected = data.clone();
+        expected.sort_by_key(|record| record & 1);
+        let mut sorter = Sorter::new(&mut data, 2, 17);
+        let (panic, ends) = sorter.step_with_ends(|record| (*record & 1) as usize, true);
+        assert!(panic.is_none());
+        assert_eq!(ends, [129, 257]);
+        assert!(sorter.compact_with(&ends, None).is_none());
+        drop(sorter);
+        assert_eq!(data, expected);
+    }
+
+    #[test]
+    fn callback_panic() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        struct Tracked {
+            key: u64,
+            id: usize,
+            drops: Rc<Cell<usize>>,
+        }
+        impl Key for Tracked {
+            type Value = u64;
+            fn key(&self) -> u64 {
+                self.key
+            }
+        }
+        impl Drop for Tracked {
+            fn drop(&mut self) {
+                self.drops.set(self.drops.get() + 1);
+            }
+        }
+
+        let drops = Rc::new(Cell::new(0));
+        let mut data: Vec<Tracked> = (0..257)
+            .map(|id| Tracked {
+                key: (id % 4) as u64,
+                id,
+                drops: drops.clone(),
+            })
+            .collect();
+        let mut sorter = Sorter::new(&mut data, 4, 17);
+        let (panic, ends) = sorter.step_with_ends(|record| record.key as usize, true);
+        assert!(panic.is_none());
+        assert!(ends.len() == 4);
+        let mut calls = 0;
+        let payload = sorter.compact_with(
+            &ends,
+            Some(&mut |bucket: &mut [Tracked]| {
+                calls += 1;
+                if calls == 2 {
+                    panic!("boom");
+                }
+                bucket.sort_by_key(|record| record.key);
+            }),
+        );
+        assert!(payload.is_some());
+        assert_eq!(calls, 2);
+        drop(sorter);
+        assert_eq!(drops.get(), 0);
+        data.sort_by_key(|record| record.id);
+        assert!(data.iter().enumerate().all(|(id, record)| record.id == id));
+        drop(data);
+        assert_eq!(drops.get(), 257);
+    }
+}

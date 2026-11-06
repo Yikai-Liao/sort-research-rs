@@ -1,0 +1,11 @@
+Validated 480 upstream type/distribution/size/algorithm cases against stable_sort
+Validated 480 upstream type/distribution/size/algorithm cases against stable_sort
+2026-11-05T19:26:32-06:00
+Running ./starrocks_bench
+Run on (6 X 2294.61 MHz CPU s)
+CPU Caches:
+  L1 Data 32 KiB (x6)
+  L1 Instruction 32 KiB (x6)
+  L2 Unified 1024 KiB (x6)
+  L3 Unified 25344 KiB (x6)
+Load Average: 2.71, 1.41, 1.10

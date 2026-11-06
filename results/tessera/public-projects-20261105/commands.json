@@ -1,0 +1,82 @@
+{
+  "cwd": "/root/code/sort-research-rs/results/tessera/public-projects-20261105",
+  "build": [
+    [
+      "cmake",
+      "-S",
+      "benchmark-1.9.4",
+      "-B",
+      "benchmark-build",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DBENCHMARK_ENABLE_TESTING=OFF",
+      "-DBENCHMARK_ENABLE_INSTALL=OFF"
+    ],
+    [
+      "cmake",
+      "--build",
+      "benchmark-build",
+      "-j",
+      "2"
+    ],
+    {
+      "env": {
+        "RUSTFLAGS": "-C target-cpu=native"
+      },
+      "argv": [
+        "cargo",
+        "build",
+        "--release"
+      ]
+    },
+    [
+      "clang++",
+      "-std=c++23",
+      "-O3",
+      "-march=native",
+      "-DNDEBUG",
+      "-I",
+      "benchmark-1.9.4/include",
+      "-c",
+      "starrocks_bench.cpp",
+      "-o",
+      "starrocks_bench.o"
+    ],
+    [
+      "clang++",
+      "starrocks_bench.o",
+      "target/release/libtessera_public_project_screen.a",
+      "benchmark-build/src/libbenchmark.a",
+      "-ldl",
+      "-lpthread",
+      "-lm",
+      "-o",
+      "starrocks_bench"
+    ],
+    [
+      "clang++",
+      "-std=c++23",
+      "-O3",
+      "-march=native",
+      "-DNDEBUG",
+      "-I",
+      "vendor",
+      "clickhouse_example.cpp",
+      "ch_stopwatch.cpp",
+      "target/release/libtessera_public_project_screen.a",
+      "-ldl",
+      "-lpthread",
+      "-lm",
+      "-o",
+      "clickhouse_example"
+    ]
+  ],
+  "starrocks_runs": [
+    "taskset -c 2 ./starrocks_bench --benchmark_min_time=0.015s --benchmark_repetitions=5 --benchmark_enable_random_interleaving=true --benchmark_out=starrocks-full.json --benchmark_out_format=json >starrocks-full.stdout 2>starrocks-full.stderr",
+    "taskset -c 2 ./starrocks_bench --benchmark_filter='^BM_(RadixSort|RadixSortAA|RadixSortColdScratch|Tessera)_(Int32|Int64|Float|Double)_(UniformRandom|LowCardinality)/(4096|65536|1000000)$|^BM_(RadixSortStable|TesseraStable|PdqSortWithStabilization)_(Int32|Int64|Float|Double)_LowCard/(4096|65536|1000000)$' --benchmark_min_time=0.06s --benchmark_repetitions=9 --benchmark_enable_random_interleaving=true --benchmark_out=starrocks-confirm.json --benchmark_out_format=json >starrocks-confirm.stdout 2>starrocks-confirm.stderr"
+  ],
+  "clickhouse_run": [
+    "python3",
+    "run_ch.py"
+  ],
+  "clickhouse_actual_calls": "clickhouse-outputs.jsonl contains all 180 argv, seeds, output and timings"
+}

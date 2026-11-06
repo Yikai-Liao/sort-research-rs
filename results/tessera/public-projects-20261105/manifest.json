@@ -1,0 +1,143 @@
+{
+  "upstream": {
+    "starrocks_radix_sort.h": {
+      "url": "https://raw.githubusercontent.com/StarRocks/starrocks/890b8fffcd639c2cd70b1acbab799794a71d4c62/be/src/column/sorting/radix_sort.h",
+      "sha256": "e81aa9c75d74fabea99b8fdb154b0c574712bd0e3116a66209ba8548d4c0d5f0"
+    },
+    "clickhouse_radix_sort.h": {
+      "url": "https://raw.githubusercontent.com/ClickHouse/ClickHouse/c8c7411269eb045ef70cf6e90dbc997d60dfa76f/src/Common/RadixSort.h",
+      "sha256": "da18c81c3d1ab182536bfa4699daa4fe873c1a2a4b387b5b89ee7363128b693b"
+    },
+    "sr_bench.cpp": {
+      "url": "https://raw.githubusercontent.com/StarRocks/starrocks/890b8fffcd639c2cd70b1acbab799794a71d4c62/be/src/bench/radix_sort_bench.cpp",
+      "sha256": "03aa9493e96d14c70d4cb2265e94653d80aab44f8dd81f9814ed5c7b513da829"
+    },
+    "sr_raw_container.h": {
+      "url": "https://raw.githubusercontent.com/StarRocks/starrocks/890b8fffcd639c2cd70b1acbab799794a71d4c62/be/src/base/container/raw_container.h",
+      "sha256": "9652aa240326a63572cee5a4439f20505304d9c507dcecaacb9d168d75dd631f"
+    },
+    "sr_pdqsort.h": {
+      "url": "https://raw.githubusercontent.com/StarRocks/starrocks/890b8fffcd639c2cd70b1acbab799794a71d4c62/be/src/base/orlp/pdqsort.h",
+      "sha256": "5692a12f8d693f8e07be7c0bc8d36a5ea868ea3217b09978ad064674e9c66e09"
+    },
+    "sr_comparator.h": {
+      "url": "https://raw.githubusercontent.com/StarRocks/starrocks/890b8fffcd639c2cd70b1acbab799794a71d4c62/be/src/column/column_sorter_comparator.h",
+      "sha256": "474b2a27ab071d7136f466f619dfab942265c1c16fcd693f6b3c874d6316d698"
+    },
+    "sr_simd.h": {
+      "url": "https://raw.githubusercontent.com/StarRocks/starrocks/890b8fffcd639c2cd70b1acbab799794a71d4c62/be/src/base/simd/simd.h",
+      "sha256": "39b711bde84b983ed4dc16da072284f606882a714997226d29f816765edef82a"
+    },
+    "ch_example.cpp": {
+      "url": "https://raw.githubusercontent.com/ClickHouse/ClickHouse/c8c7411269eb045ef70cf6e90dbc997d60dfa76f/src/Common/examples/radix_sort.cpp",
+      "sha256": "a1da40b630c46837a2ee5c20826c37ed10eb09feb2167ad29ad86d082ef90af2"
+    },
+    "ch_benchmark.cpp": {
+      "url": "https://raw.githubusercontent.com/ClickHouse/ClickHouse/c8c7411269eb045ef70cf6e90dbc997d60dfa76f/src/Common/benchmarks/radix_sort.cpp",
+      "sha256": "0e902be3d7b20e26a7bb7af51bd8abfd8bbfb0df6232d45773800d98a3a86e12"
+    },
+    "ch_allocator.h": {
+      "url": "https://raw.githubusercontent.com/ClickHouse/ClickHouse/c8c7411269eb045ef70cf6e90dbc997d60dfa76f/src/Common/AllocatorWithMemoryTracking.h",
+      "sha256": "93a2e74379ad519a8268e14ac0b9f07a73d54c74b32cc1329147d758dc1fa127"
+    },
+    "ch_stopwatch.h": {
+      "url": "https://raw.githubusercontent.com/ClickHouse/ClickHouse/c8c7411269eb045ef70cf6e90dbc997d60dfa76f/src/Common/Stopwatch.h",
+      "sha256": "647d9d04e3904c263edd0cb3bcc3e5fc7c84ac7111dea3c8f3b0f94c53f5474f"
+    },
+    "ch_stopwatch.cpp": {
+      "url": "https://raw.githubusercontent.com/ClickHouse/ClickHouse/c8c7411269eb045ef70cf6e90dbc997d60dfa76f/src/Common/Stopwatch.cpp",
+      "sha256": "aea795ef300aa6f8cc4029280d1d3bd3e690e5def6793c1569eb2b7f3a0285fa"
+    },
+    "ch_pdqsort.h": {
+      "url": "https://raw.githubusercontent.com/ClickHouse/ClickHouse/c8c7411269eb045ef70cf6e90dbc997d60dfa76f/contrib/pdqsort/pdqsort.h",
+      "sha256": "e49ed58802b9df0c5121809e6a84b6f2690cf0329e4073e055f892b7e1641577"
+    },
+    "pcg_random.hpp": {
+      "url": "https://raw.githubusercontent.com/ClickHouse/ClickHouse/c8c7411269eb045ef70cf6e90dbc997d60dfa76f/base/pcg-random/pcg_random.hpp",
+      "sha256": "ed6c3beac51fe8d443e4faf5799a7d9392aef8da49e3a9a2cee53bcbab9faf3c"
+    },
+    "pcg_extras.hpp": {
+      "url": "https://raw.githubusercontent.com/ClickHouse/ClickHouse/c8c7411269eb045ef70cf6e90dbc997d60dfa76f/base/pcg-random/pcg_extras.hpp",
+      "sha256": "5536b7dee5c55d52da76b3f2cb5e660bc1c8749fe20488f30c1f99557aa3323e"
+    },
+    "pcg_uint128.hpp": {
+      "url": "https://raw.githubusercontent.com/ClickHouse/ClickHouse/c8c7411269eb045ef70cf6e90dbc997d60dfa76f/base/pcg-random/pcg_uint128.hpp",
+      "sha256": "5a5ff98636e5063de3cb169aac095fe5eba2f6e0e9df043fb9b27a5a6682abcd"
+    }
+  },
+  "local": {
+    "src/other/radix_support.rs": "b5031b400fa90b596ce08ddf9dd82edcbd0bc5d9114be710887bd913d30749eb",
+    "src/other/rust_block_lsd/core.rs": "f2fafad8d1a7b0e859fa53c207e9068da8154c60e83f38c07df2ee0cfbd83b96",
+    "src/other/rust_tessera_radix/engine.rs": "e81e08fba9c49830a2a56d84567bb57add328575bbcc5330619537045ef58de4",
+    "src/cpp/thirdparty/pdqsort/pdqsort.h": "1916aff237fc7ecc638dec6397662334552a1b6f823fa65011a8dfe831237fc0"
+  },
+  "adaptation": "Upstream StarRocks benchmark functions, generators and registrations unchanged. Project-specific includes replaced by sr_shim.h; original comparator, SIMD, raw-vector resize and radix bodies retained. Added Tessera registrations and untimed validation.",
+  "local_commit": "6804fcb039fb28b8ad7fa3d00a6f301ff79eac74",
+  "rustc": "rustc 1.101.0-nightly (a30aa9064 2026-10-08)\nbinary: rustc\ncommit-hash: a30aa9064df6a504b6a323c6884a2f4cfbfff666\ncommit-date: 2026-10-08\nhost: x86_64-unknown-linux-gnu\nrelease: 1.101.0-nightly\nLLVM version: 23.1.3\n",
+  "clang": "Debian clang version 19.1.7 (3+b1)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-19/bin\n",
+  "cpp_flags": [
+    "-std=c++23",
+    "-O3",
+    "-march=native",
+    "-DNDEBUG"
+  ],
+  "rust_flags": "-C target-cpu=native; opt-level=3, thin LTO",
+  "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           46 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  6\nOn-line CPU(s) list:                     0-5\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Xeon(R) Gold 6140 CPU @ 2.30GHz\nCPU family:                              6\nModel:                                   85\nThread(s) per core:                      1\nCore(s) per socket:                      1\nSocket(s):                               6\nStepping:                                4\nBogoMIPS:                                4589.21\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon rep_good nopl xtopology cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault pti ssbd ibrs ibpb stibp fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm mpx avx512f avx512dq rdseed adx smap clflushopt clwb avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves arat umip pku ospke md_clear flush_l1d arch_capabilities\nHypervisor vendor:                       KVM\nVirtualization type:                     full\nL1d cache:                               192 KiB (6 instances)\nL1i cache:                               192 KiB (6 instances)\nL2 cache:                                6 MiB (6 instances)\nL3 cache:                                148.5 MiB (6 instances)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-5\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Mitigation; Aligned branch/return thunks\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Mitigation; PTE Inversion\nVulnerability Mds:                       Mitigation; Clear CPU buffers; SMT Host state unknown\nVulnerability Meltdown:                  Mitigation; PTI\nVulnerability Mmio stale data:           Mitigation; Clear CPU buffers; SMT Host state unknown\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Mitigation; IBRS\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; IBRS; IBPB conditional; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI SW loop, KVM SW loop\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Mitigation; Clear CPU buffers; SMT Host state unknown\nVulnerability Vmscape:                   Not affected\n",
+  "clickhouse_scope": "Common/examples/radix_sort.cpp, UInt64 full-sort methods 1/2/5 plus Tessera method 9. Original pcg64, Stopwatch, sort dispatch and checks retained; seed fixed, reporting precision increased, exact reference check added outside timer. Allocator memory tracking replaced with malloc/free; database getPermutation benchmark not run.",
+  "binaries": {
+    "starrocks_bench": {
+      "sha256": "cb005ba092b93dfb40687e053d31e9cbfdf1a40ed959e90202cfcbf3da4d80dd",
+      "size": 4870720,
+      "archive": "binaries/starrocks_bench.zst",
+      "archive_sha256": "9d563f9d09a266249edeb61a2fd949d12b9108659118f858458ce82f74ab06b5"
+    },
+    "clickhouse_example": {
+      "sha256": "b05705b6e8c01d501f53b823b5c3c7870b60caed66a5327bf29a619fbfb5f1da",
+      "size": 4093704,
+      "archive": "binaries/clickhouse_example.zst",
+      "archive_sha256": "b6879553909b05708ec5cd0381ff4403ba69fba036921aa581c550f11afca974"
+    }
+  },
+  "rust_staticlib_sha256": "af3901b0ec559818359fa3ecc81ca6de9ede6cd62cf10bedf8e8670e31847c2b",
+  "harness_sha256": {
+    "Cargo.toml": "049d3bde94234609d81212f22142ddbcf677029a2da55eaaa3ee943d885d501a",
+    "Cargo.lock": "817cdc608e35d07459ff2cb536edee2fc4ecf76b20ec5b56db895e94da436d02",
+    "src/lib.rs": "dfdc2a47dc05ed05990ac0d90671b89b291917cd854bf395dad76d8792454201",
+    "sr_shim.h": "480068deee836300759bac6aacfa0d2313bd522ee2ba9852f27703c6a1922898",
+    "sr_additions.inc": "dbd2df095843be4519090ebccd27527198faaa180b2ed12e6a87053a113b00c1",
+    "starrocks_bench.cpp": "c3e8b325896e370323492c566d94002a920dd211f0a3927a61484c11f14d3bbc",
+    "ch_shim.h": "24392910d6a59769fb3ef7196a197fd87873274e085e59cad6fc2e5aa826e9ef",
+    "clickhouse_example.cpp": "9ce298704b485b4078ffaa61c76a7e0581d5169d370ff2602845e527eccc3fab",
+    "ch_stopwatch.cpp": "bd42916c4e64eaf9e8ed6608fac660fef2953ec2826c2e5dab07943eb78d0e73"
+  },
+  "validation": {
+    "starrocks-full": {
+      "registered_cases": 860,
+      "samples": 4300,
+      "json_sha256": "f01c5f4bc3a884984e3a894919f0c39145dbc91febf962da73e29f9d5adf8862",
+      "correctness_cases": 480,
+      "exit_code": 0
+    },
+    "starrocks-confirm": {
+      "registered_cases": 132,
+      "samples": 1188,
+      "json_sha256": "88590c114c2ad2eea064bc54df3a78777bb7debba4a06fc02823d7ad161f4946",
+      "correctness_cases": 480,
+      "exit_code": 0
+    },
+    "clickhouse": {
+      "sizes": 4,
+      "blocks_per_size": 9,
+      "arms_per_block": 5,
+      "calls": 180,
+      "exact_reference_passes": 180,
+      "rounds_sha256": "dd9835df47728011bc6cc38bdb86d4416e9adeaddd59dbfd85199b8e759df055",
+      "exit_code": 0
+    }
+  },
+  "scope": {
+    "starrocks": "Original PR Google Benchmark, 4 primitive types x 8 distributions x 5 original sizes, plus stable-output cases. Added Tessera and A/A registrations.",
+    "clickhouse": "Original Common/examples/radix_sort.cpp UInt64 CLI, methods 1/2/5 and new method 9. Database getPermutation benchmark not run.",
+    "memory": "not measured"
+  }
+}

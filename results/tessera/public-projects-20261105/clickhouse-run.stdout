@@ -1,0 +1,70 @@
+Completed ClickHouse upstream example n=4096
+Completed ClickHouse upstream example n=65536
+Completed ClickHouse upstream example n=1000000
+Completed ClickHouse upstream example n=10000000
+[
+  {
+    "n": 4096,
+    "std_median_seconds": 0.000235622,
+    "lsd_A1_median_seconds": 0.000107849,
+    "lsd_A2_median_seconds": 0.000107952,
+    "pdq_median_seconds": 0.000126055,
+    "tessera_median_seconds": 0.000115401,
+    "median_paired_tessera_over_lsd": 0.9706165937843919,
+    "ratio_min": 0.7398976080162466,
+    "ratio_max": 1.6297370154019624,
+    "median_AA": 1.0009550389896986,
+    "AA_min": 0.8249936665931176,
+    "AA_max": 1.6781849713806496,
+    "faster_blocks": 5,
+    "blocks": 9
+  },
+  {
+    "n": 65536,
+    "std_median_seconds": 0.004854733,
+    "lsd_A1_median_seconds": 0.001749918,
+    "lsd_A2_median_seconds": 0.001778415,
+    "pdq_median_seconds": 0.002474021,
+    "tessera_median_seconds": 0.001011618,
+    "median_paired_tessera_over_lsd": 0.5526023450765554,
+    "ratio_min": 0.4267719826413193,
+    "ratio_max": 0.6730702578534994,
+    "median_AA": 1.0269901140608977,
+    "AA_min": 0.6702304200638327,
+    "AA_max": 1.7174000666157758,
+    "faster_blocks": 9,
+    "blocks": 9
+  },
+  {
+    "n": 1000000,
+    "std_median_seconds": 0.092793819,
+    "lsd_A1_median_seconds": 0.056012024,
+    "lsd_A2_median_seconds": 0.056123112,
+    "pdq_median_seconds": 0.04468785,
+    "tessera_median_seconds": 0.015116959,
+    "median_paired_tessera_over_lsd": 0.2666574764224372,
+    "ratio_min": 0.22687408036822648,
+    "ratio_max": 0.3607652851835715,
+    "median_AA": 0.992566164287204,
+    "AA_min": 0.9464738510200886,
+    "AA_max": 1.1200960962597175,
+    "faster_blocks": 9,
+    "blocks": 9
+  },
+  {
+    "n": 10000000,
+    "std_median_seconds": 1.088080261,
+    "lsd_A1_median_seconds": 0.565898781,
+    "lsd_A2_median_seconds": 0.572097024,
+    "pdq_median_seconds": 0.510875625,
+    "tessera_median_seconds": 0.197212818,
+    "median_paired_tessera_over_lsd": 0.3475451853214999,
+    "ratio_min": 0.32459637276503306,
+    "ratio_max": 0.3771457998577594,
+    "median_AA": 0.9852101695903812,
+    "AA_min": 0.9537309394918198,
+    "AA_max": 1.049885734946461,
+    "faster_blocks": 9,
+    "blocks": 9
+  }
+]

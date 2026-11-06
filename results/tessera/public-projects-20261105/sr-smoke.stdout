@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------------------------------
+Benchmark                                             Time             CPU   Iterations UserCounters...
+-------------------------------------------------------------------------------------------------------
+BM_RadixSort_Int64_UniformRandom/4096            105988 ns       105995 ns          265 bytes_per_second=294.825Mi/s items_per_second=38.6433M/s
+BM_RadixSort_Int64_UniformRandom/4096            108241 ns       108151 ns          265 bytes_per_second=288.947Mi/s items_per_second=37.8729M/s
+BM_RadixSort_Int64_UniformRandom/4096            103047 ns       103058 ns          265 bytes_per_second=303.227Mi/s items_per_second=39.7446M/s
+BM_RadixSort_Int64_UniformRandom/4096_mean       105759 ns       105735 ns            3 bytes_per_second=295.667Mi/s items_per_second=38.7536M/s
+BM_RadixSort_Int64_UniformRandom/4096_median     105988 ns       105995 ns            3 bytes_per_second=294.825Mi/s items_per_second=38.6433M/s
+BM_RadixSort_Int64_UniformRandom/4096_stddev       2605 ns         2557 ns            3 bytes_per_second=7.17717Mi/s items_per_second=940.726k/s
+BM_RadixSort_Int64_UniformRandom/4096_cv           2.46 %          2.42 %             3 bytes_per_second=2.43% items_per_second=2.43%
+BM_Tessera_Int64_UniformRandom/4096               60823 ns        60597 ns          411 bytes_per_second=515.703Mi/s items_per_second=67.5942M/s
+BM_Tessera_Int64_UniformRandom/4096               61663 ns        61672 ns          411 bytes_per_second=506.712Mi/s items_per_second=66.4158M/s
+BM_Tessera_Int64_UniformRandom/4096               66018 ns        65805 ns          411 bytes_per_second=474.886Mi/s items_per_second=62.2442M/s
+BM_Tessera_Int64_UniformRandom/4096_mean          62835 ns        62691 ns            3 bytes_per_second=499.1Mi/s items_per_second=65.4181M/s
+BM_Tessera_Int64_UniformRandom/4096_median        61663 ns        61672 ns            3 bytes_per_second=506.712Mi/s items_per_second=66.4158M/s
+BM_Tessera_Int64_UniformRandom/4096_stddev         2788 ns         2750 ns            3 bytes_per_second=21.4466Mi/s items_per_second=2.81105M/s
+BM_Tessera_Int64_UniformRandom/4096_cv             4.44 %          4.39 %             3 bytes_per_second=4.30% items_per_second=4.30%

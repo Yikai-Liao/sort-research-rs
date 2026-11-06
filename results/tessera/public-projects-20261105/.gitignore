@@ -1,0 +1,7 @@
+/target/
+/benchmark-1.9.4/
+/benchmark-build/
+/starrocks_bench
+/clickhouse_example
+/starrocks_bench.o
+/binaries/

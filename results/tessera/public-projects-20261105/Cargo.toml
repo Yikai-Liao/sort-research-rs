@@ -1,0 +1,21 @@
+[package]
+name = "tessera-public-project-screen"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[features]
+default = ["rust_tessera_radix"]
+rust_tessera_radix = []
+
+[dependencies]
+sort_test_tools = { path = "../../../sort_test_tools", default-features = false }
+
+[lib]
+crate-type = ["staticlib"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+debug = 1
