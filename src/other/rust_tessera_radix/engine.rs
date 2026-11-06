@@ -36,9 +36,11 @@ const MAX_TILE_DIGIT_BITS: usize = 14;
 const MIN_TILE_DIGIT_BITS: usize = 6;
 /// Default tile size in bytes of records; a tile always holds at least one record.
 const TILE_BYTES: usize = 64 * 1024;
-/// Cost model: charge a tile MSD level as three flat LSD passes, including
-/// the copy back and child variation scans.
-const MSD_LEVEL_PASSES: usize = 3;
+/// Cost model: an MSD level is one counting pass, and the insertion finish that
+/// ends the descent costs about one more. Charging a level as three passes kept
+/// three-pass plans on flat passes, which measured 11-38% slower for 32-bit keys
+/// at 1K-64K records.
+const MSD_FINISH_PASSES: usize = 1;
 /// Tiles and buckets at or below this many records are finished with an
 /// insertion sort instead of paying for a bucket table per remaining digit.
 const INSERTION_MAX: usize = 48;
@@ -275,24 +277,48 @@ fn scan_varying_bits<T: Key>(arr: &[T], candidate: u128) -> u128 {
     union.to_u128() ^ intersection.to_u128()
 }
 
-/// Packs varying bits into windows of at most `width` bits, highest first.
-/// The LSD passes consume the plan in reverse. Windows skip constant gaps.
+/// The window over the highest remaining bits that a pass of `width` bits
+/// clears, snapped to the lowest varying bit it contains: constant bits below the
+/// top one stay out of the digit. Returns the digit and the bits it clears.
+fn top_window(remaining: u128, width: usize) -> (Digit, u128) {
+    let high = remaining.ilog2() as usize;
+    let window = u128::MAX << (high + 1).saturating_sub(width);
+    let low = (remaining & window).trailing_zeros() as usize;
+    let digit = Digit {
+        shift: low,
+        width: high - low + 1,
+    };
+    (digit, window)
+}
+
+/// Packs varying bits into windows, highest first; the LSD passes consume the
+/// plan in reverse and each window skips the constant bits below it.
+///
+/// A window spans at most `width` bits. When every bit below the top one varies,
+/// the run is instead tiled evenly over the passes that `width` would need, so
+/// 32 bits in three passes become 11 + 11 + 10 rather than 14 + 14 + 4. Both
+/// plans move each record three times and cover the same bits, but the even one
+/// clears, counts and walks a quarter of the bucket slots. Gaps keep the wide
+/// windows, which jump over them.
 fn plan_digits(varying: u128, width: usize, digits: &mut [Digit]) -> usize {
+    let top = (u128::BITS - varying.leading_zeros()) as usize;
+    // Passes left to tile the contiguous run over; `None` keeps fixed windows.
+    let mut even = (varying.count_ones() as usize == top).then_some(top.div_ceil(width));
     let mut remaining = varying;
     let mut len = 0;
     while remaining != 0 {
-        let high = remaining.ilog2() as usize;
-        let window_low = (high + 1).saturating_sub(width);
-        let window = u128::MAX << window_low;
-        let inside = remaining & window;
-        let low = inside.trailing_zeros() as usize;
-        debug_assert!(len < digits.len());
-        digits[len] = Digit {
-            shift: low,
-            width: high - low + 1,
+        let window_width = match even {
+            Some(left) if left > 0 => ((remaining.ilog2() as usize) + 1).div_ceil(left),
+            // Gaps keep windows of the full budget that jump over them.
+            _ => width,
         };
+        let (digit, window) = top_window(remaining, window_width);
+        debug_assert!(len < digits.len());
+        debug_assert!(digit.width <= width);
+        digits[len] = digit;
         len += 1;
         remaining &= !window;
+        even = even.map(|left| left.saturating_sub(1));
     }
     len
 }
@@ -344,23 +370,23 @@ fn sort_with_tile_bytes<T: Key>(arr: &mut [T], tile_bytes: usize) {
     }
     if sampled == Order::Unsorted {
         let probe = (tile_bytes / record_bytes).max(2).min(arr.len());
-        let probe_swaps = {
+        // When the window is the whole array, estimating the swap count on copied
+        // keys repeats work the records themselves can do, so spend the budget in
+        // place and keep the order when it lands. A shorter window keeps the copy:
+        // a failed trial on large records would move far more bytes than keys.
+        let swaps = if probe == arr.len() {
+            budgeted_insertion_sort(arr, probe, Key::key)
+        } else {
             let mut keys: Vec<KeyValue<T>> = arr[..probe].iter().map(Key::key).collect();
-            budgeted_insertion_sort(&mut keys, probe, |&key| key)
+            match budgeted_insertion_sort(&mut keys, probe, |&key| key) {
+                // A shorter window cannot speak for the records outside it.
+                Some(0) => None,
+                Some(swaps) => budgeted_insertion_sort(arr, swaps * arr.len() / probe, Key::key),
+                None => None,
+            }
         };
-        match probe_swaps {
-            None => {}
-            Some(0) => {
-                if probe == arr.len() {
-                    return;
-                }
-            }
-            Some(swaps) => {
-                let budget = swaps * arr.len() / probe;
-                if budgeted_insertion_sort(arr, budget, Key::key).is_some() {
-                    return;
-                }
-            }
+        if swaps.is_some() {
+            return;
         }
     }
     let varying = block::varying_key_bits(arr);
@@ -423,6 +449,7 @@ const ORDER_SAMPLES: usize = 4096;
 
 /// Rejects unordered input with strided adjacent pairs, then confirms order
 /// with a full scan. Equal-only samples defer confirmation to the caller.
+#[inline(never)]
 fn probe_order<T: Key>(arr: &[T]) -> Order {
     let stride = (arr.len() / ORDER_SAMPLES).max(1);
     let mut ascending = true;
@@ -817,29 +844,38 @@ impl<T: Key> Sorter<T> {
             insertion_sort(arr);
             return;
         }
+        // Widest counting table this tile can afford; LSD spreads it over passes.
+        let table_width = tile_digit_bits(len, std::mem::size_of::<T>());
         let mut digits = [Digit { shift: 0, width: 0 }; MAX_DIGITS];
-        let passes = plan_digits(
-            varying,
-            tile_digit_bits(len, std::mem::size_of::<T>()),
-            &mut digits,
-        );
-        // Use an MSD partition only when it costs strictly fewer passes.
-        if passes > MSD_LEVEL_PASSES {
-            // The tile is non-empty, so its sample is non-empty too.
-            let distinct = sample_distinct_digits(arr, digits[0]);
-            // Estimate the partition depth from sampled occupancy until the largest
-            // child fits insertion; each level costs MSD_LEVEL_PASSES flat passes.
-            let distinct = distinct.max(1);
+        let passes = plan_digits(varying, table_width, &mut digits);
+        // Compare an MSD descent against the flat plan in passes over the tile.
+        // A level plus its finish cannot undercut two flat passes, so shorter
+        // plans skip the occupancy sample.
+        if passes > MSD_FINISH_PASSES + 1 {
+            // One partition finishes the tile, so it takes the widest table rather
+            // than a pass-plan window; a narrower digit leaves more to insertion.
+            let (digit, _) = top_window(varying, table_width);
+            // The tile is non-empty, so its sample is non-empty too. Repeats in
+            // the sample cap the split; a sample with no repeats at all is limited
+            // by its length, not by the keys, so the digit's buckets apply.
+            let distinct = sample_distinct_digits(arr, digit).max(1);
+            let fanout = if distinct >= DIGIT_SAMPLE_LEN.min(len) {
+                1usize << digit.width
+            } else {
+                distinct
+            };
+            // Estimate the descent until the largest child fits insertion; each
+            // level is one counting pass and the finish is one more.
             let mut largest = len;
             let mut depth = 0;
             while largest > INSERTION_MAX && depth < passes {
                 depth += 1;
-                largest /= distinct;
+                largest /= fanout;
             }
             // The tile holds more than INSERTION_MAX records, so the loop ran.
-            let level_cost = MSD_LEVEL_PASSES * depth.max(1);
+            let level_cost = depth.max(1) + MSD_FINISH_PASSES;
             if level_cost < passes {
-                self.partition_tile(arr, digits[0], varying);
+                self.partition_tile(arr, digit, varying);
                 return;
             }
         }

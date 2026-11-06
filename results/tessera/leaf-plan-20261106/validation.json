@@ -1,0 +1,37 @@
+{
+  "base_commit": "6920dde",
+  "features": "rust_tessera_radix,rust_msd_radix",
+  "cpu": 4,
+  "note": "Miri deferred by operator decision; ASan covers the safety suite on this round.",
+  "commands": [
+    {
+      "command": "cargo test --release --features ... --lib",
+      "result": "26 passed"
+    },
+    {
+      "command": "cargo test --release --features ... --test tessera_functionality",
+      "result": "3 passed"
+    },
+    {
+      "command": "cargo test --release --features ... --test radix_owned",
+      "result": "13 passed"
+    },
+    {
+      "command": "cargo test --release --features ... --test radix_views",
+      "result": "233 passed"
+    },
+    {
+      "command": "cargo test --release --features ... --test radix_safety",
+      "result": "8 passed (rewritten, see README)"
+    },
+    {
+      "command": "RUSTFLAGS=-Zsanitizer=address cargo test --release --test radix_safety",
+      "result": "8 passed"
+    },
+    {
+      "command": "cargo clippy --all-targets --features ...",
+      "result": "no new warnings (2 pre-existing)"
+    }
+  ],
+  "status": "complete"
+}

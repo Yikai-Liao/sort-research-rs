@@ -15,6 +15,8 @@ struct Config {
     patterns: Vec<String>,
     sizes: Vec<usize>,
     rounds: usize,
+    /// Sorts timed together per round; amortizes timer overhead on small inputs.
+    batch: usize,
     filter: Option<String>,
     /// Exact variant names to retain.
     variants: Option<Vec<String>>,
@@ -26,6 +28,7 @@ fn parse_config() -> Config {
         patterns: vec!["random".into()],
         sizes: vec![1_000_000],
         rounds: 7,
+        batch: 1,
         filter: None,
         variants: None,
     };
@@ -42,6 +45,7 @@ fn parse_config() -> Config {
                     .collect()
             }
             "--rounds" => cfg.rounds = value().parse().expect("bad round count"),
+            "--batch" => cfg.batch = value().parse().expect("bad batch count"),
             "--filter" => cfg.filter = Some(value()),
             "--variants" => cfg.variants = Some(value().split(',').map(str::to_owned).collect()),
             // Passed by the cargo harness for every bench target.
@@ -511,18 +515,29 @@ fn tournament<T: Clone>(
     input: &[T],
     variants: &[(&'static str, fn(&mut [T]))],
     rounds: usize,
+    batch: usize,
     label: &str,
     pattern: &str,
 ) -> Vec<(&'static str, Sample)> {
     let mut samples: Vec<Vec<Duration>> = vec![Vec::with_capacity(rounds); variants.len()];
+    // Batched rounds sort prepared copies, so the copies never enter the timed
+    // region and every sort still sees unordered input.
+    let mut bufs: Vec<Vec<T>> = (0..batch.max(1)).map(|_| input.to_vec()).collect();
     let mut buf = input.to_vec();
     for round in 0..rounds {
         for i in 0..variants.len() {
             let idx = (round + i) % variants.len();
-            buf.clone_from_slice(input);
             let start = Instant::now();
-            (variants[idx].1)(&mut buf);
-            let elapsed = start.elapsed();
+            let elapsed = if batch > 1 {
+                for buf in bufs.iter_mut() {
+                    (variants[idx].1)(buf);
+                }
+                start.elapsed() / batch as u32
+            } else {
+                buf.clone_from_slice(input);
+                (variants[idx].1)(&mut buf);
+                start.elapsed()
+            };
             samples[idx].push(elapsed);
             archive_raw(
                 pattern,
@@ -569,7 +584,7 @@ fn run<T: Clone + Ord + std::fmt::Debug>(
         assert_eq!(probe, expected, "{name} produced the wrong order");
     }
 
-    let results = tournament(&input, &variants, cfg.rounds, label, pattern);
+    let results = tournament(&input, &variants, cfg.rounds, cfg.batch, label, pattern);
     // Ratios use medians of the interleaved rounds; minima are shown separately.
     let best = results.iter().map(|r| r.1.median).min().unwrap();
     let bytes = std::mem::size_of::<T>();

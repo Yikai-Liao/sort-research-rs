@@ -311,6 +311,74 @@ fn digit_plan_fits_capacity_for_sparse_and_dense_keys() {
     }
 }
 
+/// Bucket slots the plan's passes clear, count and walk.
+fn plan_slots(digits: &[Digit]) -> usize {
+    digits.iter().map(|digit| 1usize << digit.width).sum()
+}
+
+fn plan_widths(varying: u128, width: usize) -> Vec<usize> {
+    let mut digits = [Digit { shift: 0, width: 0 }; MAX_DIGITS];
+    let passes = plan_digits(varying, width, &mut digits);
+    digits[..passes].iter().map(|digit| digit.width).collect()
+}
+
+#[test]
+fn digit_plan_tiles_contiguous_bits_evenly() {
+    // Three passes over 32 bits: fixed windows gave 14 + 14 + 4, which cleared
+    // and walked 32 784 bucket slots to separate the same bits.
+    assert_eq!(plan_widths(u128::MAX >> 96, 14), [11, 11, 10]);
+    // Two passes over 20 bits: 10 + 10 replaces 14 + 6.
+    assert_eq!(plan_widths(u128::MAX >> 108, 14), [10, 10]);
+    // Spans that already divide evenly keep their widths.
+    assert_eq!(plan_widths(u128::MAX >> 100, 14), [14, 14]);
+    // The plan keeps the fixed windows when a gap would leave a pass empty,
+    // such as here where one high bit and one low bit need one pass each.
+    assert_eq!(plan_widths(1 << 127 | 1, 14), [1, 1]);
+}
+
+#[test]
+fn digit_plan_covers_random_masks() {
+    let mut rng = Rng(0x243f_6a88_85a3_08d3);
+    let mut digits = [Digit { shift: 0, width: 0 }; MAX_DIGITS];
+    for width in MIN_TILE_DIGIT_BITS..=MAX_TILE_DIGIT_BITS {
+        for sample in 0..64 {
+            let dense = (rng.next() as u128) | ((rng.next() as u128) << 64);
+            let mut varying = if sample % 2 == 0 {
+                dense
+            } else {
+                // Sparse masks space one bit per stride, like low-cardinality keys.
+                let stride = 1 + (rng.next() as usize % width);
+                (0..128)
+                    .step_by(stride)
+                    .fold(0, |mask, bit| mask | (1u128 << bit))
+            };
+            if varying == 0 {
+                varying = 1;
+            }
+            let passes = plan_digits(varying, width, &mut digits);
+            assert!(passes < MAX_DIGITS);
+            assert!(passes <= (128usize).div_ceil(width));
+            let mut covered = 0;
+            for digit in &digits[..passes] {
+                assert!(digit.width <= width);
+                let mask = digit.mask::<u128>();
+                assert_eq!(covered & mask, 0);
+                covered |= mask;
+            }
+            assert_eq!(covered & varying, varying);
+            // Contiguous runs keep the pass count of fixed windows, whose last
+            // pass is short; the even plan trades that short pass for even ones.
+            let places = (128 - varying.leading_zeros()) as usize;
+            if varying.count_ones() as usize == places {
+                let fixed = places.div_ceil(width);
+                let tail = places - (fixed - 1) * width;
+                assert_eq!(passes, fixed);
+                assert!(plan_slots(&digits[..passes]) <= (fixed - 1) * (1 << width) + (1 << tail));
+            }
+        }
+    }
+}
+
 #[test]
 fn key_widths_and_tile_boundaries() {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);

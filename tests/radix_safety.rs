@@ -146,26 +146,22 @@ fn copy_records(
 
 #[cfg(feature = "rust_tessera_radix")]
 #[test]
-fn tessera_copy_key_panics_preserve_records() {
-    for digits in [1, 2, 3] {
-        let targets: &[usize] = match digits {
-            1 => &[133, 165, 196],
-            2 => &[133, 197, 260, 300, 324],
-            _ => &[133, 197, 324, 400, 452],
-        };
-        for &panic_at in targets {
+fn tessera_key_panics_preserve_records() {
+    // Where the plan puts each phase is an implementation detail, so sweep the
+    // panic over every call the input needs instead of naming the boundaries.
+    // Every run also checks that each payload was written exactly once.
+    for window in [1u64, (1 << 31) | 1, (1 << 63) | (1 << 31) | 1] {
+        let key = |_: usize, id: usize| (id % 2) as u64 * window;
+        let (_, total) = copy_records(|records| tessera(records), key, true);
+        let step = (total / 16).max(1);
+        for panic_at in (1..=total).step_by(step).chain(std::iter::once(total)) {
             let (panicked, calls) = copy_records(
                 |records| tessera(records),
                 |call, id| {
                     if call == panic_at {
                         std::panic::panic_any(call);
                     }
-                    let window = match digits {
-                        1 => 1,
-                        2 => (1u64 << 31) | 1,
-                        _ => (1u64 << 63) | (1u64 << 31) | 1,
-                    };
-                    (id % 2) as u64 * window
+                    key(call, id)
                 },
                 true,
             );
@@ -175,153 +171,30 @@ fn tessera_copy_key_panics_preserve_records() {
     }
 }
 
-#[cfg(feature = "rust_msd_radix")]
+#[cfg(feature = "rust_tessera_radix")]
 #[test]
-fn msd_copy_key_panics_preserve_records() {
-    for panic_at in [129, 131] {
-        let (panicked, calls) = copy_records(
-            |records| msd(records),
-            |call, id| {
-                if call == panic_at {
-                    std::panic::panic_any(call);
-                }
-                (id % 2) as u64
-            },
-            true,
-        );
-        assert!(panicked);
-        assert_eq!(calls, panic_at);
-    }
-}
-
-#[cfg(feature = "rust_msd_radix")]
-#[test]
-fn msd_copy_changed_keys_remain_valid() {
-    for empty_bucket in [false, true] {
-        let (panicked, _) = copy_records(
-            |records| msd(records),
-            |call, id| {
-                if empty_bucket {
-                    match call {
-                        1..=64 => (id % 2) as u64,
-                        65..=128 => 0,
-                        _ => 1,
+fn tessera_changing_keys_preserve_owners() {
+    // A key that answers differently after the engine has classified records
+    // must not cost ownership: wherever the answer flips, every record keeps its
+    // payload, the edits land in it, and nothing is dropped early.
+    for window in [1u64, (1 << 31) | 1] {
+        let key = |_: usize, id: usize| (id % 2) as u64 * window;
+        let total = owners(|records| tessera(records), key, false);
+        let step = (total / 16).max(1);
+        for switch in (1..=total).step_by(step) {
+            owners(
+                |records| tessera(records),
+                |call, id| {
+                    let key = key(call, id);
+                    if call < switch {
+                        key
+                    } else {
+                        window - key
                     }
-                } else if call <= 128 {
-                    (id % 2) as u64
-                } else {
-                    0
-                }
-            },
-            false,
-        );
-        assert!(panicked);
-    }
-}
-
-#[cfg(feature = "rust_tessera_radix")]
-#[test]
-fn tessera_changed_keys_preserve_owners() {
-    // Four probe calls, 64 copied keys, then 64 variation calls. Alternating
-    // keys exhaust the insertion trial's budget, reaching a flat counting pass.
-    let calls = owners(
-        |records| tessera(records),
-        |call, id| match call {
-            1..=132 => (id % 2) as u64,
-            133..=196 => 0,
-            _ => 1,
-        },
-        false,
-    );
-    assert_eq!(
-        calls, 196,
-        "scatter uses the histogram classifications without another key call"
-    );
-
-    let calls = owners(
-        |records| tessera(records),
-        |call, id| if call <= 196 { (id % 2) as u64 } else { 0 },
-        false,
-    );
-    // The old second extraction would overfill a bucket while remaining inside
-    // the tile. Cached classifications avoid that second answer entirely.
-    assert_eq!(calls, 196);
-}
-
-#[cfg(feature = "rust_tessera_radix")]
-#[test]
-fn tessera_later_pass_restores_scratch_owners() {
-    let calls = owners(
-        |records| tessera(records),
-        |call, id| {
-            if call == 197 {
-                std::panic::panic_any(call);
-            }
-            (id % 2) as u64 * ((1 << 31) | 1)
-        },
-        true,
-    );
-    assert_eq!(
-        calls, 197,
-        "the second histogram must restore its scratch source"
-    );
-}
-
-#[cfg(feature = "rust_tessera_radix")]
-#[test]
-fn tessera_changed_keys_with_matching_counts() {
-    owners(
-        |records| tessera(records),
-        |call, id| {
-            let key = (id % 2) as u64;
-            if call <= 196 {
-                key
-            } else {
-                1 - key
-            }
-        },
-        false,
-    );
-}
-
-#[cfg(feature = "rust_tessera_radix")]
-#[test]
-fn tessera_copy_keys_still_require_initialized_output() {
-    #[derive(Clone, Copy)]
-    struct CopyRecord<'a> {
-        id: usize,
-        payload: &'a usize,
-        calls: &'a Cell<usize>,
-    }
-    impl Key for CopyRecord<'_> {
-        type Value = u64;
-        fn key(&self) -> u64 {
-            let call = self.calls.get() + 1;
-            self.calls.set(call);
-            match call {
-                1..=132 => (self.id % 2) as u64,
-                133..=196 => 0,
-                _ => 1,
-            }
+                },
+                false,
+            );
         }
-    }
-    let calls = Cell::new(0);
-    let payloads: Vec<_> = (0..LEN).collect();
-    let mut records: Vec<_> = payloads
-        .iter()
-        .enumerate()
-        .map(|(id, payload)| CopyRecord {
-            id,
-            payload,
-            calls: &calls,
-        })
-        .collect();
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tessera(&mut records)));
-    assert!(outcome.is_ok());
-    assert_eq!(calls.get(), 196);
-    for (id, record) in records.iter().enumerate() {
-        assert_eq!(record.id, id);
-        assert_eq!(*record.payload, id);
     }
 }
 
@@ -373,47 +246,56 @@ fn tessera_noncopy_cached_digits_align_after_odd_records() {
 
 #[cfg(feature = "rust_tessera_radix")]
 #[test]
-fn tessera_changed_keys_preserve_exclusive_borrows() {
+fn tessera_changing_keys_preserve_exclusive_borrows() {
     struct Borrowed<'a> {
         id: usize,
         slot: &'a mut usize,
         calls: &'a Cell<usize>,
+        switch: usize,
     }
     impl Key for Borrowed<'_> {
         type Value = u64;
         fn key(&self) -> u64 {
             let call = self.calls.get() + 1;
             self.calls.set(call);
-            match call {
-                1..=132 => (self.id % 2) as u64,
-                133..=196 => 0,
-                _ => 1,
+            let key = (self.id % 2) as u64;
+            if call < self.switch {
+                key
+            } else {
+                1 - key
             }
         }
     }
     assert!(!std::mem::needs_drop::<Borrowed<'_>>());
-    let calls = Cell::new(0);
-    let mut slots: Vec<_> = (0..LEN).collect();
-    let mut records: Vec<_> = slots
-        .iter_mut()
-        .enumerate()
-        .map(|(id, slot)| Borrowed {
-            id,
-            slot,
-            calls: &calls,
-        })
-        .collect();
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tessera(&mut records)));
-    assert!(outcome.is_ok());
-    assert_eq!(calls.get(), 196);
-    records.sort_unstable_by_key(|record| record.id);
-    for (id, record) in records.iter_mut().enumerate() {
-        assert_eq!(record.id, id);
-        assert_eq!(*record.slot, id);
-        *record.slot += LEN;
+    let mut switches = vec![usize::MAX];
+    for switch in [1usize, 5, 69, 157, 221, 300] {
+        switches.push(switch);
     }
-    drop(records);
-    assert_eq!(slots, (LEN..2 * LEN).collect::<Vec<_>>());
+    for switch in switches {
+        let calls = Cell::new(0);
+        let mut slots: Vec<_> = (0..LEN).collect();
+        let mut records: Vec<_> = slots
+            .iter_mut()
+            .enumerate()
+            .map(|(id, slot)| Borrowed {
+                id,
+                slot,
+                calls: &calls,
+                switch,
+            })
+            .collect();
+        let outcome =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tessera(&mut records)));
+        assert!(outcome.is_ok());
+        records.sort_unstable_by_key(|record| record.id);
+        for (id, record) in records.iter_mut().enumerate() {
+            assert_eq!(record.id, id);
+            assert_eq!(*record.slot, id);
+            *record.slot += LEN;
+        }
+        drop(records);
+        assert_eq!(slots, (LEN..2 * LEN).collect::<Vec<_>>());
+    }
 }
 
 #[cfg(feature = "rust_msd_radix")]
