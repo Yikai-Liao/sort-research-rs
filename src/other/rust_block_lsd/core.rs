@@ -43,20 +43,17 @@ use std::{marker::PhantomData, mem::MaybeUninit, ptr};
 type SortKey<T> = <T as Key>::Value;
 type PanicPayload = Box<dyn std::any::Any + Send>;
 
-// Position of the first uncommitted record. A key panic happens before writing
-// that record, so the committed outputs plus this unread suffix still own the
-// complete logical input sequence.
+// Logical input and output block cursors for the current pass.
 struct ScatterPosition {
     input: usize,
-    offset: usize,
     output: usize,
 }
 
 /// # Block LSD stable sort
 ///
 /// Sort by converted radix key, preserving the order of equal keys.
-/// `radix` is the number of bits per digit (1..=8). The block size is chosen
-/// from the input length and element size; 8 bits per digit is recommended.
+/// `radix` is the number of bits per digit (1..=12); 8 is recommended. The
+/// block size is chosen from the input length and element size.
 ///
 /// For n elements of s bytes and R = 2^radix buckets, the block size in elements
 /// is `max(1, ceil(4 * sqrt(9*n / (2*R*s))), floor(1024/s))`. This balances the
@@ -85,8 +82,6 @@ pub fn sort<T>(arr: &mut [T], radix: usize)
 where
     T: Key,
 {
-    // Widths above 8 are only reachable from the experiment harness; the
-    // adapter keeps 8, which the block-size coefficient is tuned for.
     assert!((1..=12).contains(&radix), "radix must be in 1..=12");
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
@@ -106,21 +101,8 @@ pub fn sort_with_block_size<T>(arr: &mut [T], radix: usize, block_size: usize)
 where
     T: Key,
 {
-    let (union, intersection) = varying_key_bits::<T>(arr);
-    sort_with_variation(arr, radix, block_size, union, intersection);
-}
-
-/// Same sort, with a variation scan the caller already paid for.
-pub(crate) fn sort_with_variation<T>(
-    arr: &mut [T],
-    radix: usize,
-    block_size: usize,
-    union: SortKey<T>,
-    intersection: SortKey<T>,
-) where
-    T: Key,
-{
-    if union == intersection {
+    let varying = varying_key_bits::<T>(arr);
+    if varying == 0 {
         return;
     }
     // The C reference has four byte passes. Derive masks from the converted
@@ -133,7 +115,7 @@ pub(crate) fn sort_with_variation<T>(
         let shift = level * radix;
         let width = radix.min(bits - shift);
         let mask = T::Value::from_usize((1usize << width) - 1) << T::Value::from_usize(shift);
-        if union & mask != intersection & mask {
+        if varying & mask.to_u128() != 0 {
             if let Some(payload) = sorter.step(mask, shift) {
                 // Finish materializing a permutation before resuming the user's
                 // panic. This uses existing blocks, without an O(n) backup.
@@ -145,37 +127,9 @@ pub(crate) fn sort_with_variation<T>(
     sorter.compact();
 }
 
-/// Records per block for the block-permutation engine.
-///
-/// Grow blocks with n so scratch and the block tables both stay O(sqrt(n)).
-/// With b elements per block, scratch costs 2*R*b*s bytes. The two u32
-/// permutation tables and the bucket IDs cost about 9*n/b bytes. Their sum is
-/// minimized at b = sqrt(9*n / (2*R*s)). Convert before multiplying to avoid
-/// overflowing usize on large slices.
-///
-/// Both constants below are deviations from the reference implementation, which
-/// uses a fixed 512 records because it only ever sorts one record type.
-/// Ablation over the benchmark types found this policy faster than the fixed
-/// size at every length below ~4M records and equal above it, while the
-/// auxiliary space now follows sqrt(n).
-/// Measurement hook: RADIX_BLOCK_SCALE multiplies the square-root optimum so a
-/// block-size sweep costs one build.
-///
-/// Read once per process, not once per node: the block size is recomputed for every
-/// split, and an environment lookup there is a lock and a scan of the environment for a
-/// number that cannot change while the process runs. Unset in every shipped run.
-fn block_scale() -> f64 {
-    use std::sync::OnceLock;
-    static SCALE: OnceLock<f64> = OnceLock::new();
-    *SCALE.get_or_init(|| {
-        std::env::var("RADIX_BLOCK_SCALE")
-            .ok()
-            .and_then(|v| v.parse::<f64>().ok())
-            .filter(|s| *s > 0.0 && s.is_finite())
-            .unwrap_or(1.0)
-    })
-}
-
+/// Balances 2*R*b*record_bytes scratch against about 9*n/b bytes of block tables.
+/// Four times the minimum-cost block size reduces rollover work; a 1 KiB floor
+/// limits metadata for small records.
 pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) -> usize {
     const SQRT_SCALE: f64 = 4.0;
     const BLOCK_BYTES_FLOOR: usize = 1024;
@@ -188,9 +142,7 @@ pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) 
     // limits bookkeeping when the square-root optimum gives tiny blocks;
     // records larger than that still need at least one element per block.
     let scaled = (SQRT_SCALE * balanced).ceil() as usize;
-    let natural = scaled.max(BLOCK_BYTES_FLOOR / record_bytes).max(1);
-    let scale = block_scale();
-    ((natural as f64 * scale).round() as usize).max(1)
+    scaled.max(BLOCK_BYTES_FLOOR / record_bytes).max(1)
 }
 
 /// One stable partition pass by the digit selected by `shift` and `radix`.
@@ -200,40 +152,26 @@ pub(crate) fn default_block_size(len: usize, record_bytes: usize, radix: usize) 
 /// within each bucket. Used by the MSD front end of the hybrid sorts.
 #[cfg(feature = "rust_tessera_radix")]
 pub(crate) fn partition_digit<T: Key>(arr: &mut [T], radix: usize, shift: usize) {
-    partition_digit_inner(arr, radix, shift, false, None);
+    partition_digit_inner(arr, radix, shift, None);
 }
 
-/// One stable digit pass that also returns each bucket's cumulative record end.
-/// The MSD front end uses the offsets to walk children without scanning their
-/// keys a second time just to rediscover the bucket boundaries.
+/// Returns cumulative bucket ends. Visits each nonempty bucket after materialization.
+/// Slices shorter than two records and zero-sized records return no ends.
 #[cfg(feature = "rust_tessera_radix")]
 pub(crate) fn partition_digit_with_ends<T: Key>(
     arr: &mut [T],
     radix: usize,
     shift: usize,
+    visit: &mut dyn FnMut(&mut [T]),
 ) -> Vec<usize> {
-    partition_digit_inner(arr, radix, shift, true, None)
-}
-
-/// One stable digit pass that yields each complete bucket to `visit` while the
-/// block engine materializes the sequence. The callback sees the bucket in input
-/// order and may sort it in place; it is not called for empty buckets.
-#[cfg(feature = "rust_tessera_radix")]
-pub(crate) fn partition_digit_with_ends_and_visit<T: Key, F: FnMut(usize, &mut [T])>(
-    arr: &mut [T],
-    radix: usize,
-    shift: usize,
-    mut visit: F,
-) -> Vec<usize> {
-    partition_digit_inner(arr, radix, shift, true, Some(&mut visit))
+    partition_digit_inner(arr, radix, shift, Some(visit))
 }
 
 fn partition_digit_inner<T: Key>(
     arr: &mut [T],
     radix: usize,
     shift: usize,
-    want_ends: bool,
-    visit: Option<&mut dyn FnMut(usize, &mut [T])>,
+    visit: Option<&mut dyn FnMut(&mut [T])>,
 ) -> Vec<usize> {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
@@ -243,58 +181,24 @@ fn partition_digit_inner<T: Key>(
     let bits = T::Value::BITS;
     assert!(shift < bits, "digit shift outside the key");
     let width = radix.min(bits - shift);
-    let mask = (T::Value::from_usize((1usize << width) - 1)) << T::Value::from_usize(shift);
-    let block_size = default_block_size(arr.len(), record_bytes, radix);
-    let mut sorter = Sorter::new(arr, 1usize << radix, block_size);
-    let (panic, ends) = sorter.step_with_ends(
-        |record| ((record.key() & mask) >> T::Value::from_usize(shift)).to_usize(),
-        want_ends,
-    );
-    if let Some(payload) = panic {
-        // Same recovery contract as `sort`: materialize the permutation, then
-        // let the caller's panic continue.
-        sorter.compact();
-        std::panic::resume_unwind(payload);
-    }
-    if let Some(payload) = sorter.compact_with(&ends, visit) {
-        std::panic::resume_unwind(payload);
-    }
-    ends
+    let shift = T::Value::from_usize(shift);
+    let mask = (T::Value::from_usize((1usize << width) - 1)) << shift;
+    partition_pass(
+        arr,
+        1usize << radix,
+        move |record| ((record.key() & mask) >> shift).to_usize(),
+        visit.is_some(),
+        visit,
+    )
 }
 
-/// One stable partition pass by an arbitrary classifier, for the sorts whose
-/// split is a comparison rather than a digit window.
-///
-/// `buckets` must be a power of two in 2..=4096: the engine names buckets with
-/// `u16` and sizes its scratch by the bucket count. A classifier that returns
-/// an index outside that range is clamped, because `Key` is a safe trait.
+/// Returns cumulative bucket ends, clamping classifications to the last bucket.
+/// Short and zero-sized slices return zero ends.
 #[cfg(feature = "rust_tessera_radix")]
 pub(crate) fn partition_by<T: Key>(
     arr: &mut [T],
     buckets: usize,
     classify: impl Fn(&T) -> usize,
-) -> Vec<usize> {
-    partition_by_inner(arr, buckets, classify, None)
-}
-
-/// Same as partition_by, yielding each completed bucket to visit during
-/// materialization. The bucket index is passed so a caller can skip bands it
-/// already knows are finished.
-#[cfg(feature = "rust_tessera_radix")]
-pub(crate) fn partition_by_with_visit<T: Key, F: FnMut(usize, &mut [T])>(
-    arr: &mut [T],
-    buckets: usize,
-    classify: impl Fn(&T) -> usize,
-    mut visit: F,
-) -> Vec<usize> {
-    partition_by_inner(arr, buckets, classify, Some(&mut visit))
-}
-
-fn partition_by_inner<T: Key>(
-    arr: &mut [T],
-    buckets: usize,
-    classify: impl Fn(&T) -> usize,
-    visit: Option<&mut dyn FnMut(usize, &mut [T])>,
 ) -> Vec<usize> {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
@@ -304,11 +208,27 @@ fn partition_by_inner<T: Key>(
         buckets.is_power_of_two() && (2..=4096).contains(&buckets),
         "bucket count must be a power of two in 2..=4096"
     );
-    let radix = buckets.trailing_zeros() as usize;
-    let block_size = default_block_size(arr.len(), record_bytes, radix);
-    let mut sorter = Sorter::new(arr, buckets, block_size);
     let last = buckets - 1;
-    let (panic, ends) = sorter.step_with_ends(|record| classify(record).min(last), true);
+    partition_pass(
+        arr,
+        buckets,
+        move |record| classify(record).min(last),
+        true,
+        None,
+    )
+}
+
+fn partition_pass<T: Key>(
+    arr: &mut [T],
+    buckets: usize,
+    classify: impl Fn(&T) -> usize,
+    want_ends: bool,
+    visit: Option<&mut dyn FnMut(&mut [T])>,
+) -> Vec<usize> {
+    let radix = buckets.trailing_zeros() as usize;
+    let block_size = default_block_size(arr.len(), std::mem::size_of::<T>(), radix);
+    let mut sorter = Sorter::new(arr, buckets, block_size);
+    let (panic, ends) = sorter.step_with_ends(classify, want_ends);
     if let Some(payload) = panic {
         // Same recovery contract as `partition_digit`.
         sorter.compact();
@@ -320,7 +240,7 @@ fn partition_by_inner<T: Key>(
     ends
 }
 
-pub(crate) fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
+pub(crate) fn varying_key_bits<T: Key>(arr: &[T]) -> u128 {
     let dummy = &arr[0];
     // The C reference always scatters every digit. Sparse and repeated keys
     // would pay for passes that cannot change their order. Union/intersection
@@ -328,14 +248,7 @@ pub(crate) fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
     // BitXor bound to Unsigned.
     let mut union = dummy.key();
     let mut intersection = union;
-    let bits = T::Value::BITS;
-    let zero = T::Value::from_usize(0);
-    let mut full_mask = zero;
-    // Build the complete key mask in bytes, including keys wider than usize.
-    for shift in (0..bits).step_by(8) {
-        full_mask |= T::Value::from_usize((1usize << 8.min(bits - shift)) - 1)
-            << T::Value::from_usize(shift);
-    }
+    let full_mask = u128::MAX >> (128 - T::Value::BITS);
     // A full pre-scan adds work to wide random inputs. Stop after this prefix
     // if every key bit already varies; otherwise use one uninterrupted,
     // vectorizable scan for sparse or skewed keys. The reference implementation
@@ -348,14 +261,14 @@ pub(crate) fn varying_key_bits<T: Key>(arr: &[T]) -> (SortKey<T>, SortKey<T>) {
         union |= key;
         intersection = intersection & key;
     }
-    if union != full_mask || intersection != zero {
+    if union.to_u128() ^ intersection.to_u128() != full_mask {
         for item in &arr[boundary..] {
             let key = item.key();
             union |= key;
             intersection = intersection & key;
         }
     }
-    (union, intersection)
+    union.to_u128() ^ intersection.to_u128()
 }
 
 /// Branch hint for a condition that is almost never true, without a nightly
@@ -466,7 +379,7 @@ struct Sorter<'a, T> {
     block_order: Vec<u32>,
     next_block_order: Vec<u32>,
     // Bucket IDs for output blocks, used to build next_block_order after scatter.
-    // u16 keeps digit widths above 8 available to the experiment harness.
+    // u16 holds bucket IDs for digit widths up to 12.
     bucket_ids: Vec<u16>,
     partial_blocks: Vec<PartialBlock>,
     active_blocks_end: usize,
@@ -556,26 +469,15 @@ impl<'a, T> Sorter<'a, T> {
     where
         T: Key,
     {
-        let shift_bits = T::Value::from_usize(shift);
-        self.step_with(|record| ((record.key() & mask) >> shift_bits).to_usize())
-            .0
+        let shift = T::Value::from_usize(shift);
+        self.step_with_ends(
+            move |record| ((record.key() & mask) >> shift).to_usize(),
+            false,
+        )
+        .0
     }
 
-    /// One pass with an arbitrary classifier: every record goes to the bucket
-    /// the classifier names, stably. The digit pass is this with a mask.
-    fn step_with<F: FnMut(&T) -> usize>(
-        &mut self,
-        classify: F,
-    ) -> (Option<PanicPayload>, Vec<usize>)
-    where
-        T: Key,
-    {
-        self.step_with_ends(classify, false)
-    }
-
-    /// `step_with`, optionally returning cumulative record ends for callers that
-    /// recurse on the buckets. The ordinary digit path does not ask, so it pays
-    /// neither the bucket-table walk nor the allocation.
+    /// Scatters one pass, optionally returning cumulative ends for recursion.
     fn step_with_ends<F: FnMut(&T) -> usize>(
         &mut self,
         classify: F,
@@ -587,21 +489,36 @@ impl<'a, T> Sorter<'a, T> {
         let (mut buckets, mut counts) = self.begin_pass();
         let mut position = ScatterPosition {
             input: self.bucket_count,
-            offset: 0,
             output: self.bucket_count,
         };
         // The classifier is moved into the closure, not borrowed: a digit closure
         // keeps its mask and shift in registers only when the scatter owns it. A
         // &mut here cost 40 % on a digit-only sort (sparse8, 10M).
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.scatter(&mut buckets, &mut counts, &mut position, classify);
+            self.scatter(&mut buckets, &mut counts, &mut position, 0, classify);
         }))
         .err();
         if panic.is_some() {
+            // Reconstruct the offset in the current input block: records written
+            // across all buckets minus records in fully consumed input blocks.
+            let written: usize = buckets
+                .iter()
+                .zip(&counts)
+                .map(|(bucket, &blocks)| {
+                    // SAFETY: both pointers delimit the same reserved block.
+                    let free = unsafe { bucket.end.offset_from(bucket.next) as usize };
+                    blocks * self.blocks.block_size - free
+                })
+                .sum();
+            let mut partial = 0;
+            let before: usize = (self.bucket_count..position.input)
+                .map(|input| self.next_block_len(input, &mut partial))
+                .sum();
+            let offset = written - before;
             // Do not call a failed extractor again. Appending every unread
             // record to bucket zero completes a valid (unsorted) pass. Recycling
             // still follows the original read-before-reserve protocol.
-            self.scatter(&mut buckets, &mut counts, &mut position, |_| 0);
+            self.scatter(&mut buckets, &mut counts, &mut position, offset, |_| 0);
         }
         self.active_blocks_end = position.output;
         let ends = self.finish_pass(&buckets, counts, want_ends);
@@ -698,8 +615,10 @@ impl<'a, T> Sorter<'a, T> {
         buckets: &mut [BucketWriter<T>],
         counts: &mut [usize],
         position: &mut ScatterPosition,
+        first_offset: usize,
         mut classify: F,
     ) {
+        let mut begin = first_offset;
         let mut partial = self
             .partial_blocks
             .partition_point(|p| p.order_index < position.input);
@@ -707,7 +626,6 @@ impl<'a, T> Sorter<'a, T> {
             let input = position.input;
             let source = self.blocks.block_ptr(self.block_order[input] as usize);
             let length = self.next_block_len(input, &mut partial);
-            let begin = position.offset;
             let mut write = |offset: usize| {
                 // SAFETY: only the initialized, unread suffix is read. Blocks
                 // become output only after all of their input records are read.
@@ -728,16 +646,6 @@ impl<'a, T> Sorter<'a, T> {
                     next.add(1)
                 };
                 bucket.next = next;
-                // Exact recovery offset. A panic can only come from the key
-                // extractor above, so the next unread record must be recorded
-                // before the move, otherwise recovery duplicates or loses a
-                // record. Only types with destructors can observe that: a
-                // duplicated Copy record is inert bits. The store is therefore
-                // skipped for them, which LLVM folds away per concrete type and
-                // which measured 3% of the hot loop on 8 byte records.
-                if const { core::mem::needs_drop::<T>() } {
-                    position.offset = offset + 1;
-                }
                 if unlikely(next == end) {
                     debug_assert!(position.output <= input);
                     let out = self
@@ -767,7 +675,7 @@ impl<'a, T> Sorter<'a, T> {
                 write(offset);
             }
             position.input += 1;
-            position.offset = 0;
+            begin = 0;
         }
     }
 
@@ -784,7 +692,7 @@ impl<'a, T> Sorter<'a, T> {
     fn compact_with(
         &mut self,
         ends: &[usize],
-        mut visit: Option<&mut dyn FnMut(usize, &mut [T])>,
+        mut visit: Option<&mut dyn FnMut(&mut [T])>,
     ) -> Option<PanicPayload> {
         // Sorting is finished. Reuse the output buffer as the inverse map:
         // physical block ID -> position in block_order.
@@ -793,41 +701,34 @@ impl<'a, T> Sorter<'a, T> {
             block_positions[self.block_order[i] as usize] = i as u32;
         }
         let input_ptr = self.blocks.input;
-        let had_visitor = visit.is_some();
-        let mut visited = 0;
-        let mut visited_start = 0;
+        let mut remaining = ends;
+        let mut begin = 0;
         let mut callback_panic = None;
-        let mut visit_due = |start: usize| {
+        let mut visit_due = |written: usize| {
             let Some(callback) = visit.take() else {
                 return;
             };
-            while visited < ends.len() && ends[visited] <= start {
-                let end = ends[visited];
-                if end > visited_start {
-                    // SAFETY: compact has written this complete bucket into the
-                    // input range, and the bucket is not a source for any later
-                    // copy. The slice is disjoint from block scratch.
+            while let Some((&end, tail)) = remaining.split_first() {
+                if end > written {
+                    break;
+                }
+                if end > begin {
+                    // SAFETY: this bucket is fully materialized and no longer a
+                    // copy source; its input slice does not overlap scratch.
                     let bucket = unsafe {
-                        std::slice::from_raw_parts_mut(
-                            input_ptr.add(visited_start),
-                            end - visited_start,
-                        )
+                        std::slice::from_raw_parts_mut(input_ptr.add(begin), end - begin)
                     };
                     if let Err(payload) =
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            callback(visited, bucket)
-                        }))
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(bucket)))
                     {
                         callback_panic = Some(payload);
                         return;
                     }
                 }
-                visited_start = end;
-                visited += 1;
+                begin = end;
+                remaining = tail;
             }
-            if callback_panic.is_none() {
-                visit = Some(callback);
-            }
+            visit = Some(callback);
         };
         let mut start = 0;
         let mut partial = 0;
@@ -894,9 +795,7 @@ impl<'a, T> Sorter<'a, T> {
             visit_due(start);
         }
         visit_due(start);
-        // Without a visitor no bucket is marked visited; ends may still be
-        // non-empty because callers asked for boundaries alone.
-        debug_assert!(!had_visitor || visited == ends.len() || callback_panic.is_some());
+        debug_assert!(visit.is_none() || remaining.is_empty());
         assert_eq!(start, self.blocks.input_len);
         self.input_materialized = true;
         callback_panic
@@ -908,9 +807,7 @@ impl<T> Drop for Sorter<'_, T> {
         // At pass boundaries the directory is a complete owning sequence.
         // Restore it even if unwinding starts outside key extraction (for
         // example an allocation failure with an unwinding error handler).
-        // Types without destructors do not maintain the recovery offset and
-        // cannot observe a duplicated record, so there is nothing to restore.
-        if !self.input_materialized && const { core::mem::needs_drop::<T>() } {
+        if !self.input_materialized {
             self.compact();
         }
     }
@@ -921,7 +818,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_digit_widths_and_explicit_block_boundaries() {
+    fn digit_widths_and_block_edges() {
         // Miri interprets every instruction and every 8-bit pass fills
         // 2*256*block_size bucket slots, so it runs a reduced shape: a partial
         // final digit (3), a full byte digit (8), one small block, and inputs
@@ -966,7 +863,7 @@ mod tests {
     }
 
     #[test]
-    fn unwind_between_passes_restores_owners() {
+    fn unwind_preserves_owners() {
         use std::{cell::Cell, rc::Rc};
         struct Owned {
             key: u64,
@@ -1012,7 +909,7 @@ mod tests {
     }
 
     #[test]
-    fn float_total_order_preserves_every_bit() {
+    fn float_total_order() {
         macro_rules! check {
             ($float:ty, $bits:ty, $nan:expr, $negative_nan:expr) => {{
                 let radixes: &[usize] = if cfg!(miri) {
@@ -1063,25 +960,23 @@ mod tests {
     }
 
     #[test]
-    fn compact_accepts_ends_without_a_visitor() {
+    fn bucket_ends() {
         let mut data: Vec<u64> = (0..257)
             .map(|i| (i as u64).wrapping_mul(2_654_435_761))
             .collect();
         let mut expected = data.clone();
-        expected.sort_unstable();
+        expected.sort_by_key(|record| record & 1);
         let mut sorter = Sorter::new(&mut data, 2, 17);
         let (panic, ends) = sorter.step_with_ends(|record| (*record & 1) as usize, true);
         assert!(panic.is_none());
-        assert!(!ends.is_empty());
-        // This is the debug-assertion path that used to require a visitor.
+        assert_eq!(ends, [129, 257]);
         assert!(sorter.compact_with(&ends, None).is_none());
         drop(sorter);
-        data.sort_unstable();
         assert_eq!(data, expected);
     }
 
     #[test]
-    fn visitor_panic_still_finishes_compaction() {
+    fn callback_panic() {
         use std::cell::Cell;
         use std::rc::Rc;
 
@@ -1117,7 +1012,7 @@ mod tests {
         let mut calls = 0;
         let payload = sorter.compact_with(
             &ends,
-            Some(&mut |_bucket, bucket: &mut [Tracked]| {
+            Some(&mut |bucket: &mut [Tracked]| {
                 calls += 1;
                 if calls == 2 {
                     panic!("boom");

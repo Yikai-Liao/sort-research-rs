@@ -33,11 +33,11 @@ pub fn sort<T: Key>(arr: &mut [T]) {
     if arr.len() < 2 {
         return;
     }
-    let (union, intersection) = block::varying_key_bits(arr);
-    sort_node(arr, bits, union, intersection);
+    let varying = block::varying_key_bits(arr);
+    sort_node(arr, bits, varying);
 }
 
-fn sort_node<T: Key>(arr: &mut [T], bits: usize, union: SortKey<T>, intersection: SortKey<T>) {
+fn sort_node<T: Key>(arr: &mut [T], bits: usize, varying: u128) {
     if arr.len() < 2 || bits == 0 {
         return;
     }
@@ -45,9 +45,9 @@ fn sort_node<T: Key>(arr: &mut [T], bits: usize, union: SortKey<T>, intersection
     let width = RADIX.min(bits);
     let shift = bits - width;
     let mask = (T::Value::from_usize((1usize << width) - 1)) << T::Value::from_usize(shift);
-    if union & mask == intersection & mask {
+    if varying & mask.to_u128() == 0 {
         // This digit cannot change the order; continue with the bits below it.
-        sort_node(arr, shift, union, intersection);
+        sort_node(arr, shift, varying);
         return;
     }
     if arr.len() <= LEAF {
@@ -76,8 +76,8 @@ fn sort_node<T: Key>(arr: &mut [T], bits: usize, union: SortKey<T>, intersection
         let end = borders[bucket + 1];
         if end - start > 1 {
             let child = &mut arr[start..end];
-            let (child_union, child_intersection) = block::varying_key_bits(child);
-            sort_node(child, shift, child_union, child_intersection);
+            let varying = block::varying_key_bits(child);
+            sort_node(child, shift, varying);
         }
         start = end;
     }

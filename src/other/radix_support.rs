@@ -44,11 +44,8 @@ macro_rules! unsigned {
 ///
 /// `key` must return a deterministic key matching the record's `Ord`, including
 /// equality. The backend preserves input order for equal converted keys.
-/// If extraction panics, the panic resumes and the order is unspecified. For a
-/// record with a destructor the adapters also restore the slice to a
-/// permutation of the original records, so nothing is lost or dropped twice;
-/// records without a destructor provide memory safety only, which is why they
-/// skip the recovery bookkeeping.
+/// If extraction panics, the adapters restore a permutation of the original
+/// records before resuming the panic; their order is unspecified.
 pub trait Key {
     type Value: Unsigned;
     const SUPPORTED: bool = true;

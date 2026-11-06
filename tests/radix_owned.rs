@@ -164,8 +164,13 @@ fn owners<S: Sort>() {
 }
 #[cfg(feature = "rust_block_lsd")]
 #[test]
-fn block_owned_payloads_and_unwind() {
+fn block_owners() {
     owners::<sort_research_rs::other::rust_block_lsd::SortImpl>();
+}
+#[cfg(feature = "rust_tessera_radix")]
+#[test]
+fn tessera_owners() {
+    owners::<sort_research_rs::other::rust_tessera_radix::SortImpl>();
 }
 struct KeyOnly {
     key: u64,
@@ -178,7 +183,7 @@ impl Key for KeyOnly {
     }
 }
 #[test]
-fn keyed_entry_needs_no_ord_or_clone() {
+fn key_only_records() {
     macro_rules! check {
         ($module:path) => {{
             use $module as adapter;
@@ -205,4 +210,6 @@ fn keyed_entry_needs_no_ord_or_clone() {
     }
     #[cfg(feature = "rust_block_lsd")]
     check!(sort_research_rs::other::rust_block_lsd);
+    #[cfg(feature = "rust_tessera_radix")]
+    check!(sort_research_rs::other::rust_tessera_radix);
 }

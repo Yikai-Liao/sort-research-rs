@@ -1,35 +1,12 @@
-//! Unit tests for the tile engine: correctness against a stable reference, the
-//! panic contract, and the tile-budget sweep. Behavioural coverage of the public
-//! surface lives in the tests/ directory instead.
+//! Stable-reference checks, key-panic recovery, and historical regressions.
 
 use super::*;
 
-/// A record whose key type is wider or narrower than its payload: equal keys then
-/// have to keep their input order, which is what stability means here.
-#[derive(Clone, Copy, Debug)]
+/// Equality includes input position so stable-reference checks observe tie order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Item<K> {
     key: K,
     index: u32,
-}
-
-impl<K: Copy + Ord> PartialEq for Item<K> {
-    fn eq(&self, other: &Self) -> bool {
-        self.key == other.key && self.index == other.index
-    }
-}
-
-impl<K: Copy + Ord> Eq for Item<K> {}
-
-impl<K: Copy + Ord> PartialOrd for Item<K> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<K: Copy + Ord> Ord for Item<K> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.key.cmp(&other.key)
-    }
 }
 
 impl<K: Unsigned> Key for Item<K> {
@@ -51,22 +28,16 @@ impl Rng {
     }
 }
 
-fn check<T: Key + Copy + Ord + std::fmt::Debug>(mut input: Vec<T>, tile_bytes: usize) {
+fn check<T: Key + Copy + PartialEq + std::fmt::Debug>(mut input: Vec<T>, tile_bytes: usize) {
     let mut expected = input.clone();
-    expected.sort();
-    sort_with_policy(
-        &mut input,
-        Policy {
-            tile_bytes,
-            ..Policy::default()
-        },
-    );
+    expected.sort_by_key(Key::key);
+    sort_with_tile_bytes(&mut input, tile_bytes);
     if input != expected {
         let mismatch = input
             .iter()
-            .zip(expected.iter())
+            .zip(&expected)
             .position(|(a, b)| a != b)
-            .unwrap_or(0);
+            .unwrap();
         panic!(
             "tile={tile_bytes} len={} first mismatch at {mismatch}: got {:?}, want {:?}",
             input.len(),
@@ -76,9 +47,7 @@ fn check<T: Key + Copy + Ord + std::fmt::Debug>(mut input: Vec<T>, tile_bytes: u
     }
 }
 
-// A record that owns a resource, counts its drops, and has a key that can
-// be made to panic on a chosen call. The recoverability contract is about
-// types like this: a duplicated record is a double free, a lost one leaks.
+// Tracked identities expose lost records, duplicates and premature drops.
 mod tracked {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -141,170 +110,73 @@ mod tracked {
     }
 }
 
-/// The three leaves reach their keys at different points of a pass, so each
-/// is armed to panic on many different calls. Whatever the leaf and whatever
-/// the call, the record set has to survive exactly once and no record may be
-/// dropped twice.
-#[test]
-fn a_key_panic_never_loses_or_duplicates_a_record() {
+fn check_key_panics(len: usize, tile_bytes: usize, seed: u64, key_mask: u64) {
     let _guard = tracked::TEST_LOCK.lock().unwrap();
-    // The interesting panics are the ones inside a level that is writing
-    // into the live buffer, and where those sit in the call sequence depends
-    // on the leaf, so the whole sequence is swept instead of guessed. The
-    // sweep is sized from the calls an unarmed sort really makes: the leaf
-    // changed shape since this test was written and a fixed upper bound
-    // started arming panics that never happen.
-    // Miri interprets every operation, and this sweeps a panic at every key call of
-    // every run, so it gets the two lengths it needs to reach both the insertion and
-    // the passing paths and nothing more.
-    let lengths: &[usize] = if cfg!(miri) {
-        &[12, 40]
-    } else {
-        &[20, 300, 2000]
-    };
-    for &len in lengths {
-        // Identical data for the probe and for every armed run: the number of
-        // key calls depends on the data (insertion is data dependent), and
-        // arming inside a range measured on other data skipped the panic.
-        let build = || -> Vec<tracked::Tracked> {
-            let mut rng = Rng(0x2436_8f5c_1e97_b3d1 ^ len as u64);
-            (0..len)
-                .map(|id| tracked::Tracked {
-                    id: id as u64,
-                    key: rng.next(),
-                })
-                .collect()
-        };
-        tracked::reset();
-        let mut probe = build();
-        sort_with_policy(&mut probe, Policy::default());
-        let calls = tracked::calls();
-        drop(probe);
-        // 0..40 exclusive: the last point must stay inside the measured call
-        // count, or it arms a panic the sort never reaches.
-        for step in 0..40 {
-            let panic_at = 1 + step * calls / 40;
-            tracked::reset();
-            let mut records = build();
-            let expected: Vec<u64> = (0..len as u64).collect();
-            tracked::arm(panic_at);
-            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                sort_with_policy(&mut records, Policy::default());
-            }));
-            assert!(
-                outcome.is_err(),
-                "len={len} panic_at={panic_at} did not panic"
-            );
-            let mut ids: Vec<u64> = records.iter().map(|record| record.id).collect();
-            ids.sort_unstable();
-            assert_eq!(
-                ids, expected,
-                "len={len} panic_at={panic_at} left the record set different"
-            );
-            assert!(
-                tracked::drops().is_empty(),
-                "len={len} panic_at={panic_at} dropped a record while the tile still held it"
-            );
-            tracked::disarm();
-            drop(records);
-            let mut dropped = tracked::drops();
-            dropped.sort_unstable();
-            assert_eq!(
-                dropped, expected,
-                "len={len} panic_at={panic_at} did not drop every record exactly once"
-            );
-        }
-    }
-}
-
-/// A small tile forces the split's compact visitor to sort child buckets, so
-/// this arms panics inside the fused leaf path rather than only inside a
-/// root-level leaf.
-#[test]
-fn a_key_panic_in_a_fused_leaf_still_finishes_compaction() {
-    let _guard = tracked::TEST_LOCK.lock().unwrap();
-    let len = 200;
-    let policy = Policy {
-        tile_bytes: 256,
-        ..Policy::default()
-    };
     let build = || -> Vec<tracked::Tracked> {
-        let mut rng = Rng(0x9f4a_2c31_7b68_d105 ^ len as u64);
+        let mut rng = Rng(seed ^ len as u64);
         (0..len)
             .map(|id| tracked::Tracked {
                 id: id as u64,
-                key: rng.next(),
+                key: rng.next() & key_mask,
             })
             .collect()
     };
+    // Probe and armed runs use identical records: insertion's call count depends on keys.
     tracked::reset();
     let mut probe = build();
-    sort_with_policy(&mut probe, policy);
+    sort_with_tile_bytes(&mut probe, tile_bytes);
     let calls = tracked::calls();
     drop(probe);
+    let expected: Vec<u64> = (0..len as u64).collect();
     for step in 0..40 {
         let panic_at = 1 + step * calls / 40;
         tracked::reset();
         let mut records = build();
-        let expected: Vec<u64> = (0..len as u64).collect();
         tracked::arm(panic_at);
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            sort_with_policy(&mut records, policy);
+            sort_with_tile_bytes(&mut records, tile_bytes);
         }));
-        assert!(outcome.is_err(), "panic_at={panic_at} did not panic");
+        tracked::disarm();
+        assert!(
+            outcome.is_err(),
+            "len={len} panic_at={panic_at} did not panic"
+        );
         let mut ids: Vec<u64> = records.iter().map(|record| record.id).collect();
         ids.sort_unstable();
-        assert_eq!(ids, expected, "panic_at={panic_at} lost records");
+        assert_eq!(ids, expected, "len={len} panic_at={panic_at} lost records");
         assert!(
             tracked::drops().is_empty(),
-            "panic_at={panic_at} dropped a record while the tile still held it"
+            "records dropped during sorting"
         );
-        tracked::disarm();
         drop(records);
         let mut dropped = tracked::drops();
         dropped.sort_unstable();
-        assert_eq!(dropped, expected, "panic_at={panic_at} drop count");
-    }
-}
-
-/// Routing and leaf choices are arithmetic on sampled shapes, so they can be
-/// pinned instead of measured: a change here is a decision change, and this table
-/// is what tells a simplification apart from a regression.
-#[test]
-fn route_table() {
-    // (node bytes, records, varying span in bits, largest child share, split?);
-    // the last two columns check the trace numbers the rule reads, not an input
-    let routes = [
-        // uniform u64 at 1M: the keys span all 64 bits, so one digit cannot do it
-        (8_000_000usize, 1_000_000usize, 64usize, 0.0107f64, true),
-        // two values in one byte: one pass over them is the whole job
-        (8_000_000, 1_000_000, 8, 0.5303, false),
-        // keys piled into one bucket of a wide span: splitting still pays because
-        // the alternative is seven passes over the node
-        (8_000_000, 1_000_000, 56, 0.9980, true),
-        // a node only just over the tile: one bit more than a digit already splits
-        (65_552, 8_194, 9, 0.0100, true),
-        // a long spine with stragglers: the span says nothing about the skew, the
-        // sampled width is what handles that
-        (8_000_000, 1_000_000, 40, 0.9980, true),
-    ];
-    for (bytes, records, span, largest, expected) in routes {
         assert_eq!(
-            split_pays(span),
-            expected,
-            "{records} records of {} bytes, span {span}, largest {largest}",
-            bytes / records
+            dropped, expected,
+            "len={len} panic_at={panic_at} drop count"
         );
     }
-
-    // The tile's digit width is the widest table that still fits the tile.
-    assert_eq!(leaf_radix(3_906, 8), 13);
-    assert_eq!(leaf_radix(200, 8), 9);
-    assert_eq!(leaf_radix(4, 8), LEAF_RADIX_MIN);
 }
 
 #[test]
-fn every_width_and_tile_rounds_to_zero() {
+fn panic_preserves_records() {
+    let cases: &[(usize, u64)] = if cfg!(miri) {
+        &[(12, u64::MAX), (80, 0xfffff)]
+    } else {
+        &[(20, u64::MAX), (80, 0xfffff), (2000, u64::MAX)]
+    };
+    for &(len, mask) in cases {
+        check_key_panics(len, TILE_BYTES, 0x2436_8f5c_1e97_b3d1, mask);
+    }
+}
+
+#[test]
+fn split_panic_recovers() {
+    check_key_panics(200, 256, 0x9f4a_2c31_7b68_d105, u64::MAX);
+}
+
+#[test]
+fn key_widths_and_tile_boundaries() {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
     // Miri interprets every byte moved, so it gets the boundary lengths that decide a
     // branch and none of the large ones that only repeat what they already showed.
@@ -328,7 +200,7 @@ fn every_width_and_tile_rounds_to_zero() {
 }
 
 #[test]
-fn duplicates_stay_stable() {
+fn duplicate_stability() {
     // Equal keys carry their input index, so a stable sort must keep the
     // index order inside every run of equal keys.
 
@@ -340,23 +212,13 @@ fn duplicates_stay_stable() {
                 index: index as u32,
             })
             .collect();
-        let mut sorted = input.clone();
-        sorted.sort_by_key(|item| item.key);
-        let mut actual = input.clone();
-        sort_with_policy(&mut actual, Policy::default());
-        for (a, e) in actual.iter().zip(sorted.iter()) {
-            assert_eq!(a, e);
-        }
+        check(input, TILE_BYTES);
     }
 }
 
 #[test]
-fn random_configurations_match_a_stable_reference() {
-    // Random key shapes crossed with random tile budgets, checked against the
-    // standard library's stable sort. The payload is the input index, so an
-    // equal-key pair out of order fails the comparison: this is the one test
-    // that exercises stability and correctness together over shapes no
-    // hand-written case names (sparse masks, one varying byte, two clusters).
+fn random_shapes_and_tiles() {
+    // Sparse masks, narrow windows and separated clusters, with identity payloads.
 
     let mut rng = Rng(0x2545_f491_4f6c_dd1d);
     let tiles = [4 * 1024usize, 16 * 1024, 64 * 1024, 256 * 1024, 1 << 20];
@@ -383,15 +245,9 @@ fn random_configurations_match_a_stable_reference() {
             });
         }
         let mut expected = input.clone();
-        expected.sort();
+        expected.sort_by_key(Key::key);
         let mut actual = input;
-        sort_with_policy(
-            &mut actual,
-            Policy {
-                tile_bytes: tiles[(round % tiles.len() as u64) as usize],
-                ..Policy::default()
-            },
-        );
+        sort_with_tile_bytes(&mut actual, tiles[(round % tiles.len() as u64) as usize]);
         for (position, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
             assert_eq!(
                 (a.key, a.index),
@@ -402,11 +258,9 @@ fn random_configurations_match_a_stable_reference() {
     }
 }
 
-/// The narrowed key view runs the same records through u64 keys. It may only
-/// fire when every varying bit is in one 64-bit half, and it must keep equal
-/// keys in input order.
+/// Both 64-bit key halves must preserve tie order through the narrowed view.
 #[test]
-fn a_narrowed_root_key_is_stable() {
+fn narrow_key_stability() {
     let mut rng = Rng(0x7f4a_7c15_9e37_79b9);
     // Miri is ~100x slower; the same shapes fit in a few hundred records.
     let len = if cfg!(miri) { 600 } else { 20_000 };
@@ -433,7 +287,7 @@ fn a_narrowed_root_key_is_stable() {
 }
 
 #[test]
-fn constant_keys_are_no_ops() {
+fn constant_keys() {
     let mut input = vec![42u64; 10_000];
     let expected = input.clone();
     sort(&mut input);
@@ -441,7 +295,7 @@ fn constant_keys_are_no_ops() {
 }
 
 #[test]
-fn skewed_keys_sort() {
+fn skewed_keys() {
     let mut rng = Rng(11);
     let mut input: Vec<u32> = Vec::new();
     // 98 % zeros, the rest random: the shape is what matters, not the count, so Miri
@@ -461,11 +315,8 @@ fn skewed_keys_sort() {
 }
 
 #[test]
-fn a_nine_bit_node_never_shifts_its_digit_past_the_last_varying_bit() {
-    // Keys over 9 bits (0..=511), concentrated in two of them, in a node large
-    // enough that split_radix picks 8. The widening loop wants two more bits,
-    // which would place the digit shift below bit zero. It must stop at the
-    // highest varying bit of the node instead.
+fn nine_bit_split() {
+    // A concentrated 9-bit node must stop widening before its shift underflows.
     let mut rng = Rng(7);
     let (len, tile) = if cfg!(miri) {
         (2_000, 1024)
@@ -483,11 +334,8 @@ fn a_nine_bit_node_never_shifts_its_digit_past_the_last_varying_bit() {
 }
 
 #[test]
-fn a_short_run_below_the_body_is_lifted_out() {
-    // Two keys just under the body's top bit, parked in front of it: a split at
-    // that bit would move all of the node to separate them, the body's own split
-    // then moving it again. The lift finishes the two by insertion and leaves the
-    // body one pass. The displaced pairs keep the ordered probe out of the way.
+fn low_outlier_run() {
+    // Low outliers already at the front; displaced body pairs reject ordered input.
     let (len, tile) = if cfg!(miri) {
         (2_048, 256)
     } else {
@@ -506,7 +354,7 @@ fn a_short_run_below_the_body_is_lifted_out() {
 }
 
 #[test]
-fn a_short_run_above_the_body_is_lifted_out_and_rotated_off_the_front() {
+fn high_outlier_run() {
     // The mirror image: the run's bit is set, so the lifted records belong after
     // the body and the front of the node is where they must leave from.
     let (len, tile) = if cfg!(miri) {
@@ -527,23 +375,23 @@ fn a_short_run_above_the_body_is_lifted_out_and_rotated_off_the_front() {
 }
 
 #[test]
-fn pricing_a_pass_counts_the_moves_and_stops_at_the_budget() {
+fn insertion_swap_budget() {
     // Sorted keys need nothing; a single displaced pair costs one move; the
     // budget stops the count instead of walking the array.
     let mut keys: Vec<u64> = (0..64).collect();
-    assert_eq!(priced_insertion(&mut keys, 64), Some(0));
+    assert_eq!(budgeted_insertion_sort(&mut keys, 64, |&key| key), Some(0));
     assert_eq!(keys, (0..64).collect::<Vec<u64>>());
 
     keys.swap(10, 11);
-    assert_eq!(priced_insertion(&mut keys, 64), Some(1));
+    assert_eq!(budgeted_insertion_sort(&mut keys, 64, |&key| key), Some(1));
     assert_eq!(keys, (0..64).collect::<Vec<u64>>());
 
     let mut reversed: Vec<u64> = (0..64).rev().collect();
-    assert_eq!(priced_insertion(&mut reversed, 8), None);
+    assert_eq!(budgeted_insertion_sort(&mut reversed, 8, |&key| key), None);
 }
 
 #[test]
-fn a_budgeted_insertion_pass_keeps_equal_keys_in_order_and_bails_when_spent() {
+fn budgeted_insertion() {
     let items = |keys: &[u64]| -> Vec<Item<u64>> {
         keys.iter()
             .enumerate()
@@ -556,7 +404,7 @@ fn a_budgeted_insertion_pass_keeps_equal_keys_in_order_and_bails_when_spent() {
     // Near-sorted: finishes, and payloads stay in input order inside equal keys.
     let mut records = items(&[0, 1, 1, 2, 3, 3, 4, 5]);
     let len = records.len();
-    assert_eq!(adaptive_insertion(&mut records, len), Some(0));
+    assert_eq!(budgeted_insertion_sort(&mut records, len, Key::key), Some(0));
     assert!(records.windows(2).all(|pair| pair[0].key <= pair[1].key));
     let ones: Vec<u32> = records
         .iter()
@@ -569,16 +417,15 @@ fn a_budgeted_insertion_pass_keeps_equal_keys_in_order_and_bails_when_spent() {
     // with only swaps behind it, so the records are a permutation of the input.
     let input: Vec<u64> = (0..32).rev().collect();
     let mut records = items(&input);
-    assert_eq!(adaptive_insertion(&mut records, 4), None);
+    assert_eq!(budgeted_insertion_sort(&mut records, 4, Key::key), None);
     let mut keys: Vec<u64> = records.iter().map(|r| r.key).collect();
     keys.sort();
     assert_eq!(keys, (0..32).collect::<Vec<u64>>());
 }
 
 #[test]
-fn a_nearly_sorted_array_is_finished_by_the_adaptive_pass() {
-    // One displaced pair in a hundred: the radix path used to spend a level on
-    // each of them. The adaptive pass prices one tile and then finishes.
+fn nearly_sorted_input() {
+    // One displaced adjacent pair in a hundred fits the sampled insertion budget.
     let (len, tile) = if cfg!(miri) {
         (2_048, 256)
     } else {

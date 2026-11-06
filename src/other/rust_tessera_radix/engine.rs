@@ -1,121 +1,56 @@
-//! Tessera: a stable radix sort that tiles the input.
+//! Stable radix sort with block partitions above a 64 KiB tile budget.
 //!
-//! Successor of the "PA" experiments. The top of the recursion partitions by the
-//! most significant bits that still differ, using the block-permutation engine
-//! from [`rust_block_lsd`](crate::other::rust_block_lsd); every child that fits
-//! the tile budget is finished with stable counting passes over a private
-//! buffer. The block engine keeps the auxiliary space at the same O(sqrt(n)) as
-//! block LSD, and the leaves run inside a cache tile whose size is a constant.
+//! Ordered inputs return or reverse stably; nearly ordered inputs get a budgeted
+//! insertion pass. Large nodes partition by an MSD digit, a sampled repeated key,
+//! or an end run separated by the highest varying bit. Tiles finish with insertion,
+//! an MSD partition, or LSD counting passes over reusable scratch.
 //!
-//! Why this shape: an LSD pass streams the whole array once per digit, so at
-//! n = 1M a u64 pays eight cold passes of ~5 ns per record. After one split the
-//! children are ~31 KiB; the remaining passes over a child stay in L1/L2 and
-//! cost a third as much each, which is why this sort improves with n where
-//! block LSD degrades.
-//!
-//! Four decisions are made from one counted quantity each, not from thresholds:
-//!
-//! - **Sort at all**: a monotone input is answered by one probe (`probe_order`),
-//!   ascending immediately and descending by a reversal with its equal-key runs
-//!   repaired. Nothing else in the sort can see order, and the probe costs two
-//!   comparisons on random data because it gives up at the first inversion.
-//! - **Split or stream**: count the passes the node needs if it is streamed, and
-//!   split whenever there is more than one of them (`split_pays`). The
-//!   tile boundary already says whether the working set is cache resident, so
-//!   the counting rule needs no rate, no bandwidth and no cache size.
-//! - **How wide a split peels**: a window that concentrates the keys buys nothing,
-//!   so a sampled node widens its digit until a quarter of its buckets are
-//!   occupied (up to `SPLIT_RADIX_MAX`). Zipf-shaped keys that used to
-//!   repeat the same one-bucket level get a level that divides: -17 % of the
-//!   work at 1M, measured in instructions, with random nodes unmoved because
-//!   their window already passes the sample.
-//! - **Leaf digit width and placement**: wider digits mean fewer passes but a
-//!   bigger bucket table, so the width is the widest whose table is no larger
-//!   than the tile itself (`leaf_radix`), and the windows are placed on the
-//!   varying bits rather than on a fixed grid (`plan_digits_packed`).
-//! - **How a leaf finishes**: one MSD level over the tile when that is strictly
-//!   cheaper than the flat counting plan, an insertion sort below its crossover,
-//!   and the flat plan otherwise. The three are the same partition kernel called
-//!   with different widths, not three algorithms.
-//!
-//! Constant bits are dropped everywhere, including in the split's fan-out: a
-//! digit that cannot divide the data would otherwise buy 256 empty buckets, and
-//! a node whose keys differ only in their low byte pays one pass instead of
-//! `key width / digit width`.
-//!
-//! Records are never lost or duplicated, including through a panic. Every leaf
-//! keeps the complete record set in one buffer for the whole of every pass:
-//! the counting leaf reads a key before it moves the record, the insertion leaf
-//! only swaps, and the MSD level reads the tile and writes only the scratch,
-//! which is a complete copy of the set by the time it returns. A panic from the
-//! key extractor therefore leaves every record reachable, and the counting leaf
-//! copies the scratch buffer back before resuming, but only for types that own a
-//! resource -- a duplicated record is a double free there, while a plain key
-//! type only risks an arbitrary order, so integer keys compile without any
-//! recovery at all.
-//! `sort` is stable: equal keys keep their input order through the block
-//! engine's permutation and through every leaf.
+//! Constant bits are skipped. Wide keys whose variation fits one 64-bit half use
+//! a narrowed view. The block engine uses O(sqrt(n)) scratch; tile scratch is bounded.
+//! Equal keys retain their input order, and key panics preserve the record set.
 
 use std::mem::MaybeUninit;
 
 use crate::other::radix_support::{Key, Unsigned};
 use crate::other::rust_block_lsd::core as block;
 
-type SortKey<T> = <T as Key>::Value;
+type KeyValue<T> = <T as Key>::Value;
 
-/// Bits per digit for the MSD split and for the block engine's own LSD passes.
-/// The block engine's block-size coefficient is tuned for this width.
-const RADIX: usize = 8;
+/// Initial split width; also the block engine's tuned width.
+const SPLIT_BITS: usize = 8;
 
-/// Widest digit the split may peel. The block engine's bucket table is sized for
-/// 12 bits (it asserts the bound), and a wider fan-out makes every write in the
-/// split's last pass land in a different 40 KiB region -- measured in section 21
-/// as a loss even when the extra buckets are all occupied.
-const SPLIT_RADIX_MAX: usize = 12;
+/// Split fan-out is bounded by the block engine's 12-bit tables.
+const MAX_SPLIT_BITS: usize = 12;
 
-/// Narrowest width at which the widening bar cannot be met by any sample.
-///
-/// The bar is distinct * 4 >= 2^width and the sample has MSD_SAMPLE entries, so from
-/// width 10 upwards no sample can satisfy it and probing is pure overhead.
-const WIDENING_SAMPLE_LIMIT: usize = 10;
-/// Widest digit a leaf may use. The cursor table is `2 << width` bytes of
-/// `u16`, so this is a 32 KiB stack array in the worst case; the leaf only
-/// clears and scans the part its own digit uses.
-const LEAF_RADIX_MAX: usize = 14;
+/// A 128-key sample cannot fill a quarter of the buckets at 10 bits or more.
+const WIDENING_SAMPLE_BITS: usize = 10;
+/// At 14 bits the u16 cursor table occupies 32 KiB.
+const MAX_TILE_DIGIT_BITS: usize = 14;
 /// Narrowest digit a leaf may use.
-const LEAF_RADIX_MIN: usize = 6;
-/// Largest tile finished with LSD passes, in bytes of record data.
+const MIN_TILE_DIGIT_BITS: usize = 6;
+/// Maximum tile size in bytes of records.
 const TILE_BYTES: usize = 64 * 1024;
-/// Flat passes that one MSD level inside the tile costs: histogram one, scatter
-/// two, copy back two, over two traversals per flat pass. It is the leaf's
-/// break-even as well as its price in the routing model, so the two can never
-/// drift apart.
+/// One tile partition costs five traversals (histogram, scatter, copy back);
+/// three two-traversal LSD passes are its break-even.
 const MSD_LEVEL_PASSES: usize = 3;
 /// Tiles at or below this many records are finished with an insertion sort
 /// instead of paying for a bucket table per remaining digit.
 const INSERTION_MAX: usize = 48;
-/// Cursors are `u16`, which caps a tile at 65535 records. That is a constant
-/// (1 MiB even for 16-byte records), so the auxiliary space stays O(sqrt n).
+/// u16 cursors bound a tile to 65535 records.
 const MAX_TILE_RECORDS: usize = u16::MAX as usize;
 /// Keys a leaf samples to judge whether its top window divides the tile.
-const MSD_SAMPLE: usize = 128;
+const DIGIT_SAMPLE_LEN: usize = 128;
 
-/// How many distinct digits an evenly spaced sample shows for one window.
-///
-/// The most significant window is the only one an MSD level may use -- a lower
-/// one would order the tile by the wrong bits -- and it can cover a single bit
-/// that few records set, which makes the partition divide nothing. The sample
-/// makes that visible for the price of one pass over 128 keys.
-fn sampled_buckets<T: Key>(arr: &[T], digit: Digit) -> usize {
+/// Counts distinct digits in an evenly spaced sample.
+fn sample_distinct_digits<T: Key>(arr: &[T], digit: Digit) -> usize {
     let mask = digit.mask::<T>();
     let shift = T::Value::from_usize(digit.shift);
-    // A plain array: 2 KiB of zero-fill is below what a 1024-key sample costs,
-    // and the bitmap is smaller than the 16 KiB cursor table it once mirrored.
-    let mut seen = [0u64; MAX_BUCKETS / 64];
-    let sample = MSD_SAMPLE.min(arr.len());
-    let step = (arr.len() / sample).max(1);
+
+    let mut seen = [0u64; MAX_TILE_BUCKETS / 64];
+    let sample_len = DIGIT_SAMPLE_LEN.min(arr.len());
+    let step = (arr.len() / sample_len).max(1);
     let mut distinct = 0;
-    for index in (0..arr.len()).step_by(step).take(sample) {
+    for index in (0..arr.len()).step_by(step).take(sample_len) {
         let bucket = ((arr[index].key() & mask) >> shift).to_usize();
         let word = bucket / 64;
         let bit = 1u64 << (bucket % 64);
@@ -128,31 +63,22 @@ fn sampled_buckets<T: Key>(arr: &[T], digit: Digit) -> usize {
 }
 
 /// Keys a node samples to look for one value that a large share of it repeats.
-const MODE_SAMPLE: usize = 64;
+const MODE_SAMPLE_LEN: usize = 64;
 
-/// The share of the sample one value needs before an equality split pays: a
-/// quarter. Below that the split still moves the whole node once while
-/// finishing only that value, which is what an ordinary digit level does for a
-/// whole window of values.
-const MODE_SHARE: usize = 4;
+/// A value repeated by at least a quarter of the sample gets an equality partition.
+const MODE_SHARE_DENOMINATOR: usize = 4;
 
-/// Keys read back to back at each sampled position. Long enough that a value
-/// repeating on a short period (an enum cycling through its cases) shows up as
-/// its real share instead of aliasing with the sample stride.
-const MODE_RUN: usize = 8;
+/// Consecutive keys per sampled run.
+const MODE_SAMPLE_RUN_LEN: usize = 8;
 
-/// Keys a split node samples: eight short runs spread over the node.
-///
-/// Short runs, not one key per stride: a single stride aliases with data that
-/// repeats on a period dividing it (the benchmark's sparse8 does, and a fake
-/// 25 % share turned every level into one peeled value).
-fn sample<T: Key>(arr: &[T], keys: &mut [SortKey<T>]) {
-    let runs = keys.len() / MODE_RUN;
+/// Samples eight runs of eight keys, avoiding stride aliasing with periodic keys.
+fn sample_keys<T: Key>(arr: &[T], keys: &mut [KeyValue<T>]) {
+    let runs = keys.len() / MODE_SAMPLE_RUN_LEN;
     let step = (arr.len() / runs).max(1);
     let mut len = 0;
     for run in 0..runs {
         let start = run * step;
-        for offset in 0..MODE_RUN {
+        for offset in 0..MODE_SAMPLE_RUN_LEN {
             let index = start + offset;
             if index >= arr.len() {
                 break;
@@ -161,41 +87,27 @@ fn sample<T: Key>(arr: &[T], keys: &mut [SortKey<T>]) {
             len += 1;
         }
     }
-    // A tiny node fills fewer slots; the tail repeats the first key, which can
-    // only make the mode look larger, never smaller.
+    // Short inputs pad the sample with the first key.
     let first = keys[0];
-    for slot in len..keys.len() {
-        keys[slot] = first;
-    }
+    keys[len..].fill(first);
 }
 
-/// The value at least a quarter of the sample shares, if there is one.
-///
-/// A digit window cannot separate equal keys: every level moves them again, and
-/// only the level that happens to put them in one bucket retires them. A sampled
-/// value is the split that can retire them on the first pass.
-fn sampled_mode<V: Unsigned>(keys: &mut [V]) -> Option<V> {
+/// Finds a key repeated by at least a quarter of the sample.
+fn sample_mode<V: Unsigned>(keys: &mut [V]) -> Option<V> {
     let len = keys.len();
     keys.sort_unstable();
-    let (mut best, mut count) = (keys[0], 1);
-    let mut run = 1;
-    for index in 1..len {
-        if keys[index] == keys[index - 1] {
-            run += 1;
-        } else {
-            run = 1;
-        }
-        if run > count {
-            best = keys[index];
-            count = run;
+    let mut best = &keys[..1];
+    for run in keys.chunk_by(|a, b| a == b) {
+        if run.len() > best.len() {
+            best = run;
         }
     }
-    (count * MODE_SHARE >= len).then_some(best)
+    (best.len() * MODE_SHARE_DENOMINATOR >= len).then_some(best[0])
 }
 
 /// Whether `bit` separates a minority of the sample, and which side is the
 /// minority: `true` when the records with the bit set are the few.
-fn sampled_minority<V: Unsigned>(keys: &[V], bit: V) -> Option<bool> {
+fn sample_minority_bit<V: Unsigned>(keys: &[V], bit: V) -> Option<bool> {
     let zero = V::from_usize(0);
     let set = keys.iter().filter(|key| (**key & bit) != zero).count();
     if set * 8 <= keys.len() {
@@ -213,26 +125,21 @@ const OUTLIER_RUN_MAX: usize = 1024;
 
 /// A short run at one end of a node whose records disagree with every other
 /// record on the node's top bit, and the variation of the rest.
-struct Outlier<T: Key> {
+struct OutlierRun {
     /// The run sits at the start of the node (`true`) or at its end.
     head: bool,
     /// Whether the run is the side with the bit set.
     set: bool,
     len: usize,
-    rest: Variation<T>,
+    body_varying: u128,
 }
 
-/// The run a node's top bit separates from the rest, if it is short and at an
-/// end.
-///
-/// The sample says whether the bit splits off a minority at all; the scan then
-/// confirms that the only records on that side are one run and collects the
-/// rest's variation, which the body's own split needs anyway. A scattered
-/// minority costs the first disagreeing record and nothing more.
-fn outlier_run<T: Key>(arr: &[T], keys: &[SortKey<T>], bit: SortKey<T>) -> Option<Outlier<T>> {
-    let minority_set = sampled_minority(keys, bit)?;
-    let zero = SortKey::<T>::from_usize(0);
-    let is_minority = |key: SortKey<T>| ((key & bit) != zero) == minority_set;
+/// Finds a short end run separated by the top bit and scans the body
+/// for variation. A scattered minority stops the scan at its first occurrence.
+fn outlier_run<T: Key>(arr: &[T], keys: &[KeyValue<T>], bit: KeyValue<T>) -> Option<OutlierRun> {
+    let minority_set = sample_minority_bit(keys, bit)?;
+    let zero = KeyValue::<T>::from_usize(0);
+    let is_minority = |key: KeyValue<T>| ((key & bit) != zero) == minority_set;
     let cap = OUTLIER_RUN_MAX.min(arr.len() / 2);
     let mut head = 0;
     while head < cap && is_minority(arr[head].key()) {
@@ -242,8 +149,7 @@ fn outlier_run<T: Key>(arr: &[T], keys: &[SortKey<T>], bit: SortKey<T>) -> Optio
     while tail < cap && is_minority(arr[arr.len() - 1 - tail].key()) {
         tail += 1;
     }
-    // Both ends, or neither, or a run that may continue past the cap: not the
-    // shape this path is for.
+    // The minority must occupy exactly one end.
     if (head == 0) == (tail == 0) {
         return None;
     }
@@ -270,86 +176,54 @@ fn outlier_run<T: Key>(arr: &[T], keys: &[SortKey<T>], bit: SortKey<T>) -> Optio
         union |= key;
         intersection = intersection & key;
     }
-    Some(Outlier {
+    Some(OutlierRun {
         head: head_run,
         set: minority_set,
         len,
-        rest: Variation {
-            union,
-            intersection,
-        },
+        body_varying: union.to_u128() ^ intersection.to_u128(),
     })
 }
 
-/// Stable insertion sort by key, for a lifted run of at most
-/// [`OUTLIER_RUN_MAX`] records.
-fn insertion_by_key<T: Key>(arr: &mut [T]) {
-    for index in 1..arr.len() {
-        let mut hole = index;
-        while hole > 0 && arr[hole - 1].key() > arr[hole].key() {
-            arr.swap(hole - 1, hole);
-            hole -= 1;
+/// Scans for inversions and uses budgeted stable insertion on key copies or
+/// records. On failure the input remains a stable permutation.
+fn budgeted_insertion_sort<T, K: Ord>(
+    arr: &mut [T],
+    budget: usize,
+    key: impl Fn(&T) -> K,
+) -> Option<usize> {
+    let mut swaps = 0;
+    let mut start = 0;
+    while let Some(offset) = arr[start..]
+        .windows(2)
+        .position(|pair| key(&pair[0]) > key(&pair[1]))
+    {
+        let index = start + offset + 1;
+        let (prefix, tail) = arr.split_at_mut(index);
+        let (mut current, prefix) = prefix.split_last_mut().unwrap();
+        // The scan already compared this pair, so swap without re-reading keys.
+        std::mem::swap(current, &mut tail[0]);
+        swaps += 1;
+        if swaps > budget {
+            return None;
         }
-    }
-}
-
-/// The moves an insertion pass over `keys` would make, or `None` once the
-/// budget is spent.
-///
-/// This runs on keys alone so that pricing a pass cannot disturb the records:
-/// insertion sort leaves a partly sorted prefix behind when it gives up, and
-/// every sampler below reads records by position, so a failed trial on the
-/// array changes the decisions that follow (it made the equality split fire on
-/// zipf13's second level and cost a level).
-///
-/// The move count depends only on the key sequence, so the price measured here
-/// is the price the record pass pays.
-fn priced_insertion<V: Unsigned>(keys: &mut [V], budget: usize) -> Option<usize> {
-    let mut moves = 0;
-    for index in 1..keys.len() {
-        let mut hole = index;
-        while hole > 0 && keys[hole - 1] > keys[hole] {
-            keys.swap(hole - 1, hole);
-            hole -= 1;
-            moves += 1;
-            if moves > budget {
+        for before in prefix.iter_mut().rev() {
+            if key(before) <= key(current) {
+                break;
+            }
+            std::mem::swap(before, current);
+            current = before;
+            swaps += 1;
+            if swaps > budget {
                 return None;
             }
         }
+        start = index;
     }
-    Some(moves)
+    Some(swaps)
 }
 
-/// Stable insertion sort of records with a move budget.
-///
-/// The budget is spent in moves -- one adjacent swap, one record move -- so one
-/// move per record is the write traffic of one radix pass: a pass that runs out
-/// has not cost more than the level it replaces.
-///
-/// Returns the moves made, or `None` once the budget is spent. Only swaps have
-/// happened either way, so the array is still a permutation of the input and the
-/// radix path can take it as it is; insertion sort keeps equal keys in order, so
-/// the result stays stable whichever way it goes.
-fn adaptive_insertion<T: Key>(arr: &mut [T], budget: usize) -> Option<usize> {
-    let mut moves = 0;
-    for index in 1..arr.len() {
-        let mut hole = index;
-        while hole > 0 && arr[hole - 1].key() > arr[hole].key() {
-            arr.swap(hole - 1, hole);
-            hole -= 1;
-            moves += 1;
-            if moves > budget {
-                return None;
-            }
-        }
-    }
-    Some(moves)
-}
-
-/// Bucket capacity of a leaf pass. The literal appears in the array type:
-/// rustc's layout computation hits an ICE on a const-generic bound spelled
-/// through an inner associated constant here.
-const MAX_BUCKETS: usize = 1 << LEAF_RADIX_MAX;
+/// Maximum cursor table length.
+const MAX_TILE_BUCKETS: usize = 1 << MAX_TILE_DIGIT_BITS;
 
 /// One pass worth of key bits: `width` bits starting at `shift`.
 #[derive(Clone, Copy)]
@@ -360,58 +234,22 @@ struct Digit {
 
 impl Digit {
     #[inline]
-    fn mask<T: Key>(self) -> SortKey<T> {
+    fn mask<T: Key>(self) -> KeyValue<T> {
         (T::Value::from_usize((1usize << self.width) - 1)) << T::Value::from_usize(self.shift)
     }
 }
 
-/// Slots in a pass list. Packed windows are never narrower than the gap
-/// between two varying clusters, so in practice a plan is shorter than the fixed
-/// grid's; the bound is one window per varying bit.
-const PLAN_DIGITS: usize = 48;
+/// Capacity for packed digit windows over a 128-bit key.
+const MAX_DIGITS: usize = 48;
 
-/// The bits that can still differ inside one node: every bit set in some key,
-/// and every bit set in all of them. Constant bits cannot change the order, so
-/// both routes use this to skip work.
-struct Variation<T: Key> {
-    union: SortKey<T>,
-    intersection: SortKey<T>,
-}
-
-// Manual impls: the bound belongs to the key type, which is `Copy`, not to the
-// record `T`, which need not be.
-impl<T: Key> Clone for Variation<T> {
-    fn clone(&self) -> Self {
-        *self
+/// Scans until all candidate bits have appeared in both states, or the input ends.
+/// The parent partition digit is constant within a child and excluded by the caller.
+fn scan_varying_bits<T: Key>(arr: &[T], candidate: u128) -> u128 {
+    if candidate == 0 {
+        return 0;
     }
-}
-
-impl<T: Key> Copy for Variation<T> {}
-
-impl<T: Key> Variation<T> {
-    fn varying(self) -> u128 {
-        self.union.to_u128() & !self.intersection.to_u128()
-    }
-}
-
-/// Accumulates a child's key variation, stopping once every bit that can still
-/// vary has been seen in both states.
-///
-/// The parent's split digit is constant inside a child, so it is removed from
-/// the candidate mask before the scan. Random children then need one short
-/// group of keys to expose all remaining bits; a child whose keys are skewed
-/// scans until it has seen the variation or reaches the end. The previous walk
-/// had to scan every record to rediscover the bucket boundaries; the block
-/// engine now returns those offsets, so this pass can stop early.
-fn scan_variation<T: Key>(arr: &[T], candidate: u128) -> Variation<T> {
     let first = arr[0].key();
     let (mut union, mut intersection) = (first, first);
-    if candidate == 0 {
-        return Variation {
-            union,
-            intersection,
-        };
-    }
     let mut index = 1;
     while index < arr.len() {
         let end = (index + 64).min(arr.len());
@@ -426,43 +264,18 @@ fn scan_variation<T: Key>(arr: &[T], candidate: u128) -> Variation<T> {
         }
         index = end;
     }
-    Variation {
-        union,
-        intersection,
-    }
+    union.to_u128() ^ intersection.to_u128()
 }
 
-/// Writes the passes a leaf will run into `digits`, highest first, and returns
-/// how many there are. Every pass covers only varying bits: constant bits cannot
-/// change the order, so dropping whole digits keeps a node full of duplicates
-/// cheap, and narrowing a partially varying digit keeps a skewed node cheap,
-/// because both a split's bucket count and a leaf's digit width follow the digit
-/// they are given.
-///
-/// The windows pack, instead of following a fixed grid over the key width.
-/// The grid splits a cluster of varying bits that straddles a cell boundary into
-/// two passes and gives one pass to every other cell, which is why a key with 31
-/// varying bits scattered over 62 used to take six passes where three windows
-/// suffice: a window runs from the lowest varying bit not yet consumed up to the
-/// highest one within `width` bits, and only that span.
-///
-/// Passes come out most significant first, the order the leaf consumes them in
-/// (it walks the plan backwards, so the last entry runs first). Disjoint spans
-/// cannot interleave two keys' digits differently from the key order.
-///
-/// The plan stays a slice of a caller-owned array: this toolchain's layout query
-/// ICEs when a function passes an array whose length is a path constant.
-fn plan_digits_packed(varying: u128, width: usize, digits: &mut [Digit]) -> usize {
+/// Packs varying bits into windows of at most `width` bits, highest first.
+/// The LSD passes consume the plan in reverse. Windows skip constant gaps.
+fn plan_digits(varying: u128, width: usize, digits: &mut [Digit]) -> usize {
     let mut remaining = varying;
     let mut len = 0;
     while remaining != 0 {
-        let high = (u128::BITS - 1 - remaining.leading_zeros()) as usize;
+        let high = remaining.ilog2() as usize;
         let window_low = (high + 1).saturating_sub(width);
-        let window = if window_low == 0 {
-            u128::MAX
-        } else {
-            u128::MAX << window_low
-        };
+        let window = u128::MAX << window_low;
         let inside = remaining & window;
         let low = inside.trailing_zeros() as usize;
         debug_assert!(len < digits.len());
@@ -476,49 +289,12 @@ fn plan_digits_packed(varying: u128, width: usize, digits: &mut [Digit]) -> usiz
     len
 }
 
-/// Set `RADIX_TRACE=1` to print every routing decision. The trace costs one
-/// atomic read per node and is the only way to see why an input took a path.
-fn trace() -> bool {
-    static TRACE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *TRACE.get_or_init(|| std::env::var_os("RADIX_TRACE").is_some())
-}
-
-/// Measurement hook: RADIX_FUSE_LEAF=0 disables consuming a bucket at its
-/// compact completion. Unset in every shipped run.
-fn fuse_leaf() -> bool {
-    use std::sync::OnceLock;
-    static FUSE: OnceLock<bool> = OnceLock::new();
-    *FUSE.get_or_init(|| std::env::var("RADIX_FUSE_LEAF").map_or(true, |v| v != "0"))
-}
-
-/// A 128-byte record turns the visitor into a second full-size tile working
-/// set. Measured on the 1 MiB record corpus, sorting after compact is 0.7–2.8 %
-/// faster there, while 8–16 byte records keep the 4–11 % fused-leaf gain.
-fn fuse_leaf_for<T>() -> bool {
-    fuse_leaf() && std::mem::size_of::<T>() <= 64
-}
-
-/// Measurement hook: RADIX_FUSE_EQ=0 disables only equality-band fusion while
-/// digit-split fusion stays on, so the two A/Bs remain separable.
-fn fuse_equality() -> bool {
-    use std::sync::OnceLock;
-    static FUSE: OnceLock<bool> = OnceLock::new();
-    *FUSE.get_or_init(|| std::env::var("RADIX_FUSE_EQ").map_or(true, |v| v != "0"))
-}
-
-/// A node whose keys differ only inside one 64-bit half of a wider key.
-///
-/// Sorts of 16-byte records whose logical key lives in the top (or bottom)
-/// half pay 128-bit shifts and masks in every pass, although an assignment of
-/// bucket indices made from the half orders them identically. The wrapper is
-/// `repr(transparent)`: the engine still moves whole records, only `key()`
-/// narrows to a `u64`. Its `Ord` is never observed -- the engine only calls
-/// `key()` -- and the dropped half is constant across the node by the caller's
-/// variation test, so equal and ordered records stay equal and ordered.
+/// A layout-preserving view of a wide key's varying 64-bit half.
+/// The discarded half is constant across the root, so order and equality are preserved.
 #[repr(transparent)]
-struct Shifted<const SHIFT: usize, T: Key>(T);
+struct KeyHalf<const SHIFT: usize, T: Key>(T);
 
-impl<const SHIFT: usize, T: Key> Key for Shifted<SHIFT, T> {
+impl<const SHIFT: usize, T: Key> Key for KeyHalf<SHIFT, T> {
     type Value = u64;
     #[inline]
     fn key(&self) -> u64 {
@@ -526,77 +302,26 @@ impl<const SHIFT: usize, T: Key> Key for Shifted<SHIFT, T> {
     }
 }
 
-struct Context<T> {
-    /// Scratch for the leaves; holds the largest tile seen so far.
+struct Sorter<T> {
     scratch: Vec<MaybeUninit<T>>,
     tile_bytes: usize,
-    /// Tiles at or below this many records use an insertion sort.
-    insertion_max: usize,
-    /// 0 runs the leaf as shipped, 1 runs the flat plan only, 2 runs the MSD level
-    /// only. The two non-zero values are the two halves of the leaf ablation.
-    leaf_mode_test: u8,
-}
-
-/// The knobs a sort can be given. The defaults are the measured constants;
-/// measurement code pins one field instead of the library growing a function
-/// per combination of them.
-#[derive(Clone, Copy)]
-pub struct Policy {
-    /// Largest leaf, in bytes of record data. Caps the auxiliary space.
-    pub tile_bytes: usize,
-    /// Tiles at or below this many records are finished with an insertion sort.
-    pub insertion_max: usize,
-    /// Sort a root whose varying bits lie in one 64-bit half through the
-    /// narrowed key view. Default on: it is an order-preserving key transform,
-    /// and the measured cells have no counterexample (s84). The field stays
-    /// public so an A/B does not need a second build.
-    pub narrow_key: bool,
-}
-
-impl Default for Policy {
-    fn default() -> Self {
-        Policy {
-            tile_bytes: TILE_BYTES,
-            insertion_max: INSERTION_MAX,
-            narrow_key: true,
-        }
-    }
 }
 
 /// Sorts by converted radix key, stably, in O(n) time and O(sqrt(n)) auxiliary
 /// space. See the module documentation for the shape of the algorithm.
 pub(super) fn sort<T: Key>(arr: &mut [T]) {
-    sort_with_policy(arr, Policy::default());
+    sort_with_tile_bytes(arr, TILE_BYTES);
 }
 
-/// Sorts without the tile's MSD level: the measurement surface for whether that
-/// level still earns its keep. Not part of the sort's contract.
-pub(super) fn sort_with_leaf_plan<T: Key>(arr: &mut [T]) {
-    run(arr, Policy::default(), 1);
-}
-
-/// Sorts with an explicit policy. Every knob is a local cost decision: the tile
-/// caps the auxiliary space on its own, so which leaf finishes a tile never
-/// changes the O(sqrt n) bound.
-pub(super) fn sort_with_policy<T: Key>(arr: &mut [T], policy: Policy) {
-    run(arr, policy, 0);
-}
-
-fn run<T: Key>(arr: &mut [T], policy: Policy, leaf_mode_test: u8) {
+fn sort_with_tile_bytes<T: Key>(arr: &mut [T], tile_bytes: usize) {
     let record_bytes = std::mem::size_of::<T>();
     if arr.len() < 2 || record_bytes == 0 {
         return;
     }
-    let tile_bytes = policy
-        .tile_bytes
+    let tile_bytes = tile_bytes
         .max(record_bytes)
         .min(MAX_TILE_RECORDS * record_bytes);
-    // An ordered input needs no passes at all, so the probe runs before anything
-    // that touches every key: ascending returns after one pass, descending after
-    // one reversal. The probe gives up at the first inversion, so a random array
-    // pays two comparisons of the strided sample and the variation scan below
-    // stays the first full pass. Running the scan first made every ordered input
-    // pay both.
+    // Probe before the variation scan so ordered inputs pay only one full read.
     let sampled = probe_order(arr);
     match sampled {
         Order::Ascending => return,
@@ -606,78 +331,32 @@ fn run<T: Key>(arr: &mut [T], policy: Policy, leaf_mode_test: u8) {
         }
         Order::Flat | Order::Unsorted => {}
     }
-    // A strided probe rejects an almost-ascending array at its first displaced
-    // pair, and every such pair costs the radix path a whole level: the level
-    // moves all n records to separate the handful that moved. One insertion pass
-    // finishes them for the moves they make.
-    //
-    // The pass is priced on one tile, the engine's unit of resident work, and
-    // the budget on that tile is one move per record -- the write traffic of one
-    // radix pass. A tile that runs out means the move rate is above one per
-    // record, so the attempt stops having touched one tile, and the radix path
-    // below takes over a permutation. A tile that finishes measures the rate the
-    // array will pay, and that rate becomes the budget: an input whose head is
-    // ordered while its tail is not then stops at once instead of walking the
-    // tail, and an input that is displaced throughout pays what its own rate
-    // says.
-    //
-    // Only for `Unsorted`: `Flat` is the constant-array sample, and a constant
-    // array is cheaper to answer with the scan below than with a comparison pass.
     if sampled == Order::Unsorted {
         let probe = (tile_bytes / record_bytes).max(2).min(arr.len());
-        let mut keys: Vec<SortKey<T>> = arr[..probe].iter().map(|record| record.key()).collect();
-        match priced_insertion(&mut keys, probe) {
-            None => {
-                if trace() {
-                    eprintln!("adaptive probe len={} gave up", probe);
-                }
-            }
+        let probe_swaps = {
+            let mut keys: Vec<KeyValue<T>> = arr[..probe].iter().map(Key::key).collect();
+            budgeted_insertion_sort(&mut keys, probe, |&key| key)
+        };
+        match probe_swaps {
+            None => {}
             Some(0) => {
-                // No moves over the tile. If the tile was the array, its keys
-                // are sorted, and so is the array: nothing to do.
                 if probe == arr.len() {
                     return;
                 }
-                // Otherwise an ordered tile in an array the probe called
-                // unordered means the disorder is later, and a pass that walks
-                // the whole ordered prefix to find it reads a full pass without
-                // knowing what it will find. p95zero is that shape -- a long
-                // equal head and a random tail -- and a zero rate is where this
-                // has to stop.
-                if trace() {
-                    eprintln!("adaptive probe len={} ordered", probe);
-                }
             }
-            Some(moves) => {
-                // The tile's rate, priced over the array; when the tile was the
-                // array the price is exact.
-                let budget = moves * arr.len() / probe;
-                let finished = adaptive_insertion(arr, budget).is_some();
-                if trace() {
-                    eprintln!(
-                        "adaptive probe len={} moves={} budget={} finished={}",
-                        probe, moves, budget, finished
-                    );
-                }
-                if finished {
+            Some(swaps) => {
+                let budget = swaps * arr.len() / probe;
+                if budgeted_insertion_sort(arr, budget, Key::key).is_some() {
                     return;
                 }
             }
         }
     }
-    let (union, intersection) = block::varying_key_bits(arr);
-    let variation = Variation {
-        union,
-        intersection,
-    };
-    if variation.varying() == 0 {
+    let varying = block::varying_key_bits(arr);
+    if varying == 0 {
         return;
     }
-    // A flat sample saw only equal pairs; the strided gaps may still hold a
-    // change, which the scan above has now confirmed there is. The full order
-    // pass is the only thing left that a constant array would not need, so it
-    // runs here and not inside the probe: a constant input answers with the scan
-    // alone, which is the vectorizable one.
+    // Only confirm flat samples after ruling out a constant array.
     if sampled == Order::Flat {
         match confirm_order(arr) {
             Order::Ascending => return,
@@ -688,111 +367,42 @@ fn run<T: Key>(arr: &mut [T], policy: Policy, leaf_mode_test: u8) {
             _ => {}
         }
     }
-    // The view is built from `to_u128`, so it only covers keys up to 128 bits;
-    // a wider key would need a high-half accessor before it could narrow.
-    if policy.narrow_key && T::Value::BITS > 64 && T::Value::BITS <= 128 {
-        let varying = variation.varying();
+
+    if T::Value::BITS > 64 && T::Value::BITS <= 128 {
         if varying >> 64 == 0 {
-            sort_shifted_root::<0, T>(
-                arr,
-                variation,
-                tile_bytes,
-                policy.insertion_max,
-                leaf_mode_test,
-            );
+            sort_key_half::<0, T>(arr, varying, tile_bytes);
             return;
         }
         if varying & ((1u128 << 64) - 1) == 0 {
-            sort_shifted_root::<64, T>(
-                arr,
-                variation,
-                tile_bytes,
-                policy.insertion_max,
-                leaf_mode_test,
-            );
+            sort_key_half::<64, T>(arr, varying, tile_bytes);
             return;
         }
     }
-    let mut context = Context {
+    let mut sorter = Sorter {
         scratch: Vec::new(),
         tile_bytes,
-        insertion_max: policy.insertion_max,
-        leaf_mode_test,
     };
-    context.sort_node(arr, variation);
+    sorter.sort_node(arr, varying);
 }
 
-/// Sorts a whole root through the narrowed key view when every varying bit sits
-/// in one 64-bit half. Root-only on purpose: a narrowed sort never narrows
-/// again, and the cells this targets (32-bit logical keys stored in a u128
-/// container) are already narrow at the root.
-fn sort_shifted_root<const SHIFT: usize, T: Key>(
-    arr: &mut [T],
-    variation: Variation<T>,
-    tile_bytes: usize,
-    insertion_max: usize,
-    leaf_mode_test: u8,
-) {
-    // The wrapper is repr(transparent), so the slice has the same layout,
-    // length and alignment. Moving the reference into the raw pointer ends the
-    // borrow: the new slice is the only reference for the duration.
-    let shifted: &mut [Shifted<SHIFT, T>] =
-        unsafe { &mut *(arr as *mut [T] as *mut [Shifted<SHIFT, T>]) };
-    let bits = |value: SortKey<T>| (value.to_u128() >> SHIFT) as u64;
-    let mut context = Context::<Shifted<SHIFT, T>> {
+/// Narrows at the root only; descendants retain the same key view.
+fn sort_key_half<const SHIFT: usize, T: Key>(arr: &mut [T], varying: u128, tile_bytes: usize) {
+    // SAFETY: KeyHalf is repr(transparent) over T. This reborrow is the only
+    // reference used during sorting, with identical length, layout and alignment.
+    let narrowed: &mut [KeyHalf<SHIFT, T>] =
+        unsafe { &mut *(arr as *mut [T] as *mut [KeyHalf<SHIFT, T>]) };
+    let mut sorter = Sorter::<KeyHalf<SHIFT, T>> {
         scratch: Vec::new(),
         tile_bytes,
-        insertion_max,
-        leaf_mode_test,
     };
-    context.sort_node(
-        shifted,
-        Variation {
-            union: bits(variation.union),
-            intersection: bits(variation.intersection),
-        },
-    );
-}
-
-// --- Cost model -----------------------------------------------------------
-//
-// The split decision below is the same shape as the block-size formula in
-// `rust_block_lsd::core`: minimize predicted cost instead of tuning a byte
-// threshold. The constants are machine facts about moving record bytes, not
-// properties of a data distribution.
-
-/// The passes a tile-sized range really costs: the flat plan, or one MSD level
-/// per level of shrinking when that is cheaper.
-///
-/// The router and the leaf both ask this, so they cannot price the same tile
-/// differently: a window that divides only a little leaves one child holding
-/// almost everything, and a level then buys nothing over the flat plan.
-
-/// Whether an MSD split costs less than running the passes level by level.
-///
-/// Both sides are counted in passes over the node, so nothing about bandwidth,
-/// latency or cache size enters: streaming costs one pass per varying digit;
-/// splitting costs the split itself plus the passes of the child that keeps the
-/// work, each discounted by what a cache-resident working set is worth. A child
-/// too large for the tile earns no discount, which is what makes the rule stop
-/// splitting once the children are still large.
-fn split_pays(span: usize) -> bool {
-    // One rule, no machine facts: a node whose varying bits do not fit one split
-    // digit would need a second pass, and one permutation plus cache-resident
-    // children is cheaper than that. A node that fits has nothing to gain from a
-    // split. The tile boundary already says whether the working set is resident,
-    // so no rate, no bandwidth and no cache size appear here.
-    span > RADIX
+    sorter.sort_node(narrowed, varying >> SHIFT);
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Order {
     Ascending,
     Descending,
-    /// Every sampled pair was equal. A strided sample cannot distinguish a
-    /// constant array from one that varies between the samples, so this answer
-    /// is not an order: the caller pays the variation scan it needs anyway and
-    /// only then asks for the full pass.
+    /// Every sampled pair was equal; gaps may still contain differing keys.
     Flat,
     Unsorted,
 }
@@ -800,37 +410,21 @@ enum Order {
 /// Spread-out pairs the strided gate may look at before the full order pass.
 const ORDER_SAMPLES: usize = 4096;
 
-/// Whether the input is already ordered.
-///
-/// A strided sample answers first: at most `ORDER_SAMPLES` spread-out adjacent
-/// pairs, tracking both directions. If the sample is monotone in neither
-/// direction the array cannot be ordered, so the full pass is skipped. That
-/// matters for the common "sorted, then a few appends" shape, where a full pass
-/// would run to the end before finding the inversion. The sample can only
-/// *reject*, never accept, so the answer stays exact.
-///
-/// A sample that saw only equal pairs is the one case the sample cannot decide:
-/// the array may be constant or may vary between the samples. It returns
-/// `Order::Flat` and the caller chooses which full pass to pay -- the variation
-/// scan if the array is constant, the confirmation pass if it is not.
-///
-/// Keeping this separate from the variation scan also keeps that scan
-/// vectorizable; fusing the two cost 5 % on clustered inputs, where the scan
-/// runs to the end and the order flags never pay off.
+/// Rejects unordered input with strided adjacent pairs, then confirms order
+/// with a full scan. Equal-only samples defer confirmation to the caller.
 fn probe_order<T: Key>(arr: &[T]) -> Order {
     let stride = (arr.len() / ORDER_SAMPLES).max(1);
     let mut ascending = true;
     let mut descending = true;
-    let mut index = stride;
-    while index < arr.len() {
-        let before = arr[index - 1].key();
-        let after = arr[index].key();
+    for index in (stride..arr.len()).step_by(stride) {
+        // SAFETY: the range guarantees 1 <= index < arr.len() for both accesses.
+        let before = unsafe { arr.get_unchecked(index - 1) }.key();
+        let after = unsafe { arr.get_unchecked(index) }.key();
         ascending &= before <= after;
         descending &= before >= after;
         if !ascending && !descending {
             return Order::Unsorted;
         }
-        index += stride;
     }
     if ascending && descending {
         return Order::Flat;
@@ -838,28 +432,19 @@ fn probe_order<T: Key>(arr: &[T]) -> Order {
     confirm_order(arr)
 }
 
-/// The full order pass, after the sample has shown that the array may be
-/// ordered. One comparison per record and an exit at the first inversion.
-#[inline]
+/// Determines direction from the first unequal key, then confirms that order.
 fn confirm_order<T: Key>(arr: &[T]) -> Order {
-    let mut ascending = true;
-    let mut descending = true;
-    let mut previous = arr[0].key();
-    for item in &arr[1..] {
-        let key = item.key();
-        ascending &= previous <= key;
-        descending &= previous >= key;
-        previous = key;
-        if !ascending && !descending {
-            return Order::Unsorted;
-        }
-    }
-    if ascending {
-        Order::Ascending
-    } else if descending {
-        Order::Descending
+    let first = arr[0].key();
+    let mut keys = arr[1..].iter().map(Key::key);
+    let Some(key) = keys.find(|&key| key != first) else {
+        return Order::Ascending;
+    };
+    if first < key {
+        keys.try_fold(key, |a, b| (a <= b).then_some(b))
+            .map_or(Order::Unsorted, |_| Order::Ascending)
     } else {
-        Order::Unsorted
+        keys.try_fold(key, |a, b| (a >= b).then_some(b))
+            .map_or(Order::Unsorted, |_| Order::Descending)
     }
 }
 
@@ -880,30 +465,16 @@ fn reverse_stably<T: Key>(arr: &mut [T]) {
 }
 
 /// Stable insertion sort on converted keys.
-fn insertion_leaf<T: Key>(arr: &mut [T]) {
-    for i in 1..arr.len() {
-        let mut j = i;
-        while j > 0 && arr[j - 1].key() > arr[j].key() {
-            arr.swap(j - 1, j);
-            j -= 1;
-        }
-    }
+fn insertion_sort<T: Key>(arr: &mut [T]) {
+    let _ = budgeted_insertion_sort(arr, usize::MAX, Key::key);
 }
 
-/// One stable counting pass: histogram, prefix sum, scatter. Returns the
-/// largest bucket count, which the leaf uses to decide whether it needs bucket
-/// boundaries at all; a flat pass drops the value and pays nothing for it.
+/// Histogram, prefix sum, then stable scatter. Returns the largest bucket.
 ///
 /// # Safety
-///
-/// `source` must point at `len` initialized records and `destination` at
-/// `len` writable slots of a different allocation. `counts` must point at
-/// room for `1 << digit.width` entries that need not be initialised: this
-/// pass writes every entry it later reads. `len` must not exceed `u16::MAX`:
-/// the cursors are `u16`, and `sort_with_policy` clamps the tile to
-/// `MAX_TILE_RECORDS` for exactly this reason. The array
-/// length is not in the signature on purpose: this toolchain ICEs on an
-/// array-typed parameter whose length is a path constant.
+/// `source` holds `len` initialized records; `destination` has `len` writable
+/// slots in a separate allocation. `cursor` has room for `1 << digit.width`
+/// entries. `len <= u16::MAX`, as enforced by the tile-size clamp.
 #[inline]
 unsafe fn counting_pass<T: Key>(
     source: *const T,
@@ -946,10 +517,7 @@ unsafe fn counting_pass<T: Key>(
             let bucket = ((key & mask) >> shift).to_usize();
             let slot = *cursor.add(bucket);
             *cursor.add(bucket) = slot.wrapping_add(1);
-            // The clamp is dead for a key that is a function of the record, and it
-            // is what keeps a key that is not one from writing outside the tile:
-            // `Key` is a safe trait, so a wrong implementation may garble the order
-            // but must not be able to cause memory unsafety.
+            // Limit the target index to the destination tile.
             let target = (slot as usize).min(len - 1);
             std::ptr::write(destination.add(target), std::ptr::read(record));
         }
@@ -957,299 +525,134 @@ unsafe fn counting_pass<T: Key>(
     largest
 }
 
-/// Digit width for a leaf: the widest digit whose cursor table is no larger
-/// than the tile itself.
-///
-/// Wider digits mean fewer passes, and the table is only worth its footprint
-/// while it stays smaller than the records it is indexing. That single rule
-/// reproduces both measured optima exactly, which a pass-count-plus-table cost
-/// model did not: a 31 KiB tile of 8-byte records picks 13 bits (`2 << 13` is
-/// 16 KiB, `2 << 14` would be 32 KiB and measured 21 % slower, the table having
-/// become the working set), and a 61 KiB tile of 16-byte records picks 14
-/// (32 KiB table against 61 KiB of records, measured best at 1M).
-fn leaf_radix(records: usize, record_bytes: usize) -> usize {
-    if let Some(w) = leaf_width_override() {
-        return w;
-    }
+/// Chooses the widest cursor table that fits beside the tile, capped by
+/// record count to avoid clearing mostly empty buckets on wide records.
+fn tile_digit_bits(records: usize, record_bytes: usize) -> usize {
     let tile_bytes = records.saturating_mul(record_bytes);
     // The widest table that still fits: `2 * 2^width` bytes of cursors.
-    let widest = (usize::BITS - (tile_bytes / 2).max(1).leading_zeros()) as usize - 1;
-    // A digit wider than the records can fill is not free: the counter table still
-    // has to be cleared and scanned, and every bucket still costs a boundary read.
-    // A 128-byte tile of 278 records was picking 13 bits, i.e. 8192 buckets for 278
-    // records; capping at two bits above the record count keeps the table in the
-    // same order as the data it sorts.
-    let by_records = (usize::BITS - records.max(1).leading_zeros()) as usize + 2;
-    widest.min(by_records).clamp(LEAF_RADIX_MIN, LEAF_RADIX_MAX)
+    let widest = (tile_bytes / 2).max(1).ilog2() as usize;
+    // Limit empty-bucket work to at most two bits above the record count.
+    let by_records = records.max(1).ilog2() as usize + 3;
+    widest
+        .min(by_records)
+        .clamp(MIN_TILE_DIGIT_BITS, MAX_TILE_DIGIT_BITS)
 }
 
-/// Measurement hook: RADIX_LEAF_WIDTH pins the leaf digit width for the same reason
-/// RADIX_SPLIT_WIDTH exists -- a sweep then costs one build. Unset in every shipped run.
-fn leaf_width_override() -> Option<usize> {
-    use std::sync::OnceLock;
-    static WIDTH: OnceLock<Option<usize>> = OnceLock::new();
-    *WIDTH.get_or_init(|| {
-        std::env::var("RADIX_LEAF_WIDTH")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .filter(|w| (LEAF_RADIX_MIN..=LEAF_RADIX_MAX).contains(w))
-    })
-}
-
-/// Measurement hook: RADIX_SPLIT_WIDTH pins the split digit width so a sweep costs
-/// one build instead of one build per width. Unset in every shipped run.
-fn width_override() -> Option<usize> {
-    use std::sync::OnceLock;
-    static WIDTH: OnceLock<Option<usize>> = OnceLock::new();
-    *WIDTH.get_or_init(|| {
-        std::env::var("RADIX_SPLIT_WIDTH")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .filter(|w| (1..=LEAF_RADIX_MAX).contains(w))
-    })
-}
-
-/// Digit width for one MSD split.
-///
-/// Aim for children of about half the tile budget: large enough that the split
-/// pass stays amortized, small enough that the common child needs no further
-/// split. The bucket count, and with it the block engine's scratch, then
-/// follows the node size instead of being fixed at 256 even for a node of a few
-/// thousand records.
-fn split_radix(node_len: usize, record_bytes: usize, tile_bytes: usize) -> usize {
-    if let Some(width) = width_override() {
-        return width;
-    }
+/// Chooses an initial width targeting half-tile children, then widens if needed.
+fn choose_split_digit<T: Key>(arr: &[T], top: usize, tile_bytes: usize) -> Digit {
+    let record_bytes = std::mem::size_of::<T>();
     let tile_records = (tile_bytes / record_bytes).max(64);
     let target = (tile_records / 2).max(1);
-    let children = (node_len / target).max(2);
-    let bits = usize::BITS - (children - 1).leading_zeros();
-    // Capped at `RADIX`, not at the leaf maximum: a 2048-way fan-out makes every
-    // write in the split's last pass land in a different 40 KiB region, and the
-    // measured cost of that (u64 10M 35.4 -> 41.4 ns, u128 10M 100 -> 97) is
-    // larger than the L1-resident leaves it buys.
-    (bits as usize).clamp(3, RADIX)
+    let children = (arr.len() / target).max(2);
+    let bits = (children - 1).ilog2() + 1;
+    // Wider fan-out increased page/TLB pressure in the 10M measurements.
+    let mut width = (bits as usize).clamp(3, SPLIT_BITS).min(top).max(1);
+
+    // Widen a concentrated top window until a quarter of its buckets are sampled.
+    while width < top && width + 2 <= MAX_SPLIT_BITS {
+        // At larger widths the sample cannot meet the occupancy threshold.
+        if width < WIDENING_SAMPLE_BITS {
+            let probe = Digit {
+                shift: top - width,
+                width,
+            };
+
+            if sample_distinct_digits(arr, probe) * 4 >= 1usize << width {
+                break;
+            }
+        }
+        // Clamp to the highest varying bit: a 9-bit node previously widened
+        // to 10 bits and underflowed the digit shift.
+        width = (width + 2).min(top);
+    }
+    Digit {
+        shift: top - width,
+        width,
+    }
 }
 
-impl<T: Key> Context<T> {
-    fn sort_node(&mut self, arr: &mut [T], variation: Variation<T>) {
+impl<T: Key> Sorter<T> {
+    fn sort_node(&mut self, arr: &mut [T], varying: u128) {
         let records = arr.len();
-        let varying = variation.varying();
         if records < 2 || varying == 0 {
             return;
         }
         let record_bytes = std::mem::size_of::<T>();
         let node_bytes = records.saturating_mul(record_bytes);
         if node_bytes <= self.tile_bytes {
-            if trace() {
-                eprintln!("leaf  len={} bytes={}", records, node_bytes);
-            }
-            self.lsd_leaf(arr, variation);
+            self.sort_tile(arr, varying);
             return;
         }
-        // One fact decides the route: how many bits the keys still vary in. A span
-        // that fits one split digit is one pass over the node, and splitting it
-        // cannot beat one pass; a wider span needs at least two, which the split
-        // replaces with one permutation plus children that are cache resident.
+        // One digit finishes a narrow span; wider spans benefit from tiled children.
         let low = varying.trailing_zeros() as usize;
         let top = (u128::BITS - varying.leading_zeros()) as usize;
         let span = top - low;
-        // nothing left to price: the rule reads one number.
-        let routed = split_pays(span);
-        // One line per node says everything the routing decided, so a trace diff
-        // between two builds is a decision diff.
-        if trace() {
-            // The old rule, kept only under the trace: the pass count the planner
-            // would need, next to the span the new rule reads. Every node prints both,
-            // so a run of the whole suite proves the two agree wherever it looks.
-            let mut scratch_digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
-            let cold_passes = plan_digits_packed(varying, RADIX, &mut scratch_digits);
-            eprintln!(
-                "route len={} bytes={} passes={} span={} split={}",
-                records, node_bytes, cold_passes, span, routed
-            );
-        }
-        if !routed {
-            // One digit covers every varying bit, so one stable permutation finishes
-            // the node: no recursion, no plan array, no second engine. The fan-out
-            // stays at RADIX because the block engine sizes its working set from it.
-            block::partition_digit(arr, RADIX, low);
+
+        if span <= SPLIT_BITS {
+            // One block partition finishes the node without recursion.
+            block::partition_digit(arr, SPLIT_BITS, low);
             return;
         }
-        // Both checks below look for a node whose split cannot divide it, and
-        // both pay a 64-key sort to look. That price is only worth paying where
-        // the pass it may save is much larger: a node at least a few tiles wide.
+        // Amortize the key sample over at least four tiles.
         if node_bytes >= 4 * self.tile_bytes {
-            let mut keys = [SortKey::<T>::from_usize(0); MODE_SAMPLE];
-            sample(arr, &mut keys);
-            // A value that a large share of the node repeats cannot be separated
-            // by any digit window: every level moves the duplicates again, and
-            // only the level that happens to land them all in one bucket retires
-            // them. A sampled value splits them out on the first pass and the
-            // band is finished by that same pass.
-            if let Some(equal) = sampled_mode(&mut keys) {
-                self.equality_split(arr, equal, varying);
+            let mut keys = [KeyValue::<T>::from_usize(0); MODE_SAMPLE_LEN];
+            sample_keys(arr, &mut keys);
+            // An equality partition finishes the repeated key immediately.
+            if let Some(equal) = sample_mode(&mut keys) {
+                self.partition_equal(arr, equal, varying);
                 return;
             }
-            // A top bit that one short run disagrees on does not divide the node
-            // either: the split would move everything to separate a handful. The
-            // run is lifted out instead, and the body's own split becomes the
-            // node's only pass.
-            let top = (u128::BITS - varying.leading_zeros()) as usize;
-            let bit = SortKey::<T>::from_usize(1) << T::Value::from_usize(top - 1);
+            // Lift a short end run rather than move the whole node to separate it.
+            let bit = KeyValue::<T>::from_usize(1) << KeyValue::<T>::from_usize(top - 1);
             if let Some(outlier) = outlier_run(arr, &keys, bit) {
-                self.lift_outlier(arr, outlier);
+                self.sort_outlier_run(arr, outlier);
                 return;
             }
         }
-        let mut radix = split_radix(records, record_bytes, self.tile_bytes)
-            .min(top)
-            .max(1);
-        // A window that puts nearly every record in one bucket buys nothing: the
-        // child repeats the same decision one level down and the level's two passes
-        // are wasted. An MSD level may only peel the *highest* bits (a lower window
-        // would order by the wrong bits), so the single freedom it has is how many
-        // of them to peel: widening pulls lower bits into the bucket index and
-        // splits a concentrated key set into distinct buckets.
-        //
-        // The sample costs one pass over MSD_SAMPLE keys, which at the top of a
-        // 15 MiB node is nothing, and it only ever widens a node whose sample shows
-        // the window does not divide -- a random node is already balanced at the
-        // size-chosen width, so its decision does not move.
-        while radix < top && radix + 2 <= SPLIT_RADIX_MAX {
-            // The sample can only ever see MSD_SAMPLE distinct buckets, so the
-            // quarter bar (distinct * 4 >= 2^width) cannot be met once 2^width
-            // exceeds four times the sample. Widening straight past those widths is
-            // the same decision for less work: the alternative is a sample that is
-            // guaranteed to fail, at every node, for nothing.
-            if radix < WIDENING_SAMPLE_LIMIT {
-                let probe = Digit {
-                    shift: top - radix,
-                    width: radix,
-                };
-                // A quarter of the buckets occupied is the bar: below it the level is
-                // mostly one bucket and a wider one is strictly better, above it the
-                // extra table and boundary reads cost more than the balance they buy.
-                if sampled_buckets(arr, probe) * 4 >= 1usize << radix {
-                    break;
-                }
-            }
-            // Never widen past the last varying bit: the digit's shift is
-            // `top - width`, so a wider window would shift below bit zero and
-            // panic in the block engine (or, without its check, index with a
-            // wrapped mask). A 9-bit node used to reach this.
-            radix = (radix + 2).min(top);
-        }
-        let digit = Digit {
-            shift: top - radix,
-            width: radix,
-        };
-        // MSD split: one stable block-permutation pass over the whole node.
-        // The fan-out follows the node size. A node that is only slightly over
-        // the tile budget must not pay for 256 output streams and the block
-        // engine's per-bucket scratch floor.
-        if trace() {
-            eprintln!("  split radix={} shift={}", radix, top - radix);
-        }
-        // Within a bucket every key shares the split digit, so those bits are
-        // removed from what the child still has to scan for. The block pass
-        // already knows where each bucket ends; using those ends avoids a
-        // second digit comparison per record.
-        let candidate = varying & !digit.mask::<T>().to_u128();
-        let fused = fuse_leaf_for::<T>();
-        let tile_bytes = self.tile_bytes;
+        let digit = choose_split_digit(arr, top, self.tile_bytes);
+        self.partition_digit(arr, digit, varying);
+    }
+
+    /// Partitions by digit, then sorts each unfinished child.
+    fn partition_digit(&mut self, arr: &mut [T], digit: Digit, varying: u128) {
         let record_bytes = std::mem::size_of::<T>();
-        let ends = if fused {
-            // A leaf child is sorted as soon as the block pass has copied it
-            // into input. The records are still in cache, so the leaf's first
-            // histogram pass does not refetch the whole tile from memory.
-            let mut visit = |_: usize, child: &mut [T]| {
-                if child.len().saturating_mul(record_bytes) <= tile_bytes {
-                    if trace() {
-                        eprintln!("  fused-leaf len={}", child.len());
-                    }
-                    let variation = scan_variation(child, candidate);
-                    self.lsd_leaf(child, variation);
-                }
-            };
-            block::partition_digit_with_ends_and_visit(arr, digit.width, digit.shift, visit)
-        } else {
-            block::partition_digit_with_ends(arr, digit.width, digit.shift)
+        // Bucket boundaries come from the block engine. The split digit is
+        // constant inside each child, so its bits are excluded from the next scan.
+        let candidate = varying & !digit.mask::<T>().to_u128();
+        let tile_bytes = self.tile_bytes;
+        let mut visit = |child: &mut [T]| {
+            if child.len().saturating_mul(record_bytes) <= tile_bytes {
+                let varying = scan_varying_bits(child, candidate);
+                self.sort_tile(child, varying);
+            }
         };
+        let ends = block::partition_digit_with_ends(arr, digit.width, digit.shift, &mut visit);
         let mut start = 0;
         for &end in &ends {
             if end > start {
                 let child = &mut arr[start..end];
-                let is_tile = child.len().saturating_mul(record_bytes) <= tile_bytes;
-                if !(fused && is_tile) {
-                    let variation = scan_variation(child, candidate);
-                    self.sort_node(child, variation);
+                if child.len().saturating_mul(record_bytes) > tile_bytes {
+                    let varying = scan_varying_bits(child, candidate);
+                    self.sort_node(child, varying);
                 }
             }
             start = end;
         }
     }
 
-    /// A split around one value: below, equal, above. The equal band needs no
-    /// further work -- it is the shape a radix level keeps paying for and can
-    /// never finish in one pass.
-    ///
-    /// The partition returns the record ends of the three bands, so neither
-    /// child pays a boundary scan: only the records outside the equal band are
-    /// read for variation, and that scan stops once every candidate bit has
-    /// appeared.
-    fn equality_split(&mut self, arr: &mut [T], equal: SortKey<T>, parent_varying: u128) {
-        if trace() {
-            eprintln!("  eq key={:#x}", equal.to_u128());
-        }
-        let classify = |record: &T| {
-            use std::cmp::Ordering::{Equal, Greater, Less};
-            match record.key().cmp(&equal) {
-                Less => 0,
-                Equal => 1,
-                Greater => 2,
-            }
+    /// Partitions below, equal to, and above a sampled key. The equal band is done.
+    fn partition_equal(&mut self, arr: &mut [T], equal: KeyValue<T>, parent_varying: u128) {
+        let classify = move |record: &T| {
+            let key = record.key();
+            usize::from(key >= equal) + usize::from(key > equal)
         };
-        let fused = fuse_leaf_for::<T>() && fuse_equality();
-        let tile_bytes = self.tile_bytes;
-        let record_bytes = std::mem::size_of::<T>();
-        let ends = if fused {
-            let mut visit = |bucket: usize, child: &mut [T]| {
-                // The equal band is already finished; only the two outer bands
-                // can still need a leaf.
-                if bucket != 1 && child.len().saturating_mul(record_bytes) <= tile_bytes {
-                    if trace() {
-                        eprintln!("  fused-leaf bucket={} len={}", bucket, child.len());
-                    }
-                    let variation = scan_variation(child, parent_varying);
-                    self.lsd_leaf(child, variation);
-                }
-            };
-            block::partition_by_with_visit(arr, 4, &classify, visit)
-        } else {
-            block::partition_by(arr, 4, &classify)
-        };
-        // Bucket 0 is the less band, bucket 1 the equal band, bucket 2 the
-        // greater band. The block engine already knows the three ends, so the
-        // children do not pay a second boundary scan. Their variation scans
-        // still use the parent's candidate mask and stop as soon as every bit
-        // that can vary has been seen.
-        let less = ends[0];
-        let equal_end = ends[1];
-        if less > 1 {
-            let is_tile = less.saturating_mul(record_bytes) <= tile_bytes;
-            if !(fused && is_tile) {
-                let variation = scan_variation(&arr[..less], parent_varying);
-                self.sort_node(&mut arr[..less], variation);
-            }
-        }
-        let greater = equal_end;
-        if arr.len() - greater > 1 {
-            let bytes = (arr.len() - greater).saturating_mul(record_bytes);
-            let is_tile = bytes <= tile_bytes;
-            if !(fused && is_tile) {
-                let variation = scan_variation(&arr[greater..], parent_varying);
-                self.sort_node(&mut arr[greater..], variation);
+        let ends = block::partition_by(arr, 4, classify);
+        // The block engine supplies the boundaries of all three bands.
+        for range in [0..ends[0], ends[1]..arr.len()] {
+            let child = &mut arr[range];
+            if child.len() > 1 {
+                let varying = scan_varying_bits(child, parent_varying);
+                self.sort_node(child, varying);
             }
         }
     }
@@ -1257,15 +660,7 @@ impl<T: Key> Context<T> {
     /// Moves a run of disagreeing records to the end its bit belongs to, then
     /// finishes both parts: the body by the ordinary recursion, the run by
     /// insertion.
-    fn lift_outlier(&mut self, arr: &mut [T], outlier: Outlier<T>) {
-        if trace() {
-            eprintln!(
-                "  lift {}={} set={}",
-                if outlier.head { "head" } else { "tail" },
-                outlier.len,
-                outlier.set
-            );
-        }
+    fn sort_outlier_run(&mut self, arr: &mut [T], outlier: OutlierRun) {
         let len = arr.len();
         let run = outlier.len;
         // The run belongs before the body when its bit is clear and after it when
@@ -1281,234 +676,133 @@ impl<T: Key> Context<T> {
         } else {
             &mut arr[..len - run]
         };
-        self.sort_node(body, outlier.rest);
+        self.sort_node(body, outlier.body_varying);
         let lifted = if before {
             &mut arr[..run]
         } else {
             &mut arr[len - run..]
         };
-        insertion_by_key(lifted);
+        insertion_sort(lifted);
     }
 
-    fn set_scratch_len(&mut self, len: usize) {
+    fn reserve_scratch(&mut self, len: usize) {
         if self.scratch.len() < len {
-            self.scratch.clear();
-            self.scratch.reserve_exact(len);
+            self.scratch.reserve_exact(len - self.scratch.len());
             self.scratch.resize_with(len, MaybeUninit::<T>::uninit);
         }
     }
 
-    /// One stable MSD level over the tile, then each bucket finished on its own.
-    ///
-    /// The leaf's private buffer is enough for a stable partition into exact
-    /// positions: the counting pass writes every record at its bucket's start plus
-    /// its rank inside the bucket, which keeps equal keys in order and leaves the
-    /// buckets contiguous, so each one can be finished independently. The pass
-    /// count then follows how many records the tile holds instead of how many
-    /// digits the key has -- 3906 records of 64 bits need six flat passes and one
-    /// of these.
-    ///
-    /// Traffic, in units of one tile traversal: the histogram is one, the scatter
-    /// is two, the copy back is two. A flat pass is two, so this pays off from
-    /// three flat passes upwards, which is what the caller checks.
-    fn msd_leaf(&mut self, arr: &mut [T], digit: Digit, variation: Variation<T>) {
+    /// Partitions a tile through scratch, copies back, then finishes each bucket.
+    fn partition_tile(&mut self, arr: &mut [T], digit: Digit, varying: u128) {
         let len = arr.len();
-        self.set_scratch_len(len);
+        self.reserve_scratch(len);
         let scratch = self.scratch.as_mut_ptr().cast::<T>();
-        let mut counts = MaybeUninit::<[u16; MAX_BUCKETS]>::uninit();
+        let mut counts = MaybeUninit::<[u16; MAX_TILE_BUCKETS]>::uninit();
         let counts_ptr = counts.as_mut_ptr().cast::<u16>();
-        // SAFETY: the tile holds `len` initialized records, the scratch buffer has
-        // room for `len`, and they are distinct allocations. The tile is only read
-        // here, so a panic from the key extractor leaves the whole record set in
-        // the tile and nothing needs undoing -- unlike the flat plan, this level
-        // needs no recovery of its own.
+        // SAFETY: scratch has room for len records in a separate allocation.
+        // A key panic leaves the complete source tile intact.
         let largest = unsafe { counting_pass(arr.as_ptr(), scratch, len, digit, counts_ptr) };
-        if trace() {
-            eprintln!(
-                "  leaf-msd len={} buckets={} largest={} finish={}",
-                len,
-                1usize << digit.width,
-                largest,
-                if largest as usize <= self.insertion_max {
-                    "insertion"
-                } else {
-                    "walk"
-                }
-            );
-        }
-        // The scatter wrote every record exactly once, so the scratch is a complete
-        // record set and the tile is stale. Copying back is therefore valid whether
-        // or not the pass finished, and it restores the invariant the rest of the
-        // leaf relies on: the tile always holds the set.
-        // SAFETY: as above, plus `len` records were written to the scratch.
+        // SAFETY: scratch now holds the complete record set; the tile holds stale copies.
         unsafe { std::ptr::copy_nonoverlapping(scratch, arr.as_mut_ptr(), len) };
-        // A tile whose largest bucket is still insertion-sized needs no bucket
-        // boundaries: one stable insertion sort over the whole tile has exactly the
-        // per-bucket sorts' inversion count (records in different buckets are
-        // already in order) and never looks at an empty bucket. Random tiles put
-        // 3906 records into 8192 buckets, so this is the common case; a tile with
-        // one long bucket still needs the walk below to find it.
-        if largest as usize <= self.insertion_max {
-            insertion_leaf(arr);
+        // With insertion-sized buckets, whole-tile insertion has the same inversion
+        // count as separate bucket sorts and skips the boundary walk.
+        if largest as usize <= INSERTION_MAX {
+            insertion_sort(arr);
             return;
         }
-        // Boundaries come from the cursor table rather than from comparing keys:
-        // with a bucket per record the comparison walk is one unpredictable branch
-        // per record, which measured 48 % slower than reading the ends this pass
-        // already computed. A bucket of one record is done; a larger one has its
-        // variation re-read, and a flat plan on equal keys returns immediately.
-        let buckets = 1usize << digit.width;
-        let candidate = variation.varying() & !digit.mask::<T>().to_u128();
+        // Read boundaries from the completed cursors; recomputing them from keys
+        // measured 48% slower when there was roughly one bucket per record.
+        let candidate = varying & !digit.mask::<T>().to_u128();
+        let ends = unsafe { std::slice::from_raw_parts(counts_ptr, 1usize << digit.width) };
         let mut start = 0;
-        for bucket in 0..buckets {
-            // SAFETY: the pass filled every entry below buckets, and cumulative
-            // counts never decrease, so start <= end <= len.
-            let end = unsafe { *counts_ptr.add(bucket) } as usize;
+        for &end in ends {
+            let end = end as usize;
             debug_assert!(start <= end && end <= len);
-            // A bucket that goes straight to insertion does not need its variation:
-            // the scan would only be thrown away, and a leaf-sized bucket is where
-            // that scan is a measurable share of the bucket's own work.
-            if end - start > self.insertion_max {
+            // Insertion-sized children need no variation scan.
+            if end - start > INSERTION_MAX {
                 let child = &arr[start..end];
-                let variation = scan_variation(child, candidate);
-                self.lsd_leaf(&mut arr[start..end], variation);
+                let varying = scan_varying_bits(child, candidate);
+                self.sort_tile(&mut arr[start..end], varying);
             } else if end > start + 1 {
-                insertion_leaf(&mut arr[start..end]);
+                insertion_sort(&mut arr[start..end]);
             }
             start = end;
         }
     }
 
-    /// Stable LSD counting sort over the tile, driven by a private buffer. One
-    /// pass per remaining digit, ping-ponging between the tile and the buffer.
-    fn lsd_leaf(&mut self, arr: &mut [T], variation: Variation<T>) {
+    /// Finishes a tile by insertion, an MSD partition, or LSD counting passes.
+    fn sort_tile(&mut self, arr: &mut [T], varying: u128) {
         let len = arr.len();
-        if len < 2 || variation.varying() == 0 {
+        if len < 2 || varying == 0 {
             return;
         }
-        // A counting pass costs a full bucket table before it moves a single
-        // record. Below the crossover an insertion sort on converted keys is
-        // both smaller and faster, and it is stable, so the tile's contract is
-        // unchanged. Skewed inputs land here for every thin tail bucket.
-        if len <= self.insertion_max {
-            insertion_leaf(arr);
+        if len <= INSERTION_MAX {
+            insertion_sort(arr);
             return;
         }
-        // The leaf picks its own digit width: inside the tile the only cost that
-        // scales with it is the bucket table, so a wider digit buys fewer passes
-        // while the table still fits in L1 next to the records.
-        let mut digits = [Digit { shift: 0, width: 0 }; PLAN_DIGITS];
-        let passes = plan_digits_packed(
-            variation.varying(),
-            leaf_radix(len, std::mem::size_of::<T>()),
+        let mut digits = [Digit { shift: 0, width: 0 }; MAX_DIGITS];
+        let passes = plan_digits(
+            varying,
+            tile_digit_bits(len, std::mem::size_of::<T>()),
             &mut digits,
         );
-        // Strictly cheaper only: a level that merely ties the flat plan costs a memcpy
-        // and a bucket walk for nothing, and measured 5 % worse on `bands8`.
-        if self.leaf_mode_test != 1 && passes > MSD_LEVEL_PASSES {
-            // The level replaces the flat plan with one partition plus a recursion
-            // over its buckets, so it is taken whenever the flat plan needs more than
-            // one pass -- but only if its window divides the tile at all, because a
-            // window that one value fills would recurse into the same tile it started
-            // with. That is the whole rule: two counted quantities, no cost model and
-            // no share estimate (section 53 has the ablation showing a model here
-            // decides nothing that the counts do not).
-            let distinct = sampled_buckets(arr, digits[0]);
-            // A level only pays if its window actually divides the tile: with
-            // `distinct` occupied buckets the largest child keeps about 1/distinct of
-            // the records, so the recursion needs `depth` levels before a child is
-            // down to insertion size. Comparing `depth * MSD_LEVEL_PASSES` against the
-            // flat pass count is the same decision the deleted cost model made, in
-            // integer arithmetic: a window that two values fill needs six levels and
-            // loses to the flat plan (measured 27.1 against 23.5 ns per record on
-            // u64 random_local), while a well-divided one needs a single level and wins.
+        // Use an MSD partition only when it costs strictly fewer passes.
+        if passes > MSD_LEVEL_PASSES {
+            let distinct = sample_distinct_digits(arr, digits[0]);
+            // Estimate the partition depth from sampled occupancy until the largest
+            // child fits insertion; each level costs MSD_LEVEL_PASSES flat passes.
             let distinct = distinct.max(1);
             let mut largest = len;
             let mut depth = 0;
-            while largest > self.insertion_max && depth < passes {
+            while largest > INSERTION_MAX && depth < passes {
                 depth += 1;
                 largest /= distinct;
             }
             let level_cost = MSD_LEVEL_PASSES * depth.max(1);
-            if trace() {
-                eprintln!(
-                    "leaf-msd? len={} flat={} distinct={} depth={} cost={}",
-                    len, passes, distinct, depth, level_cost
-                );
-            }
             if level_cost < passes {
-                self.msd_leaf(arr, digits[0], variation);
+                self.partition_tile(arr, digits[0], varying);
                 return;
             }
         }
-        self.set_scratch_len(len);
+        self.reserve_scratch(len);
         let scratch_ptr = self.scratch.as_mut_ptr().cast::<T>();
-        // A tile is at most `MAX_TILE_RECORDS` records, so 16-bit cursors are
-        // enough, and they are the difference between a cursor table that stays
-        // in one L1 set and one that does not.
         debug_assert!(len <= MAX_TILE_RECORDS);
-        // Deliberately uninitialised: the counting pass clears the digit's own
-        // prefix of this table before it reads it, so zeroing all
-        // MAX_BUCKETS entries on every leaf would be pure overhead -- 32 KiB of
-        // memset against a 31 KiB tile, which measured 14 % on u64 1M.
-        let mut counts = MaybeUninit::<[u16; MAX_BUCKETS]>::uninit();
+        // The counting pass initializes only the used prefix of the cursor table.
+        let mut counts = MaybeUninit::<[u16; MAX_TILE_BUCKETS]>::uninit();
         let counts_ptr = counts.as_mut_ptr().cast::<u16>();
 
-        // The record set lives in exactly one of the two buffers for the whole
-        // leaf, so the restore is the same whether a pass returns or the key
-        // extractor panics: put the set back if it is not already in the tile.
-        // Doing that in a guard, instead of catching the panic only for the
-        // types that own a resource, makes the promise hold for every type.
-        let mut guard = Restore {
-            tile: arr.as_mut_ptr(),
+        // Restore the live source on normal return and on key panic.
+        let tile = arr.as_mut_ptr();
+        let mut guard = RestoreTile {
+            tile,
             len,
-            scratch: scratch_ptr,
-            live: false,
+            source: tile,
         };
-        {
-            let mut source: *mut T = guard.tile;
-            let mut destination: *mut T = scratch_ptr;
-            let mut source_is_tile = true;
-            for index in (0..passes).rev() {
-                guard.live = !source_is_tile;
-                // SAFETY: the source holds `len` initialized records, the
-                // destination has room for `len` records, and both are distinct
-                // allocations that stay alive for the whole leaf.
-                unsafe {
-                    counting_pass(source, destination, len, digits[index], counts_ptr);
-                }
-                std::mem::swap(&mut source, &mut destination);
-                source_is_tile = !source_is_tile;
-            }
-            guard.live = !source_is_tile;
+        let mut destination: *mut T = scratch_ptr;
+        for &digit in digits[..passes].iter().rev() {
+            // SAFETY: source holds the complete record set; destination has room
+            // for len records in a separate allocation. Both buffers remain live.
+            unsafe { counting_pass(guard.source, destination, len, digit, counts_ptr) };
+            std::mem::swap(&mut guard.source, &mut destination);
         }
     }
 }
 
-/// Puts the record set back in the tile when a leaf stops with it in scratch.
-///
-/// The scratch buffer holds every record of the tile while a pass is in flight,
-/// so one copy back restores the complete set: on an odd number of passes, and on
-/// a panic from the key extractor, however far into the pass it happened. A guard
-/// covers both, so the promise holds for every record type, not only the owning
-/// ones: a duplicated record is a double free there, while a plain key type would
-/// otherwise keep stale duplicates in the tile.
-/// Raw pointers on purpose: the leaf owns both buffers for the whole pass, and a
-/// shared reference to the tile would alias the writes the passes make through it.
-struct Restore<T: Key> {
+/// `source` holds the complete record set from the last successful pass.
+/// Restores it to the tile if it resides in scratch.
+struct RestoreTile<T> {
     tile: *mut T,
     len: usize,
-    scratch: *mut T,
-    live: bool,
+    source: *mut T,
 }
 
-impl<T: Key> Drop for Restore<T> {
+impl<T> Drop for RestoreTile<T> {
     fn drop(&mut self) {
-        if self.live {
-            // SAFETY: the scratch buffer holds initialized records for the whole
-            // tile; the slots being overwritten are stale records already moved out.
+        if self.source != self.tile {
+            // SAFETY: source holds the complete set in scratch; tile holds stale
+            // copies, and the two allocations do not overlap.
             unsafe {
-                std::ptr::copy_nonoverlapping(self.scratch, self.tile, self.len);
+                std::ptr::copy_nonoverlapping(self.source, self.tile, self.len);
             }
         }
     }
