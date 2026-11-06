@@ -1,0 +1,23 @@
+{
+  "args": [
+    "--types",
+    "u64",
+    "--patterns",
+    "outlier_head_high,outlier_tail_low,random_wide,random_sorted99",
+    "--sizes",
+    "1000000",
+    "--variants",
+    "tessera",
+    "--rounds",
+    "3"
+  ],
+  "cycles": 5,
+  "order": "on,off on even; off,on on odd",
+  "cpu": 2,
+  "seed": 1,
+  "ratio": "median of per-cycle median(off)/median(on)",
+  "hashes": {
+    "on": "caea806b0aec28341c944c5a0fd2016ab2c24d340deb4098bde8976095222b2c",
+    "off": "f10054daf515f87e255ddb0553712739408a992cdf225a4f12b05c26e81983dc"
+  }
+}

@@ -1,0 +1,180 @@
+Iterations:        1000
+Instructions:      7000
+Total Cycles:      1672
+Total uOps:        7000
+
+Dispatch Width:    6
+uOps Per Cycle:    4.19
+IPC:               4.19
+Block RThroughput: 1.2
+
+
+Cycles with backend pressure increase [ 98.80% ]
+Throughput Bottlenecks: 
+  Resource Pressure       [ 49.40% ]
+  - SKXPort0  [ 10.47% ]
+  - SKXPort1  [ 49.22% ]
+  - SKXPort5  [ 49.22% ]
+  - SKXPort6  [ 10.47% ]
+  Data Dependencies:      [ 78.83% ]
+  - Register Dependencies [ 78.83% ]
+  - Memory Dependencies   [ 0.00% ]
+
+Critical sequence based on the simulation:
+
+              Instruction                                 Dependency Information
+ +----< 1.    movq	16(%r14,%rdx), %rdi
+ |
+ |    < loop carried > 
+ |
+ +----> 0.    movq	%rdi, %rsi                        ## REGISTER dependency:  %rdi
+ |      1.    movq	16(%r14,%rdx), %rdi
+ |      2.    cmpq	%rdi, %rsi
+ |      3.    jb	.Lexit
+ |      4.    cmpq	%rdx, %rax
+ +----> 5.    leaq	8(%rdx), %rdx                     ## RESOURCE interference:  SKXPort5 [ probability: 16% ]
+ |      6.    jne	.L56d40
+ |
+ |    < loop carried > 
+ |
+ +----> 1.    movq	16(%r14,%rdx), %rdi               ## REGISTER dependency:  %rdx
+
+
+Instruction Info:
+[1]: #uOps
+[2]: Latency
+[3]: RThroughput
+[4]: MayLoad
+[5]: MayStore
+[6]: HasSideEffects (U)
+
+[1]    [2]    [3]    [4]    [5]    [6]    Instructions:
+ 1      1     0.25                        movq	%rdi, %rsi
+ 1      5     0.50    *                   movq	16(%r14,%rdx), %rdi
+ 1      1     0.25                        cmpq	%rdi, %rsi
+ 1      1     0.50                        jb	.Lexit
+ 1      1     0.25                        cmpq	%rdx, %rax
+ 1      1     0.50                        leaq	8(%rdx), %rdx
+ 1      1     0.50                        jne	.L56d40
+
+
+Dynamic Dispatch Stall Cycles:
+RAT     - Register unavailable:                      0
+RCU     - Retire tokens unavailable:                 0
+SCHEDQ  - Scheduler full:                            1624  (97.1%)
+LQ      - Load queue full:                           0
+SQ      - Store queue full:                          0
+GROUP   - Static restrictions on the dispatch group: 0
+USH     - Uncategorised Structural Hazard:           0
+
+
+Dispatch Logic - number of cycles where we saw N micro opcodes dispatched:
+[# dispatched], [# cycles]
+ 0,              18  (1.1%)
+ 3,              324  (19.4%)
+ 4,              651  (38.9%)
+ 5,              650  (38.9%)
+ 6,              29  (1.7%)
+
+
+Schedulers - number of cycles where we saw N micro opcodes issued:
+[# issued], [# cycles]
+ 0,          3  (0.2%)
+ 1,          1  (0.1%)
+ 2,          3  (0.2%)
+ 3,          332  (19.9%)
+ 4,          668  (40.0%)
+ 5,          665  (39.8%)
+
+Scheduler's queue usage:
+[1] Resource name.
+[2] Average number of used buffer entries.
+[3] Maximum number of used buffer entries.
+[4] Total number of buffer entries.
+
+ [1]            [2]        [3]        [4]
+SKXPortAny       59         60         60
+
+
+Retire Control Unit - number of cycles where we saw N instructions retired:
+[# retired], [# cycles]
+ 0,           336  (20.1%)
+ 1,           336  (20.1%)
+ 4,           1  (0.1%)
+ 5,           165  (9.9%)
+ 6,           3  (0.2%)
+ 7,           831  (49.7%)
+
+Total ROB Entries:                224
+Max Used ROB Entries:             89  ( 39.7% )
+Average Used ROB Entries per cy:  80  ( 35.7% )
+
+
+Register File statistics:
+Total number of mappings created:    5000
+Max number of mappings used:         63
+
+
+Resources:
+[0]   - SKXDivider
+[1]   - SKXFPDivider
+[2]   - SKXPort0
+[3]   - SKXPort1
+[4]   - SKXPort2
+[5]   - SKXPort3
+[6]   - SKXPort4
+[7]   - SKXPort5
+[8]   - SKXPort6
+[9]   - SKXPort7
+
+
+Resource pressure per iteration:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    
+ -      -     1.50   1.50   0.50   0.50    -     1.50   1.50    -     
+
+Resource pressure by instruction:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    Instructions:
+ -      -      -     0.66    -      -      -     0.33    -      -     movq	%rdi, %rsi
+ -      -      -      -     0.50   0.50    -      -      -      -     movq	16(%r14,%rdx), %rdi
+ -      -      -      -      -      -      -     0.66   0.33    -     cmpq	%rdi, %rsi
+ -      -     0.84    -      -      -      -      -     0.17    -     jb	.Lexit
+ -      -      -     0.34    -      -      -      -     0.66    -     cmpq	%rdx, %rax
+ -      -      -     0.50    -      -      -     0.50    -      -     leaq	8(%rdx), %rdx
+ -      -     0.66    -      -      -      -      -     0.34    -     jne	.L56d40
+
+
+Timeline view:
+                    0
+Index     0123456789 
+
+[0,0]     DeER .    .   movq	%rdi, %rsi
+[0,1]     DeeeeeER  .   movq	16(%r14,%rdx), %rdi
+[0,2]     D=====eER .   cmpq	%rdi, %rsi
+[0,3]     D======eER.   jb	.Lexit
+[0,4]     DeE------R.   cmpq	%rdx, %rax
+[0,5]     DeE------R.   leaq	8(%rdx), %rdx
+[0,6]     .DeE-----R.   jne	.L56d40
+[1,0]     .D====eE-R.   movq	%rdi, %rsi
+[1,1]     .DeeeeeE-R.   movq	16(%r14,%rdx), %rdi
+[1,2]     .D=====eER.   cmpq	%rdi, %rsi
+[1,3]     .D======eER   jb	.Lexit
+[1,4]     .DeE------R   cmpq	%rdx, %rax
+[1,5]     . DeE-----R   leaq	8(%rdx), %rdx
+[1,6]     . DeE-----R   jne	.L56d40
+
+
+Average Wait times (based on the timeline view):
+[0]: Executions
+[1]: Average time spent waiting in a scheduler's queue
+[2]: Average time spent waiting in a scheduler's queue while ready
+[3]: Average time elapsed from WB until retire stage
+
+      [0]    [1]    [2]    [3]
+0.     2     3.0    0.5    0.5       movq	%rdi, %rsi
+1.     2     1.0    0.5    0.5       movq	16(%r14,%rdx), %rdi
+2.     2     6.0    0.0    0.0       cmpq	%rdi, %rsi
+3.     2     7.0    0.0    0.0       jb	.Lexit
+4.     2     1.0    0.5    6.0       cmpq	%rdx, %rax
+5.     2     1.0    1.0    5.5       leaq	8(%rdx), %rdx
+6.     2     1.0    0.0    5.0       jne	.L56d40
+       2     2.9    0.4    2.5       <total>

@@ -1,0 +1,616 @@
+{
+  "cpu": 2,
+  "seed": 1,
+  "cycles": 7,
+  "rounds": 501,
+  "case": [
+    "u64",
+    "descending",
+    "1000000",
+    "tessera"
+  ],
+  "binary_sha256": {
+    "A1": "de419dd83e2209d9b2456d5deede8322928f0f4aedd0ec50013ae252301ad8ac",
+    "A2": "de419dd83e2209d9b2456d5deede8322928f0f4aedd0ec50013ae252301ad8ac",
+    "final": "dd92669b74f5c98ff3a3a20491ae3fe812f2c2dc9bac8ee29e270d4236e9a3b5",
+    "source_guard": "fe3502f4f1a2c08281fc3cf6e1a10f68dba3e9d8f452cc57bb0c7f6b3d360fdc"
+  },
+  "schedule": [
+    {
+      "cycle": 0,
+      "arm": "A1",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 0,
+      "arm": "final",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/unchecked-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 0,
+      "arm": "source_guard",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/range-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 0,
+      "arm": "A2",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 1,
+      "arm": "A2",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 1,
+      "arm": "source_guard",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/range-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 1,
+      "arm": "final",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/unchecked-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 1,
+      "arm": "A1",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 2,
+      "arm": "A1",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 2,
+      "arm": "final",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/unchecked-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 2,
+      "arm": "source_guard",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/range-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 2,
+      "arm": "A2",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 3,
+      "arm": "A2",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 3,
+      "arm": "source_guard",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/range-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 3,
+      "arm": "final",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/unchecked-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 3,
+      "arm": "A1",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 4,
+      "arm": "A1",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 4,
+      "arm": "final",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/unchecked-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 4,
+      "arm": "source_guard",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/range-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 4,
+      "arm": "A2",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 5,
+      "arm": "A2",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 5,
+      "arm": "source_guard",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/range-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 5,
+      "arm": "final",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/unchecked-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 5,
+      "arm": "A1",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 6,
+      "arm": "A1",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 6,
+      "arm": "final",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/unchecked-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 6,
+      "arm": "source_guard",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/range-probe-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cycle": 6,
+      "arm": "A2",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "sample_count": 14028,
+  "status": "complete",
+  "arm_descriptions": {
+    "A1": "2ef2415 baseline",
+    "A2": "same baseline ELF",
+    "final": "unchecked Range probe",
+    "source_guard": "checked Range probe"
+  }
+}

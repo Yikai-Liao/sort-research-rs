@@ -1,0 +1,123 @@
+revision,nloc,ccn,tokens,parameters,length,location,file,name,signature,start,end
+baseline,18,3,192,2,20,sampled_buckets@109-128@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sampled_buckets,"sampled_buckets arr : & [ T ] , digit : Digit",109,128
+baseline,20,5,153,2,22,sample@149-170@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sample,"sample arr : & [ T ] , keys : & mut [ SortKey < T > ]",149,170
+baseline,18,4,125,1,18,sampled_mode@177-194@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sampled_mode,sampled_mode keys : & mut [ V ],177,194
+baseline,11,3,103,2,11,sampled_minority@198-208@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sampled_minority,"sampled_minority keys : & [ V ] , bit : V",198,208
+baseline,49,12,347,3,51,outlier_run@232-282@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,outlier_run,"outlier_run arr : & [ T ] , keys : & [ SortKey < T > ] , bit : SortKey < T >",232,282
+baseline,9,4,78,1,9,insertion_by_key@286-294@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,insertion_by_key,insertion_by_key arr : & mut [ T ],286,294
+baseline,15,5,102,2,15,priced_insertion@307-321@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,priced_insertion,"priced_insertion keys : & mut [ V ] , budget : usize",307,321
+baseline,15,5,110,2,15,adaptive_insertion@333-347@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,adaptive_insertion,"adaptive_insertion arr : & mut [ T ] , budget : usize",333,347
+baseline,3,1,48,1,3,mask@363-365@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,mask,mask self,363,365
+baseline,3,1,12,1,3,clone@384-386@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,clone,clone & self,384,386
+baseline,3,1,25,1,3,varying@392-394@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,varying,varying self,392,394
+baseline,28,5,170,2,28,scan_variation@406-433@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,scan_variation,"scan_variation arr : & [ T ] , candidate : u128",406,433
+baseline,23,3,157,3,23,plan_digits_packed@455-477@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,plan_digits_packed,"plan_digits_packed varying : u128 , width : usize , digits : & mut [ Digit ]",455,477
+baseline,4,2,49,0,4,trace@481-484@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,trace,trace,481,484
+baseline,5,2,56,0,5,fuse_leaf@488-492@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,fuse_leaf,fuse_leaf,488,492
+baseline,3,2,28,0,3,fuse_leaf_for@497-499@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,fuse_leaf_for,fuse_leaf_for,497,499
+baseline,5,2,56,0,5,fuse_equality@503-507@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,fuse_equality,fuse_equality,503,507
+baseline,3,1,28,1,3,key@524-526@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,key,key & self,524,526
+baseline,7,1,23,0,7,default@557-563@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,default,default,557,563
+baseline,3,1,29,1,3,sort@568-570@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort,sort arr : & mut [ T ],568,570
+baseline,3,1,31,1,3,sort_with_leaf_plan@574-576@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort_with_leaf_plan,sort_with_leaf_plan arr : & mut [ T ],574,576
+baseline,3,1,31,2,3,sort_with_policy@581-583@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort_with_policy,"sort_with_policy arr : & mut [ T ] , policy : Policy",581,583
+baseline,99,22,524,3,139,run@585-723@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,run,"run arr : & mut [ T ] , policy : Policy , leaf_mode_test : u8",585,723
+baseline,24,1,169,5,27,sort_shifted_root@729-755@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort_shifted_root,"sort_shifted_root arr : & mut [ T ] , variation : Variation < T > , tile_bytes : usize , insertion_max : usize , leaf_mode_test : u8 ,",729,755
+baseline,3,1,14,1,8,split_pays@779-786@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,split_pays,split_pays span : usize,779,786
+baseline,20,6,135,1,20,probe_order@820-839@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,probe_order,probe_order arr : & [ T ],820,839
+baseline,21,6,115,1,21,confirm_order@844-864@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,confirm_order,confirm_order arr : & [ T ],844,864
+baseline,13,4,101,1,13,reverse_stably@868-880@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,reverse_stably,reverse_stably arr : & mut [ T ],868,880
+baseline,9,4,78,1,9,insertion_leaf@883-891@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,insertion_leaf,insertion_leaf arr : & mut [ T ],883,891
+baseline,39,5,322,5,51,counting_pass@908-958@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,counting_pass,"counting_pass source : * const T , destination : * mut T , len : usize , digit : Digit , cursor : * mut u16 ,",908,958
+baseline,9,2,105,2,15,leaf_radix@970-984@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,leaf_radix,"leaf_radix records : usize , record_bytes : usize",970,984
+baseline,10,2,95,0,10,leaf_width_override@988-997@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,leaf_width_override,leaf_width_override,988,997
+baseline,10,2,95,0,10,width_override@1001-1010@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,width_override,width_override,1001,1010
+baseline,10,2,105,3,14,split_radix@1019-1032@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,split_radix,"split_radix node_len : usize , record_bytes : usize , tile_bytes : usize",1019,1032
+baseline,98,22,741,3,157,sort_node@1035-1191@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort_node,"sort_node & mut self , arr : & mut [ T ] , variation : Variation < T >",1035,1191
+baseline,48,15,407,4,55,equality_split@1201-1255@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,equality_split,"equality_split & mut self , arr : & mut [ T ] , equal : SortKey < T > , parent_varying : u128",1201,1255
+baseline,30,9,187,3,32,lift_outlier@1260-1291@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,lift_outlier,"lift_outlier & mut self , arr : & mut [ T ] , outlier : Outlier < T >",1260,1291
+baseline,7,2,59,2,7,set_scratch_len@1293-1299@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,set_scratch_len,"set_scratch_len & mut self , len : usize",1293,1299
+baseline,41,8,349,4,67,msd_leaf@1314-1380@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,msd_leaf,"msd_leaf & mut self , arr : & mut [ T ] , digit : Digit , variation : Variation < T >",1314,1380
+baseline,62,11,434,3,102,lsd_leaf@1384-1485@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,lsd_leaf,"lsd_leaf & mut self , arr : & mut [ T ] , variation : Variation < T >",1384,1485
+baseline,7,2,37,1,9,drop@1506-1514@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,drop,drop & mut self,1506,1514
+baseline,15,4,97,2,17,sort@84-100@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,sort,"sort arr : & mut [ T ] , radix : usize",84,100
+baseline,7,2,58,3,7,sort_with_block_size@105-111@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,sort_with_block_size,"sort_with_block_size arr : & mut [ T ] , radix : usize , block_size : usize",105,111
+baseline,29,6,199,5,33,sort_with_variation@114-146@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,sort_with_variation,"sort_with_variation arr : & mut [ T ] , radix : usize , block_size : usize , union : SortKey < T > , intersection : SortKey < T > ,",114,146
+baseline,11,3,96,0,11,block_scale@167-177@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,block_scale,block_scale,167,177
+baseline,12,1,141,3,16,default_block_size@179-194@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,default_block_size,"default_block_size len : usize , record_bytes : usize , radix : usize",179,194
+baseline,3,1,39,3,3,partition_digit@202-204@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_digit,"partition_digit arr : & mut [ T ] , radix : usize , shift : usize",202,204
+baseline,7,1,44,3,7,partition_digit_with_ends@210-216@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_digit_with_ends,"partition_digit_with_ends arr : & mut [ T ] , radix : usize , shift : usize ,",210,216
+baseline,8,1,67,4,8,partition_digit_with_ends_and_visit@222-229@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_digit_with_ends_and_visit,"partition_digit_with_ends_and_visit arr : & mut [ T ] , radix : usize , shift : usize , mut visit : F ,",222,229
+baseline,31,5,304,5,33,partition_digit_inner@231-263@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_digit_inner,"partition_digit_inner arr : & mut [ T ] , radix : usize , shift : usize , want_ends : bool , visit : Option < & mut dyn FnMut usize , & mut [ T ] > ,",231,263
+baseline,7,1,49,3,7,partition_by@272-278@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_by,"partition_by arr : & mut [ T ] , buckets : usize , classify : impl Fn & T -> usize ,",272,278
+baseline,8,1,72,4,8,partition_by_with_visit@284-291@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_by_with_visit,"partition_by_with_visit arr : & mut [ T ] , buckets : usize , classify : impl Fn & T -> usize , mut visit : F ,",284,291
+baseline,28,6,251,4,29,partition_by_inner@293-321@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_by_inner,"partition_by_inner arr : & mut [ T ] , buckets : usize , classify : impl Fn & T -> usize , visit : Option < & mut dyn FnMut usize , & mut [ T ] > ,",293,321
+baseline,26,6,224,1,37,varying_key_bits@323-359@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,varying_key_bits,varying_key_bits arr : & [ T ],323,359
+baseline,1,1,6,0,1,cold_path@367-367@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,cold_path,cold_path,367,367
+baseline,6,2,20,1,6,unlikely@370-375@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,unlikely,unlikely condition : bool,370,375
+baseline,33,1,197,3,37,new@404-440@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,new,"new input : & 'a mut [ T ] , bucket_count : usize , block_size : usize",404,440
+baseline,14,2,83,2,16,block_ptr@442-457@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,block_ptr,"block_ptr & mut self , physical : usize",442,457
+baseline,38,4,224,3,38,new@477-514@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,new,"new input : & 'a mut [ T ] , bucket_count : usize , block_size : usize",477,514
+baseline,11,3,72,3,11,next_block_len@516-526@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,next_block_len,"next_block_len & self , logical : usize , partial : & mut usize",516,526
+baseline,23,4,205,1,23,validate@529-551@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,validate,validate & self,529,551
+baseline,8,2,70,3,8,step@555-562@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,step,"step & mut self , mask : SortKey < T > , shift : usize",555,562
+baseline,9,2,50,2,9,step_with@566-574@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,step_with,"step_with & mut self , classify : F ,",566,574
+baseline,27,4,194,3,33,step_with_ends@579-611@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,step_with_ends,"step_with_ends & mut self , classify : F , want_ends : bool ,",579,611
+baseline,12,2,120,1,13,begin_pass@616-628@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,begin_pass,begin_pass & mut self,616,628
+baseline,49,7,418,4,58,finish_pass@633-690@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,finish_pass,"finish_pass & mut self , buckets : & [ BucketWriter < T > ] , counts : Vec < usize > , want_ends : bool ,",633,690
+baseline,57,7,456,5,77,scatter@696-772@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,scatter,"scatter & mut self , buckets : & mut [ BucketWriter < T > ] , counts : & mut [ usize ] , position : & mut ScatterPosition , mut classify : F ,",696,772
+baseline,3,1,23,1,3,compact@774-776@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,compact,compact & mut self,774,776
+baseline,102,17,768,3,120,compact_with@784-903@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,compact_with,"compact_with & mut self , ends : & [ usize ] , mut visit : Option < & mut dyn FnMut usize , & mut [ T ] > ,",784,903
+baseline,5,3,37,1,10,drop@907-916@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,drop,drop & mut self,907,916
+candidate,18,3,192,2,19,sample_distinct_digits@45-63@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sample_distinct_digits,"sample_distinct_digits arr : & [ T ] , digit : Digit",45,63
+candidate,18,4,145,2,19,sample_keys@75-93@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sample_keys,"sample_keys arr : & [ T ] , keys : & mut [ KeyValue < T > ]",75,93
+candidate,11,3,105,1,11,sample_mode@96-106@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sample_mode,sample_mode keys : & mut [ V ],96,106
+candidate,11,3,103,2,11,sample_minority_bit@110-120@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sample_minority_bit,"sample_minority_bit keys : & [ V ] , bit : V",110,120
+candidate,46,12,348,3,47,outlier_run@139-185@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,outlier_run,"outlier_run arr : & [ T ] , keys : & [ KeyValue < T > ] , bit : KeyValue < T >",139,185
+candidate,34,6,231,3,35,budgeted_insertion_sort@189-223@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,budgeted_insertion_sort,"budgeted_insertion_sort arr : & mut [ T ] , budget : usize , key : impl Fn & T -> K ,",189,223
+candidate,3,1,48,1,3,mask@237-239@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,mask,mask self,237,239
+candidate,22,5,165,2,22,scan_varying_bits@247-268@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,scan_varying_bits,"scan_varying_bits arr : & [ T ] , candidate : u128",247,268
+candidate,19,2,137,3,19,plan_digits@272-290@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,plan_digits,"plan_digits varying : u128 , width : usize , digits : & mut [ Digit ]",272,290
+candidate,3,1,28,1,3,key@300-302@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,key,key & self,300,302
+candidate,3,1,25,1,3,sort@312-314@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort,sort arr : & mut [ T ],312,314
+candidate,68,18,423,2,71,sort_with_tile_bytes@316-386@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort_with_tile_bytes,"sort_with_tile_bytes arr : & mut [ T ] , tile_bytes : usize",316,386
+candidate,9,1,111,3,11,sort_key_half@389-399@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort_key_half,"sort_key_half arr : & mut [ T ] , varying : u128 , tile_bytes : usize",389,399
+candidate,18,6,136,1,18,probe_order@415-432@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,probe_order,probe_order arr : & [ T ],415,432
+candidate,18,4,155,1,18,confirm_order@435-452@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,confirm_order,confirm_order arr : & [ T ],435,452
+candidate,13,4,101,1,13,reverse_stably@456-468@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,reverse_stably,reverse_stably arr : & mut [ T ],456,468
+candidate,3,1,34,1,3,insertion_sort@471-473@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,insertion_sort,insertion_sort arr : & mut [ T ],471,473
+candidate,39,5,322,5,48,counting_pass@482-529@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,counting_pass,"counting_pass source : * const T , destination : * mut T , len : usize , digit : Digit , cursor : * mut u16 ,",482,529
+candidate,8,1,76,2,10,tile_digit_bits@533-542@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,tile_digit_bits,"tile_digit_bits records : usize , record_bytes : usize",533,542
+candidate,24,5,205,3,31,choose_split_digit@545-575@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,choose_split_digit,"choose_split_digit arr : & [ T ] , top : usize , tile_bytes : usize",545,575
+candidate,34,8,288,3,40,sort_node@578-617@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort_node,"sort_node & mut self , arr : & mut [ T ] , varying : u128",578,617
+candidate,23,5,210,4,25,partition_digit@620-644@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,partition_digit,"partition_digit & mut self , arr : & mut [ T ] , digit : Digit , varying : u128",620,644
+candidate,14,3,146,4,15,partition_equal@647-661@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,partition_equal,"partition_equal & mut self , arr : & mut [ T ] , equal : KeyValue < T > , parent_varying : u128",647,661
+candidate,22,7,152,3,24,sort_outlier_run@666-689@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort_outlier_run,"sort_outlier_run & mut self , arr : & mut [ T ] , outlier : OutlierRun",666,689
+candidate,6,2,59,2,6,reserve_scratch@691-696@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,reserve_scratch,"reserve_scratch & mut self , len : usize",691,696
+candidate,28,6,300,4,36,partition_tile@699-734@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,partition_tile,"partition_tile & mut self , arr : & mut [ T ] , digit : Digit , varying : u128",699,734
+candidate,47,9,357,3,55,sort_tile@737-791@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,sort_tile,"sort_tile & mut self , arr : & mut [ T ] , varying : u128",737,791
+candidate,7,2,41,1,9,drop@803-811@src/other/rust_tessera_radix/engine.rs,src/other/rust_tessera_radix/engine.rs,drop,drop & mut self,803,811
+candidate,15,4,97,2,15,sort@81-95@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,sort,"sort arr : & mut [ T ] , radix : usize",81,95
+candidate,25,6,198,3,29,sort_with_block_size@100-128@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,sort_with_block_size,"sort_with_block_size arr : & mut [ T ] , radix : usize , block_size : usize",100,128
+candidate,10,1,110,3,14,default_block_size@133-146@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,default_block_size,"default_block_size len : usize , record_bytes : usize , radix : usize",133,146
+candidate,3,1,37,3,3,partition_digit@154-156@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_digit,"partition_digit arr : & mut [ T ] , radix : usize , shift : usize",154,156
+candidate,8,1,59,4,8,partition_digit_with_ends@161-168@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_digit_with_ends,"partition_digit_with_ends arr : & mut [ T ] , radix : usize , shift : usize , visit : & mut dyn FnMut & mut [ T ] ,",161,168
+candidate,24,3,213,4,24,partition_digit_inner@170-193@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_digit_inner,"partition_digit_inner arr : & mut [ T ] , radix : usize , shift : usize , visit : Option < & mut dyn FnMut & mut [ T ] > ,",170,193
+candidate,22,4,135,3,22,partition_by@198-219@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_by,"partition_by arr : & mut [ T ] , buckets : usize , classify : impl Fn & T -> usize ,",198,219
+candidate,20,3,181,5,21,partition_pass@221-241@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,partition_pass,"partition_pass arr : & mut [ T ] , buckets : usize , classify : impl Fn & T -> usize , want_ends : bool , visit : Option < & mut dyn FnMut & mut [ T ] > ,",221,241
+candidate,20,4,166,1,30,varying_key_bits@243-272@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,varying_key_bits,varying_key_bits arr : & [ T ],243,272
+candidate,1,1,6,0,1,cold_path@280-280@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,cold_path,cold_path,280,280
+candidate,6,2,20,1,6,unlikely@283-288@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,unlikely,unlikely condition : bool,283,288
+candidate,33,1,197,3,37,new@317-353@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,new,"new input : & 'a mut [ T ] , bucket_count : usize , block_size : usize",317,353
+candidate,14,2,83,2,16,block_ptr@355-370@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,block_ptr,"block_ptr & mut self , physical : usize",355,370
+candidate,38,4,224,3,38,new@390-427@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,new,"new input : & 'a mut [ T ] , bucket_count : usize , block_size : usize",390,427
+candidate,11,3,72,3,11,next_block_len@429-439@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,next_block_len,"next_block_len & self , logical : usize , partial : & mut usize",429,439
+candidate,23,4,205,1,23,validate@442-464@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,validate,validate & self,442,464
+candidate,11,2,74,3,11,step@468-478@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,step,"step & mut self , mask : SortKey < T > , shift : usize",468,478
+candidate,39,4,307,3,48,step_with_ends@481-528@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,step_with_ends,"step_with_ends & mut self , classify : F , want_ends : bool ,",481,528
+candidate,12,2,120,1,13,begin_pass@533-545@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,begin_pass,begin_pass & mut self,533,545
+candidate,49,7,418,4,58,finish_pass@550-607@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,finish_pass,"finish_pass & mut self , buckets : & [ BucketWriter < T > ] , counts : Vec < usize > , want_ends : bool ,",550,607
+candidate,55,6,432,6,68,scatter@613-680@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,scatter,"scatter & mut self , buckets : & mut [ BucketWriter < T > ] , counts : & mut [ usize ] , position : & mut ScatterPosition , first_offset : usize , mut classify : F ,",613,680
+candidate,3,1,23,1,3,compact@682-684@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,compact,compact & mut self,682,684
+candidate,96,15,741,3,109,compact_with@692-800@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,compact_with,"compact_with & mut self , ends : & [ usize ] , mut visit : Option < & mut dyn FnMut & mut [ T ] > ,",692,800
+candidate,5,2,22,1,8,drop@804-811@src/other/rust_block_lsd/core.rs,src/other/rust_block_lsd/core.rs,drop,drop & mut self,804,811

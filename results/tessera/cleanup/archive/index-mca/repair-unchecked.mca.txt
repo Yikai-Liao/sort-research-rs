@@ -1,0 +1,261 @@
+Iterations:        1000
+Instructions:      20000
+Total Cycles:      5007
+Total uOps:        22000
+
+Dispatch Width:    6
+uOps Per Cycle:    4.39
+IPC:               3.99
+Block RThroughput: 4.0
+
+
+Cycles with backend pressure increase [ 79.67% ]
+Throughput Bottlenecks: 
+  Resource Pressure       [ 79.61% ]
+  - SKXPort0  [ 79.61% ]
+  - SKXPort1  [ 69.66% ]
+  - SKXPort5  [ 69.66% ]
+  - SKXPort6  [ 79.61% ]
+  Data Dependencies:      [ 19.97% ]
+  - Register Dependencies [ 19.97% ]
+  - Memory Dependencies   [ 0.00% ]
+
+Critical sequence based on the simulation:
+
+              Instruction                                 Dependency Information
+ +----< 7.    leaq	-1(%rsi), %r10
+ |
+ |    < loop carried > 
+ |
+ |      0.    cmpq	%rbx, %rsi
+ |      1.    jae	.Lexit
+ |      2.    movq	%rsi, %rdi
+ +----> 3.    leaq	1(%rsi), %r9                      ## RESOURCE interference:  SKXPort5 [ probability: 99% ]
+ +----> 4.    cmpq	%r9, %rbx                         ## REGISTER dependency:  %r9
+ |      5.    movq	%r9, %rsi
+ +----> 6.    cmovaq	%rbx, %rsi                        ## REGISTER dependency:  %flags
+ +----> 7.    leaq	-1(%rsi), %r10                    ## REGISTER dependency:  %rsi
+ +----> 8.    cmpq	%r10, %rdi                        ## REGISTER dependency:  %r10
+ +----> 9.    je	.L57423                                   ## REGISTER dependency:  %flags
+ |      10.   movq	(%r14,%rdi,8), %r10
+ +----> 11.   cmpq	%r10, (%r14,%r9,8)                ## RESOURCE interference:  SKXPort0 [ probability: 49% ]
+ +----> 12.   jne	.L57420                           ## REGISTER dependency:  %flags
+ |      13.   movq	%r9, %rsi
+ |      14.   movq	%rsi, %r10
+ |      15.   subq	%rdi, %r10
+ |      16.   jb	.Lexit
+ |      17.   movq	%r10, %r9
+ |      18.   shrq	%r9
+ |      19.   je	.L573e0
+ |
+ |    < loop carried > 
+ |
+ +----> 0.    cmpq	%rbx, %rsi                        ## RESOURCE interference:  SKXPort6 [ probability: 49% ]
+
+
+Instruction Info:
+[1]: #uOps
+[2]: Latency
+[3]: RThroughput
+[4]: MayLoad
+[5]: MayStore
+[6]: HasSideEffects (U)
+
+[1]    [2]    [3]    [4]    [5]    [6]    Instructions:
+ 1      1     0.25                        cmpq	%rbx, %rsi
+ 1      1     0.50                        jae	.Lexit
+ 1      1     0.25                        movq	%rsi, %rdi
+ 1      1     0.50                        leaq	1(%rsi), %r9
+ 1      1     0.25                        cmpq	%r9, %rbx
+ 1      1     0.25                        movq	%r9, %rsi
+ 2      2     1.00                        cmovaq	%rbx, %rsi
+ 1      1     0.50                        leaq	-1(%rsi), %r10
+ 1      1     0.25                        cmpq	%r10, %rdi
+ 1      1     0.50                        je	.L57423
+ 1      5     0.50    *                   movq	(%r14,%rdi,8), %r10
+ 2      6     0.50    *                   cmpq	%r10, (%r14,%r9,8)
+ 1      1     0.50                        jne	.L57420
+ 1      1     0.25                        movq	%r9, %rsi
+ 1      1     0.25                        movq	%rsi, %r10
+ 1      1     0.25                        subq	%rdi, %r10
+ 1      1     0.50                        jb	.Lexit
+ 1      1     0.25                        movq	%r10, %r9
+ 1      1     0.50                        shrq	%r9
+ 1      1     0.50                        je	.L573e0
+
+
+Dynamic Dispatch Stall Cycles:
+RAT     - Register unavailable:                      0
+RCU     - Retire tokens unavailable:                 0
+SCHEDQ  - Scheduler full:                            4950  (98.9%)
+LQ      - Load queue full:                           0
+SQ      - Store queue full:                          0
+GROUP   - Static restrictions on the dispatch group: 0
+USH     - Uncategorised Structural Hazard:           0
+
+
+Dispatch Logic - number of cycles where we saw N micro opcodes dispatched:
+[# dispatched], [# cycles]
+ 0,              20  (0.4%)
+ 3,              495  (9.9%)
+ 4,              1981  (39.6%)
+ 5,              2475  (49.4%)
+ 6,              36  (0.7%)
+
+
+Schedulers - number of cycles where we saw N micro opcodes issued:
+[# issued], [# cycles]
+ 0,          3  (0.1%)
+ 1,          2  (0.0%)
+ 2,          4  (0.1%)
+ 3,          1000  (20.0%)
+ 4,          1500  (30.0%)
+ 5,          1998  (39.9%)
+ 6,          500  (10.0%)
+
+Scheduler's queue usage:
+[1] Resource name.
+[2] Average number of used buffer entries.
+[3] Maximum number of used buffer entries.
+[4] Total number of buffer entries.
+
+ [1]            [2]        [3]        [4]
+SKXPortAny       59         60         60
+
+
+Retire Control Unit - number of cycles where we saw N instructions retired:
+[# retired], [# cycles]
+ 0,           4  (0.1%)
+ 1,           3002  (60.0%)
+ 2,           501  (10.0%)
+ 3,           499  (10.0%)
+ 5,           1  (0.0%)
+ 8,           1  (0.0%)
+ 14,          499  (10.0%)
+ 15,          500  (10.0%)
+
+Total ROB Entries:                224
+Max Used ROB Entries:             92  ( 41.1% )
+Average Used ROB Entries per cy:  87  ( 38.8% )
+
+
+Register File statistics:
+Total number of mappings created:    17000
+Max number of mappings used:         72
+
+
+Resources:
+[0]   - SKXDivider
+[1]   - SKXFPDivider
+[2]   - SKXPort0
+[3]   - SKXPort1
+[4]   - SKXPort2
+[5]   - SKXPort3
+[6]   - SKXPort4
+[7]   - SKXPort5
+[8]   - SKXPort6
+[9]   - SKXPort7
+
+
+Resource pressure per iteration:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    
+ -      -     5.00   5.00   1.00   1.00    -     5.00   5.00    -     
+
+Resource pressure by instruction:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    Instructions:
+ -      -      -     1.00    -      -      -      -      -      -     cmpq	%rbx, %rsi
+ -      -     0.50    -      -      -      -      -     0.50    -     jae	.Lexit
+ -      -      -     0.50    -      -      -      -     0.50    -     movq	%rsi, %rdi
+ -      -      -     1.00    -      -      -      -      -      -     leaq	1(%rsi), %r9
+ -      -      -     0.50    -      -      -     0.50    -      -     cmpq	%r9, %rbx
+ -      -      -     0.50    -      -      -     0.50    -      -     movq	%r9, %rsi
+ -      -     1.00    -      -      -      -      -     1.00    -     cmovaq	%rbx, %rsi
+ -      -      -      -      -      -      -     1.00    -      -     leaq	-1(%rsi), %r10
+ -      -     1.00    -      -      -      -      -      -      -     cmpq	%r10, %rdi
+ -      -     0.50    -      -      -      -      -     0.50    -     je	.L57423
+ -      -      -      -      -     1.00    -      -      -      -     movq	(%r14,%rdi,8), %r10
+ -      -      -     0.50   1.00    -      -     0.50    -      -     cmpq	%r10, (%r14,%r9,8)
+ -      -     0.50    -      -      -      -      -     0.50    -     jne	.L57420
+ -      -      -     0.50    -      -      -     0.50    -      -     movq	%r9, %rsi
+ -      -      -     0.50    -      -      -     0.50    -      -     movq	%rsi, %r10
+ -      -     0.50    -      -      -      -     0.50    -      -     subq	%rdi, %r10
+ -      -      -      -      -      -      -      -     1.00    -     jb	.Lexit
+ -      -      -      -      -      -      -     1.00    -      -     movq	%r10, %r9
+ -      -     1.00    -      -      -      -      -      -      -     shrq	%r9
+ -      -      -      -      -      -      -      -     1.00    -     je	.L573e0
+
+
+Timeline view:
+                    0123456
+Index     0123456789       
+
+[0,0]     DeER .    .    ..   cmpq	%rbx, %rsi
+[0,1]     D=eER.    .    ..   jae	.Lexit
+[0,2]     DeE-R.    .    ..   movq	%rsi, %rdi
+[0,3]     DeE-R.    .    ..   leaq	1(%rsi), %r9
+[0,4]     D=eER.    .    ..   cmpq	%r9, %rbx
+[0,5]     D=eER.    .    ..   movq	%r9, %rsi
+[0,6]     .D=eeER   .    ..   cmovaq	%rbx, %rsi
+[0,7]     .D===eER  .    ..   leaq	-1(%rsi), %r10
+[0,8]     .D====eER .    ..   cmpq	%r10, %rdi
+[0,9]     .D=====eER.    ..   je	.L57423
+[0,10]    .DeeeeeE-R.    ..   movq	(%r14,%rdi,8), %r10
+[0,11]    . DeeeeeeER    ..   cmpq	%r10, (%r14,%r9,8)
+[0,12]    . D======eER   ..   jne	.L57420
+[0,13]    . DeE------R   ..   movq	%r9, %rsi
+[0,14]    . D=eE-----R   ..   movq	%rsi, %r10
+[0,15]    . D==eE----R   ..   subq	%rdi, %r10
+[0,16]    .  D==eE---R   ..   jb	.Lexit
+[0,17]    .  D==eE---R   ..   movq	%r10, %r9
+[0,18]    .  D===eE--R   ..   shrq	%r9
+[0,19]    .  D====eE-R   ..   je	.L573e0
+[1,0]     .  DeE-----R   ..   cmpq	%rbx, %rsi
+[1,1]     .  D=eE----R   ..   jae	.Lexit
+[1,2]     .   D=eE---R   ..   movq	%rsi, %rdi
+[1,3]     .   DeE----R   ..   leaq	1(%rsi), %r9
+[1,4]     .   D==eE--R   ..   cmpq	%r9, %rbx
+[1,5]     .   D==eE--R   ..   movq	%r9, %rsi
+[1,6]     .   D===eeER   ..   cmovaq	%rbx, %rsi
+[1,7]     .    D====eER  ..   leaq	-1(%rsi), %r10
+[1,8]     .    D=====eER ..   cmpq	%r10, %rdi
+[1,9]     .    D======eER..   je	.L57423
+[1,10]    .    D=eeeeeE-R..   movq	(%r14,%rdi,8), %r10
+[1,11]    .    D==eeeeeeER.   cmpq	%r10, (%r14,%r9,8)
+[1,12]    .    .D=======eER   jne	.L57420
+[1,13]    .    .D=eE------R   movq	%r9, %rsi
+[1,14]    .    .D==eE-----R   movq	%rsi, %r10
+[1,15]    .    .D===eE----R   subq	%rdi, %r10
+[1,16]    .    .D====eE---R   jb	.Lexit
+[1,17]    .    .D====eE---R   movq	%r10, %r9
+[1,18]    .    . D====eE--R   shrq	%r9
+[1,19]    .    . D=====eE-R   je	.L573e0
+
+
+Average Wait times (based on the timeline view):
+[0]: Executions
+[1]: Average time spent waiting in a scheduler's queue
+[2]: Average time spent waiting in a scheduler's queue while ready
+[3]: Average time elapsed from WB until retire stage
+
+      [0]    [1]    [2]    [3]
+0.     2     1.0    0.5    2.5       cmpq	%rbx, %rsi
+1.     2     2.0    0.0    2.0       jae	.Lexit
+2.     2     1.5    1.5    2.0       movq	%rsi, %rdi
+3.     2     1.0    1.0    2.5       leaq	1(%rsi), %r9
+4.     2     2.5    0.5    1.0       cmpq	%r9, %rbx
+5.     2     2.5    0.5    1.0       movq	%r9, %rsi
+6.     2     3.0    0.0    0.0       cmovaq	%rbx, %rsi
+7.     2     4.5    0.0    0.0       leaq	-1(%rsi), %r10
+8.     2     5.5    0.0    0.0       cmpq	%r10, %rdi
+9.     2     6.5    0.0    0.0       je	.L57423
+10.    2     1.5    0.0    1.0       movq	(%r14,%rdi,8), %r10
+11.    2     2.0    1.0    0.0       cmpq	%r10, (%r14,%r9,8)
+12.    2     7.5    0.0    0.0       jne	.L57420
+13.    2     1.5    1.5    6.0       movq	%r9, %rsi
+14.    2     2.5    0.0    5.0       movq	%rsi, %r10
+15.    2     3.5    0.0    4.0       subq	%rdi, %r10
+16.    2     4.0    0.0    3.0       jb	.Lexit
+17.    2     4.0    0.0    3.0       movq	%r10, %r9
+18.    2     4.5    0.0    2.0       shrq	%r9
+19.    2     5.5    0.0    1.0       je	.L573e0
+       2     3.3    0.3    1.8       <total>

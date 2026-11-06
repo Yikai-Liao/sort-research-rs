@@ -1,0 +1,487 @@
+Iterations:        1000
+Instructions:      56000
+Total Cycles:      13023
+Total uOps:        68000
+
+Dispatch Width:    6
+uOps Per Cycle:    5.22
+IPC:               4.30
+Block RThroughput: 11.3
+
+
+Cycles with backend pressure increase [ 43.52% ]
+Throughput Bottlenecks: 
+  Resource Pressure       [ 43.38% ]
+  - SKXPort0  [ 43.38% ]
+  - SKXPort1  [ 17.85% ]
+  - SKXPort4  [ 5.09% ]
+  - SKXPort5  [ 17.85% ]
+  - SKXPort6  [ 43.38% ]
+  Data Dependencies:      [ 25.65% ]
+  - Register Dependencies [ 25.65% ]
+  - Memory Dependencies   [ 0.00% ]
+
+Critical sequence based on the simulation:
+
+              Instruction                                 Dependency Information
+ +----< 12.   je	.Lexit
+ |
+ |    < loop carried > 
+ |
+ |      0.    movq	-24(%r12), %rax
+ |      1.    movq	%rax, %rbx
+ |      2.    andq	%r14, %rbx
+ +----> 3.    movl	%r9d, %ecx                        ## RESOURCE interference:  SKXPort0 [ probability: 33% ]
+ +----> 4.    shrq	%cl, %rbx                         ## REGISTER dependency:  %ecx
+ |      5.    movq	%rbx, %r15
+ |      6.    shlq	$4, %r15
+ |      7.    movq	(%r13,%r15), %rcx
+ |      8.    leaq	8(%rcx), %rdx
+ |      9.    cmpq	8(%r13,%r15), %rdx
+ |      10.   movq	%rax, (%rcx)
+ |      11.   movq	%rdx, (%r13,%r15)
+ |      12.   je	.Lexit
+ |      13.   movq	-16(%r12), %rax
+ |      14.   movq	%rax, %r15
+ |      15.   andq	%r14, %r15
+ |      16.   movl	%r9d, %ecx
+ +----> 17.   shrq	%cl, %r15                         ## RESOURCE interference:  SKXPort0 [ probability: 66% ]
+ +----> 18.   movq	%r15, %rbx                        ## REGISTER dependency:  %r15
+ +----> 19.   shlq	$4, %rbx                          ## REGISTER dependency:  %rbx
+ +----> 20.   movq	(%r13,%rbx), %rcx                 ## REGISTER dependency:  %rbx
+ |      21.   leaq	8(%rcx), %rdx
+ |      22.   cmpq	8(%r13,%rbx), %rdx
+ |      23.   movq	%rax, (%rcx)
+ |      24.   movq	%rdx, (%r13,%rbx)
+ |      25.   je	.Lexit
+ +----> 26.   movq	-8(%r12), %rax                    ## RESOURCE interference:  SKXPort3 [ probability: 16% ]
+ +----> 27.   movq	%rax, %r15                        ## REGISTER dependency:  %rax
+ |      28.   andq	%r14, %r15
+ |      29.   movl	%r9d, %ecx
+ |      30.   shrq	%cl, %r15
+ |      31.   movq	%r15, %rbx
+ |      32.   shlq	$4, %rbx
+ |      33.   movq	(%r13,%rbx), %rcx
+ |      34.   leaq	8(%rcx), %rdx
+ |      35.   cmpq	8(%r13,%rbx), %rdx
+ |      36.   movq	%rax, (%rcx)
+ |      37.   movq	%rdx, (%r13,%rbx)
+ |      38.   je	.Lexit
+ |      39.   movq	(%r12), %rax
+ |      40.   movq	%rax, %r15
+ |      41.   andq	%r14, %r15
+ +----> 42.   movl	%r9d, %ecx                        ## RESOURCE interference:  SKXPort1 [ probability: 33% ]
+ +----> 43.   shrq	%cl, %r15                         ## REGISTER dependency:  %ecx
+ +----> 44.   movq	%r15, %rbx                        ## REGISTER dependency:  %r15
+ +----> 45.   shlq	$4, %rbx                          ## REGISTER dependency:  %rbx
+ |      46.   movq	(%r13,%rbx), %rcx
+ |      47.   leaq	8(%rcx), %rdx
+ +----> 48.   cmpq	8(%r13,%rbx), %rdx                ## REGISTER dependency:  %rbx
+ |      49.   movq	%rax, (%rcx)
+ |      50.   movq	%rdx, (%r13,%rbx)
+ +----> 51.   je	.Lexit                                    ## REGISTER dependency:  %flags
+ |      52.   decq	%rbp
+ |      53.   addq	$32, %r12
+ |      54.   testq	%rbp, %rbp
+ |      55.   jne	.L3c500
+ |
+ |    < loop carried > 
+ |
+ +----> 14.   movq	%rax, %r15                        ## RESOURCE interference:  SKXPort0 [ probability: 33% ]
+
+
+Instruction Info:
+[1]: #uOps
+[2]: Latency
+[3]: RThroughput
+[4]: MayLoad
+[5]: MayStore
+[6]: HasSideEffects (U)
+
+[1]    [2]    [3]    [4]    [5]    [6]    Instructions:
+ 1      5     0.50    *                   movq	-24(%r12), %rax
+ 1      1     0.25                        movq	%rax, %rbx
+ 1      1     0.25                        andq	%r14, %rbx
+ 1      1     0.25                        movl	%r9d, %ecx
+ 3      3     1.50                        shrq	%cl, %rbx
+ 1      1     0.25                        movq	%rbx, %r15
+ 1      1     0.50                        shlq	$4, %r15
+ 1      5     0.50    *                   movq	(%r13,%r15), %rcx
+ 1      1     0.50                        leaq	8(%rcx), %rdx
+ 2      6     0.50    *                   cmpq	8(%r13,%r15), %rdx
+ 1      1     1.00           *            movq	%rax, (%rcx)
+ 1      1     1.00           *            movq	%rdx, (%r13,%r15)
+ 1      1     0.50                        je	.Lexit
+ 1      5     0.50    *                   movq	-16(%r12), %rax
+ 1      1     0.25                        movq	%rax, %r15
+ 1      1     0.25                        andq	%r14, %r15
+ 1      1     0.25                        movl	%r9d, %ecx
+ 3      3     1.50                        shrq	%cl, %r15
+ 1      1     0.25                        movq	%r15, %rbx
+ 1      1     0.50                        shlq	$4, %rbx
+ 1      5     0.50    *                   movq	(%r13,%rbx), %rcx
+ 1      1     0.50                        leaq	8(%rcx), %rdx
+ 2      6     0.50    *                   cmpq	8(%r13,%rbx), %rdx
+ 1      1     1.00           *            movq	%rax, (%rcx)
+ 1      1     1.00           *            movq	%rdx, (%r13,%rbx)
+ 1      1     0.50                        je	.Lexit
+ 1      5     0.50    *                   movq	-8(%r12), %rax
+ 1      1     0.25                        movq	%rax, %r15
+ 1      1     0.25                        andq	%r14, %r15
+ 1      1     0.25                        movl	%r9d, %ecx
+ 3      3     1.50                        shrq	%cl, %r15
+ 1      1     0.25                        movq	%r15, %rbx
+ 1      1     0.50                        shlq	$4, %rbx
+ 1      5     0.50    *                   movq	(%r13,%rbx), %rcx
+ 1      1     0.50                        leaq	8(%rcx), %rdx
+ 2      6     0.50    *                   cmpq	8(%r13,%rbx), %rdx
+ 1      1     1.00           *            movq	%rax, (%rcx)
+ 1      1     1.00           *            movq	%rdx, (%r13,%rbx)
+ 1      1     0.50                        je	.Lexit
+ 1      5     0.50    *                   movq	(%r12), %rax
+ 1      1     0.25                        movq	%rax, %r15
+ 1      1     0.25                        andq	%r14, %r15
+ 1      1     0.25                        movl	%r9d, %ecx
+ 3      3     1.50                        shrq	%cl, %r15
+ 1      1     0.25                        movq	%r15, %rbx
+ 1      1     0.50                        shlq	$4, %rbx
+ 1      5     0.50    *                   movq	(%r13,%rbx), %rcx
+ 1      1     0.50                        leaq	8(%rcx), %rdx
+ 2      6     0.50    *                   cmpq	8(%r13,%rbx), %rdx
+ 1      1     1.00           *            movq	%rax, (%rcx)
+ 1      1     1.00           *            movq	%rdx, (%r13,%rbx)
+ 1      1     0.50                        je	.Lexit
+ 1      1     0.25                        decq	%rbp
+ 1      1     0.25                        addq	$32, %r12
+ 1      1     0.25                        testq	%rbp, %rbp
+ 1      1     0.50                        jne	.L3c500
+
+
+Dynamic Dispatch Stall Cycles:
+RAT     - Register unavailable:                      0
+RCU     - Retire tokens unavailable:                 0
+SCHEDQ  - Scheduler full:                            2988  (22.9%)
+LQ      - Load queue full:                           0
+SQ      - Store queue full:                          0
+GROUP   - Static restrictions on the dispatch group: 0
+USH     - Uncategorised Structural Hazard:           0
+
+
+Dispatch Logic - number of cycles where we saw N micro opcodes dispatched:
+[# dispatched], [# cycles]
+ 0,              27  (0.2%)
+ 2,              332  (2.5%)
+ 3,              1325  (10.2%)
+ 4,              1670  (12.8%)
+ 5,              1333  (10.2%)
+ 6,              8336  (64.0%)
+
+
+Schedulers - number of cycles where we saw N micro opcodes issued:
+[# issued], [# cycles]
+ 0,          13  (0.1%)
+ 1,          672  (5.2%)
+ 2,          1335  (10.3%)
+ 3,          2327  (17.9%)
+ 4,          344  (2.6%)
+ 5,          1010  (7.8%)
+ 6,          3655  (28.1%)
+ 7,          2003  (15.4%)
+ 8,          337  (2.6%)
+ 9,          666  (5.1%)
+ 10,          661  (5.1%)
+
+Scheduler's queue usage:
+[1] Resource name.
+[2] Average number of used buffer entries.
+[3] Maximum number of used buffer entries.
+[4] Total number of buffer entries.
+
+ [1]            [2]        [3]        [4]
+SKXPortAny       58         60         60
+
+
+Retire Control Unit - number of cycles where we saw N instructions retired:
+[# retired], [# cycles]
+ 0,           6353  (48.8%)
+ 1,           9  (0.1%)
+ 2,           1  (0.0%)
+ 3,           2663  (20.4%)
+ 5,           1  (0.0%)
+ 10,          1663  (12.8%)
+ 13,          1333  (10.2%)
+ 14,          996  (7.6%)
+ 17,          1  (0.0%)
+ 22,          1  (0.0%)
+ 23,          1  (0.0%)
+ 30,          1  (0.0%)
+
+Total ROB Entries:                224
+Max Used ROB Entries:             165  ( 73.7% )
+Average Used ROB Entries per cy:  140  ( 62.5% )
+
+
+Register File statistics:
+Total number of mappings created:    57000
+Max number of mappings used:         140
+
+
+Resources:
+[0]   - SKXDivider
+[1]   - SKXFPDivider
+[2]   - SKXPort0
+[3]   - SKXPort1
+[4]   - SKXPort2
+[5]   - SKXPort3
+[6]   - SKXPort4
+[7]   - SKXPort5
+[8]   - SKXPort6
+[9]   - SKXPort7
+
+
+Resource pressure per iteration:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    
+ -      -     13.00  11.00  6.83   6.83   8.00   11.00  13.00  6.33   
+
+Resource pressure by instruction:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    Instructions:
+ -      -      -      -     0.50   0.50    -      -      -      -     movq	-24(%r12), %rax
+ -      -      -     0.67    -      -      -     0.33    -      -     movq	%rax, %rbx
+ -      -      -     0.67    -      -      -     0.33    -      -     andq	%r14, %rbx
+ -      -      -     0.66    -      -      -     0.34    -      -     movl	%r9d, %ecx
+ -      -     2.99    -      -      -      -      -     0.01    -     shrq	%cl, %rbx
+ -      -      -     0.66    -      -      -      -     0.33    -     movq	%rbx, %r15
+ -      -      -      -      -      -      -      -     1.00    -     shlq	$4, %r15
+ -      -      -      -     0.50   0.50    -      -      -      -     movq	(%r13,%r15), %rcx
+ -      -      -     0.67    -      -      -     0.33    -      -     leaq	8(%rcx), %rdx
+ -      -     0.33    -     0.50   0.50    -      -     0.67    -     cmpq	8(%r13,%r15), %rdx
+ -      -      -      -      -      -     1.00    -      -     1.00   movq	%rax, (%rcx)
+ -      -      -      -      -      -     1.00    -      -     1.00   movq	%rdx, (%r13,%r15)
+ -      -     1.00    -      -      -      -      -      -      -     je	.Lexit
+ -      -      -      -     0.50   0.50    -      -      -      -     movq	-16(%r12), %rax
+ -      -      -     0.34    -      -      -     0.67    -      -     movq	%rax, %r15
+ -      -      -     0.33    -      -      -     0.67    -      -     andq	%r14, %r15
+ -      -      -     0.33    -      -      -     0.67    -      -     movl	%r9d, %ecx
+ -      -     0.02    -      -      -      -      -     2.98    -     shrq	%cl, %r15
+ -      -      -     0.66    -      -      -     0.01   0.33    -     movq	%r15, %rbx
+ -      -     0.67    -      -      -      -      -     0.33    -     shlq	$4, %rbx
+ -      -      -      -     0.50   0.50    -      -      -      -     movq	(%r13,%rbx), %rcx
+ -      -      -     0.34    -      -      -     0.66    -      -     leaq	8(%rcx), %rdx
+ -      -     0.67   0.33   0.50   0.50    -      -      -      -     cmpq	8(%r13,%rbx), %rdx
+ -      -      -      -     0.17   0.17   1.00    -      -     0.67   movq	%rax, (%rcx)
+ -      -      -      -     0.17   0.17   1.00    -      -     0.67   movq	%rdx, (%r13,%rbx)
+ -      -     1.00    -      -      -      -      -      -      -     je	.Lexit
+ -      -      -      -     0.50   0.50    -      -      -      -     movq	-8(%r12), %rax
+ -      -      -     0.34    -      -      -     0.67    -      -     movq	%rax, %r15
+ -      -      -     0.33    -      -      -     0.67    -      -     andq	%r14, %r15
+ -      -      -     0.33    -      -      -     0.67    -      -     movl	%r9d, %ecx
+ -      -     1.00    -      -      -      -      -     2.00    -     shrq	%cl, %r15
+ -      -      -     0.01    -      -      -     0.33   0.66    -     movq	%r15, %rbx
+ -      -      -      -      -      -      -      -     1.00    -     shlq	$4, %rbx
+ -      -      -      -     0.50   0.50    -      -      -      -     movq	(%r13,%rbx), %rcx
+ -      -      -     0.34    -      -      -     0.67    -      -     leaq	8(%rcx), %rdx
+ -      -     0.33    -     0.50   0.50    -      -     0.67    -     cmpq	8(%r13,%rbx), %rdx
+ -      -      -      -      -      -     1.00    -      -     1.00   movq	%rax, (%rcx)
+ -      -      -      -      -     0.33   1.00    -      -     0.67   movq	%rdx, (%r13,%rbx)
+ -      -     0.67    -      -      -      -      -     0.33    -     je	.Lexit
+ -      -      -      -     0.50   0.50    -      -      -      -     movq	(%r12), %rax
+ -      -      -     0.67    -      -      -     0.33    -      -     movq	%rax, %r15
+ -      -      -     0.01    -      -      -     0.99    -      -     andq	%r14, %r15
+ -      -      -     0.33    -      -      -     0.67    -      -     movl	%r9d, %ecx
+ -      -     2.00    -      -      -      -      -     1.00    -     shrq	%cl, %r15
+ -      -      -     0.66    -      -      -     0.34    -      -     movq	%r15, %rbx
+ -      -     0.66    -      -      -      -      -     0.34    -     shlq	$4, %rbx
+ -      -      -      -     0.50   0.50    -      -      -      -     movq	(%r13,%rbx), %rcx
+ -      -      -     0.34    -      -      -     0.66    -      -     leaq	8(%rcx), %rdx
+ -      -     0.67    -     0.66   0.34    -      -     0.34    -     cmpq	8(%r13,%rbx), %rdx
+ -      -      -      -     0.17   0.17   1.00    -      -     0.67   movq	%rax, (%rcx)
+ -      -      -      -     0.17   0.17   1.00    -      -     0.67   movq	%rdx, (%r13,%rbx)
+ -      -     1.00    -      -      -      -      -      -      -     je	.Lexit
+ -      -      -     0.67    -      -      -     0.34    -      -     decq	%rbp
+ -      -      -     0.99    -      -      -     0.01    -      -     addq	$32, %r12
+ -      -      -     0.33    -      -      -     0.67    -      -     testq	%rbp, %rbp
+ -      -     0.01    -      -      -      -      -     1.00    -     jne	.L3c500
+
+
+Timeline view:
+                    0123456789          0123456789          
+Index     0123456789          0123456789          0123456789
+
+[0,0]     DeeeeeER  .    .    .    .    .    .    .    .   .   movq	-24(%r12), %rax
+[0,1]     D=====eER .    .    .    .    .    .    .    .   .   movq	%rax, %rbx
+[0,2]     D======eER.    .    .    .    .    .    .    .   .   andq	%r14, %rbx
+[0,3]     DeE------R.    .    .    .    .    .    .    .   .   movl	%r9d, %ecx
+[0,4]     .D======eeeER  .    .    .    .    .    .    .   .   shrq	%cl, %rbx
+[0,5]     .D=========eER .    .    .    .    .    .    .   .   movq	%rbx, %r15
+[0,6]     .D==========eER.    .    .    .    .    .    .   .   shlq	$4, %r15
+[0,7]     .D===========eeeeeER.    .    .    .    .    .   .   movq	(%r13,%r15), %rcx
+[0,8]     . D===============eER    .    .    .    .    .   .   leaq	8(%rcx), %rdx
+[0,9]     . D===============eeeeeeER    .    .    .    .   .   cmpq	8(%r13,%r15), %rdx
+[0,10]    . D===============eE-----R    .    .    .    .   .   movq	%rax, (%rcx)
+[0,11]    . D================eE----R    .    .    .    .   .   movq	%rdx, (%r13,%r15)
+[0,12]    . D======================eER  .    .    .    .   .   je	.Lexit
+[0,13]    .  DeeeeeE-----------------R  .    .    .    .   .   movq	-16(%r12), %rax
+[0,14]    .  D=====eE----------------R  .    .    .    .   .   movq	%rax, %r15
+[0,15]    .  D======eE---------------R  .    .    .    .   .   andq	%r14, %r15
+[0,16]    .  DeE---------------------R  .    .    .    .   .   movl	%r9d, %ecx
+[0,17]    .   D======eeeE------------R  .    .    .    .   .   shrq	%cl, %r15
+[0,18]    .   D=========eE-----------R  .    .    .    .   .   movq	%r15, %rbx
+[0,19]    .   D==========eE----------R  .    .    .    .   .   shlq	$4, %rbx
+[0,20]    .   D===========eeeeeE-----R  .    .    .    .   .   movq	(%r13,%rbx), %rcx
+[0,21]    .    D===============eE----R  .    .    .    .   .   leaq	8(%rcx), %rdx
+[0,22]    .    D===============eeeeeeER .    .    .    .   .   cmpq	8(%r13,%rbx), %rdx
+[0,23]    .    D===============eE-----R .    .    .    .   .   movq	%rax, (%rcx)
+[0,24]    .    D================eE----R .    .    .    .   .   movq	%rdx, (%r13,%rbx)
+[0,25]    .    D=====================eER.    .    .    .   .   je	.Lexit
+[0,26]    .    .DeeeeeE----------------R.    .    .    .   .   movq	-8(%r12), %rax
+[0,27]    .    .D=====eE---------------R.    .    .    .   .   movq	%rax, %r15
+[0,28]    .    .D======eE--------------R.    .    .    .   .   andq	%r14, %r15
+[0,29]    .    .DeE--------------------R.    .    .    .   .   movl	%r9d, %ecx
+[0,30]    .    . D======eeeE-----------R.    .    .    .   .   shrq	%cl, %r15
+[0,31]    .    . D=========eE----------R.    .    .    .   .   movq	%r15, %rbx
+[0,32]    .    . D===========eE--------R.    .    .    .   .   shlq	$4, %rbx
+[0,33]    .    . D============eeeeeE---R.    .    .    .   .   movq	(%r13,%rbx), %rcx
+[0,34]    .    .  D================eE--R.    .    .    .   .   leaq	8(%rcx), %rdx
+[0,35]    .    .  D================eeeeeeER  .    .    .   .   cmpq	8(%r13,%rbx), %rdx
+[0,36]    .    .  D================eE-----R  .    .    .   .   movq	%rax, (%rcx)
+[0,37]    .    .  D=================eE----R  .    .    .   .   movq	%rdx, (%r13,%rbx)
+[0,38]    .    .  D=======================eER.    .    .   .   je	.Lexit
+[0,39]    .    .   DeeeeeE------------------R.    .    .   .   movq	(%r12), %rax
+[0,40]    .    .   D=====eE-----------------R.    .    .   .   movq	%rax, %r15
+[0,41]    .    .   D======eE----------------R.    .    .   .   andq	%r14, %r15
+[0,42]    .    .   DeE----------------------R.    .    .   .   movl	%r9d, %ecx
+[0,43]    .    .    D======eeeE-------------R.    .    .   .   shrq	%cl, %r15
+[0,44]    .    .    D=========eE------------R.    .    .   .   movq	%r15, %rbx
+[0,45]    .    .    D==========eE-----------R.    .    .   .   shlq	$4, %rbx
+[0,46]    .    .    D===========eeeeeE------R.    .    .   .   movq	(%r13,%rbx), %rcx
+[0,47]    .    .    .D===============eE-----R.    .    .   .   leaq	8(%rcx), %rdx
+[0,48]    .    .    .D===============eeeeeeER.    .    .   .   cmpq	8(%r13,%rbx), %rdx
+[0,49]    .    .    .D===============eE-----R.    .    .   .   movq	%rax, (%rcx)
+[0,50]    .    .    .D================eE----R.    .    .   .   movq	%rdx, (%r13,%rbx)
+[0,51]    .    .    .D=====================eER    .    .   .   je	.Lexit
+[0,52]    .    .    . DeE--------------------R    .    .   .   decq	%rbp
+[0,53]    .    .    . DeE--------------------R    .    .   .   addq	$32, %r12
+[0,54]    .    .    . D=eE-------------------R    .    .   .   testq	%rbp, %rbp
+[0,55]    .    .    . D===eE-----------------R    .    .   .   jne	.L3c500
+[1,0]     .    .    . D=eeeeeE---------------R    .    .   .   movq	-24(%r12), %rax
+[1,1]     .    .    . D======eE--------------R    .    .   .   movq	%rax, %rbx
+[1,2]     .    .    .  D======eE-------------R    .    .   .   andq	%r14, %rbx
+[1,3]     .    .    .  DeE-------------------R    .    .   .   movl	%r9d, %ecx
+[1,4]     .    .    .  D========eeeE---------R    .    .   .   shrq	%cl, %rbx
+[1,5]     .    .    .  D============eE-------R    .    .   .   movq	%rbx, %r15
+[1,6]     .    .    .   D=============eE-----R    .    .   .   shlq	$4, %r15
+[1,7]     .    .    .   D==============eeeeeER    .    .   .   movq	(%r13,%r15), %rcx
+[1,8]     .    .    .   D===================eER   .    .   .   leaq	8(%rcx), %rdx
+[1,9]     .    .    .   D===================eeeeeeER   .   .   cmpq	8(%r13,%r15), %rdx
+[1,10]    .    .    .   D===================eE-----R   .   .   movq	%rax, (%rcx)
+[1,11]    .    .    .    D===================eE----R   .   .   movq	%rdx, (%r13,%r15)
+[1,12]    .    .    .    D========================eER  .   .   je	.Lexit
+[1,13]    .    .    .    DeeeeeE--------------------R  .   .   movq	-16(%r12), %rax
+[1,14]    .    .    .    D=====eE-------------------R  .   .   movq	%rax, %r15
+[1,15]    .    .    .    D======eE------------------R  .   .   andq	%r14, %r15
+[1,16]    .    .    .    DeE------------------------R  .   .   movl	%r9d, %ecx
+[1,17]    .    .    .    .D======eeeE---------------R  .   .   shrq	%cl, %r15
+[1,18]    .    .    .    .D=========eE--------------R  .   .   movq	%r15, %rbx
+[1,19]    .    .    .    .D===========eE------------R  .   .   shlq	$4, %rbx
+[1,20]    .    .    .    .D============eeeeeE-------R  .   .   movq	(%r13,%rbx), %rcx
+[1,21]    .    .    .    . D================eE------R  .   .   leaq	8(%rcx), %rdx
+[1,22]    .    .    .    . D================eeeeeeE-R  .   .   cmpq	8(%r13,%rbx), %rdx
+[1,23]    .    .    .    . D==================eE----R  .   .   movq	%rax, (%rcx)
+[1,24]    .    .    .    . D===================eE---R  .   .   movq	%rdx, (%r13,%rbx)
+[1,25]    .    .    .    . D======================eER  .   .   je	.Lexit
+[1,26]    .    .    .    .  DeeeeeE-----------------R  .   .   movq	-8(%r12), %rax
+[1,27]    .    .    .    .  D=====eE----------------R  .   .   movq	%rax, %r15
+[1,28]    .    .    .    .  D=======eE--------------R  .   .   andq	%r14, %r15
+[1,29]    .    .    .    .  DeE---------------------R  .   .   movl	%r9d, %ecx
+[1,30]    .    .    .    .   D=========eeeE---------R  .   .   shrq	%cl, %r15
+[1,31]    .    .    .    .   D============eE--------R  .   .   movq	%r15, %rbx
+[1,32]    .    .    .    .   D=============eE-------R  .   .   shlq	$4, %rbx
+[1,33]    .    .    .    .   D===============eeeeeE-R  .   .   movq	(%r13,%rbx), %rcx
+[1,34]    .    .    .    .    D===================eER  .   .   leaq	8(%rcx), %rdx
+[1,35]    .    .    .    .    D===================eeeeeeER .   cmpq	8(%r13,%rbx), %rdx
+[1,36]    .    .    .    .    D===================eE-----R .   movq	%rax, (%rcx)
+[1,37]    .    .    .    .    D====================eE----R .   movq	%rdx, (%r13,%rbx)
+[1,38]    .    .    .    .    D=========================eER.   je	.Lexit
+[1,39]    .    .    .    .    .D=eeeeeE-------------------R.   movq	(%r12), %rax
+[1,40]    .    .    .    .    .D======eE------------------R.   movq	%rax, %r15
+[1,41]    .    .    .    .    .D=======eE-----------------R.   andq	%r14, %r15
+[1,42]    .    .    .    .    .DeE------------------------R.   movl	%r9d, %ecx
+[1,43]    .    .    .    .    . D=======eeeE--------------R.   shrq	%cl, %r15
+[1,44]    .    .    .    .    . D==========eE-------------R.   movq	%r15, %rbx
+[1,45]    .    .    .    .    . D============eE-----------R.   shlq	$4, %rbx
+[1,46]    .    .    .    .    . D=============eeeeeE------R.   movq	(%r13,%rbx), %rcx
+[1,47]    .    .    .    .    .  D=================eE-----R.   leaq	8(%rcx), %rdx
+[1,48]    .    .    .    .    .  D=================eeeeeeER.   cmpq	8(%r13,%rbx), %rdx
+[1,49]    .    .    .    .    .  D==================eE----R.   movq	%rax, (%rcx)
+[1,50]    .    .    .    .    .  D===================eE---R.   movq	%rdx, (%r13,%rbx)
+[1,51]    .    .    .    .    .  D=======================eER   je	.Lexit
+[1,52]    .    .    .    .    .   D=eE---------------------R   decq	%rbp
+[1,53]    .    .    .    .    .   D==eE--------------------R   addq	$32, %r12
+[1,54]    .    .    .    .    .   D===eE-------------------R   testq	%rbp, %rbp
+[1,55]    .    .    .    .    .   D====eE------------------R   jne	.L3c500
+
+
+Average Wait times (based on the timeline view):
+[0]: Executions
+[1]: Average time spent waiting in a scheduler's queue
+[2]: Average time spent waiting in a scheduler's queue while ready
+[3]: Average time elapsed from WB until retire stage
+
+      [0]    [1]    [2]    [3]
+0.     2     1.5    0.5    7.5       movq	-24(%r12), %rax
+1.     2     6.5    0.0    7.0       movq	%rax, %rbx
+2.     2     7.0    0.0    6.5       andq	%r14, %rbx
+3.     2     1.0    1.0    12.5      movl	%r9d, %ecx
+4.     2     8.0    0.5    4.5       shrq	%cl, %rbx
+5.     2     11.5   0.5    3.5       movq	%rbx, %r15
+6.     2     12.5   0.5    2.5       shlq	$4, %r15
+7.     2     13.5   0.0    0.0       movq	(%r13,%r15), %rcx
+8.     2     18.0   0.0    0.0       leaq	8(%rcx), %rdx
+9.     2     18.0   0.0    0.0       cmpq	8(%r13,%r15), %rdx
+10.    2     18.0   0.0    5.0       movq	%rax, (%rcx)
+11.    2     18.5   0.0    4.0       movq	%rdx, (%r13,%r15)
+12.    2     24.0   0.5    0.0       je	.Lexit
+13.    2     1.0    1.0    18.5      movq	-16(%r12), %rax
+14.    2     6.0    0.0    17.5      movq	%rax, %r15
+15.    2     7.0    0.0    16.5      andq	%r14, %r15
+16.    2     1.0    1.0    22.5      movl	%r9d, %ecx
+17.    2     7.0    0.0    13.5      shrq	%cl, %r15
+18.    2     10.0   0.0    12.5      movq	%r15, %rbx
+19.    2     11.5   0.5    11.0      shlq	$4, %rbx
+20.    2     12.5   0.0    6.0       movq	(%r13,%rbx), %rcx
+21.    2     16.5   0.0    5.0       leaq	8(%rcx), %rdx
+22.    2     16.5   0.0    0.5       cmpq	8(%r13,%rbx), %rdx
+23.    2     17.5   0.5    4.5       movq	%rax, (%rcx)
+24.    2     18.5   0.5    3.5       movq	%rdx, (%r13,%rbx)
+25.    2     22.5   0.0    0.0       je	.Lexit
+26.    2     1.0    1.0    16.5      movq	-8(%r12), %rax
+27.    2     6.0    0.0    15.5      movq	%rax, %r15
+28.    2     7.5    0.5    14.0      andq	%r14, %r15
+29.    2     1.0    1.0    20.5      movl	%r9d, %ecx
+30.    2     8.5    1.0    10.0      shrq	%cl, %r15
+31.    2     11.5   0.0    9.0       movq	%r15, %rbx
+32.    2     13.0   0.5    7.5       shlq	$4, %rbx
+33.    2     14.5   0.5    2.0       movq	(%r13,%rbx), %rcx
+34.    2     18.5   0.0    1.0       leaq	8(%rcx), %rdx
+35.    2     18.5   0.0    0.0       cmpq	8(%r13,%rbx), %rdx
+36.    2     18.5   0.0    5.0       movq	%rax, (%rcx)
+37.    2     19.5   0.0    4.0       movq	%rdx, (%r13,%rbx)
+38.    2     25.0   0.5    0.0       je	.Lexit
+39.    2     1.5    1.5    18.5      movq	(%r12), %rax
+40.    2     6.5    0.0    17.5      movq	%rax, %r15
+41.    2     7.5    0.0    16.5      andq	%r14, %r15
+42.    2     1.0    1.0    23.0      movl	%r9d, %ecx
+43.    2     7.5    0.0    13.5      shrq	%cl, %r15
+44.    2     10.5   0.0    12.5      movq	%r15, %rbx
+45.    2     12.0   0.5    11.0      shlq	$4, %rbx
+46.    2     13.0   0.0    6.0       movq	(%r13,%rbx), %rcx
+47.    2     17.0   0.0    5.0       leaq	8(%rcx), %rdx
+48.    2     17.0   0.0    0.0       cmpq	8(%r13,%rbx), %rdx
+49.    2     17.5   0.5    4.5       movq	%rax, (%rcx)
+50.    2     18.5   0.5    3.5       movq	%rdx, (%r13,%rbx)
+51.    2     23.0   0.0    0.0       je	.Lexit
+52.    2     1.5    1.5    20.5      decq	%rbp
+53.    2     2.0    2.0    20.0      addq	$32, %r12
+54.    2     3.0    0.5    19.0      testq	%rbp, %rbp
+55.    2     4.5    0.5    17.5      jne	.L3c500
+       2     11.3   0.4    8.9       <total>

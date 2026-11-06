@@ -1,0 +1,17 @@
+{
+  "raw_arm_mapping": {
+    "baseline_A1": "2ef2415 matched harness, first baseline run",
+    "baseline_A2": "same baseline ELF, second run",
+    "unchecked_B1": "typed cleanup fbe ELF, first run; no unchecked Probe",
+    "unchecked_B2": "same typed cleanup ELF, second run",
+    "isolated_C1": "final cleanup c419 ELF, first run",
+    "isolated_C2": "same final cleanup ELF, second run"
+  },
+  "summary_label_aliases": {
+    "baseline_A2/checked_A1": "baseline_A2/baseline_A1",
+    "unchecked_B2/unchecked_B1": "typed_B2/typed_B1",
+    "isolated_C2/isolated_C1": "final_C2/final_C1"
+  },
+  "data_relabelled": false,
+  "counter_scope": "whole benchmark process, including clone, reference checks, archive and output; sort-only elapsed samples are recorded separately"
+}

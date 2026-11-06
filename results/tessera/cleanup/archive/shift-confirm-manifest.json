@@ -1,0 +1,361 @@
+{
+  "baseline": "typed-mask snapshot",
+  "candidate": "frozen-source.json",
+  "cycles": 5,
+  "cpu": 2,
+  "seed": 1,
+  "rustc": "rustc 1.101.0-nightly (a30aa9064 2026-10-08)\nbinary: rustc\ncommit-hash: a30aa9064df6a504b6a323c6884a2f4cfbfff666\ncommit-date: 2026-10-08\nhost: x86_64-unknown-linux-gnu\nrelease: 1.101.0-nightly\nLLVM version: 23.1.3\n",
+  "build": "cargo bench --features rust_tessera_radix --bench radix_ab --no-run; default bench profile, thin LTO",
+  "build_environment": {},
+  "binary_sha256": {
+    "baseline": "a6514deefd95c47796e535e1f0591b30a6644f809ce6b7d809215044f2ddabd5",
+    "candidate": "b965ea39d28456cc1283f76e1b4f3a6d019ae3146241ddacbf025fadd35118cc"
+  },
+  "source_sha256": {
+    "src/other/radix_support.rs": "e9e9196e1044aa182b8ab9c25f97516b370ebc01eb44fdb0ac951f680098fb27",
+    "src/other/rust_block_lsd.rs": "a074d324030ecce8a12a13063690f1787924994286c678b6dfa2ba39073ec931",
+    "src/other/rust_block_lsd/core.rs": "8038fc56ce3e5807ac9284ee61a61d35ed982c29a769bf89479fd938d51a84cc",
+    "src/other/rust_msd_radix/mod.rs": "f767f3e8a16743d92a7a8bc602898ffc43c109de9e5ab6b83e4a6e8fdb655fe5",
+    "src/other/rust_tessera_radix.rs": "172f2be55071381acaa67a6ccf6e26d1c51049349a880b883d5a0b55046d204b",
+    "src/other/rust_tessera_radix/engine.rs": "d229ef82f993d38e054a94d2591c42ef7be79140dc40ade56f642919c7e8b48b",
+    "src/other/rust_tessera_radix/engine/tests.rs": "3d0acf92c71becf44241acb0c26debd273cf557d52b57250a8ae8614fd14dd7f",
+    "benches/radix_ab.rs": "aedb1d82e57815eb530993b8843160ff409c114131e146a39732835afce3dcbf",
+    "tests/radix_views.rs": "e9875aca56f775821dae24a034c857ee3582543c5adff4f73967daf9a4c238e9",
+    "tests/radix_owned.rs": "5747f81acf5e187be3c73f9bb98f6519c0a0a9ac69136092f4b611ead0d47d76",
+    "Cargo.toml": "d51be419dd219aa58ff4c5711eba7b86be4e54e136571bd9bb04f364688ff01a",
+    "Cargo.lock": "aa9e50c9d64a2e09645f6c9a142a27c8786eeb7233c35bf46bda1fc1b850b913"
+  },
+  "groups": [
+    [
+      "--types",
+      "u32",
+      "--patterns",
+      "random_wide,random_sorted99,zipf13,sparse8",
+      "--sizes",
+      "1000000",
+      "--variants",
+      "tessera,block_lsd_r8",
+      "--rounds",
+      "7"
+    ]
+  ],
+  "ratio": "median across cycles of median(candidate samples) / mean(median(A1 samples), median(A2 samples))",
+  "AA_ratio": "median across cycles of median(A2 samples) / median(A1 samples); both use baseline binary",
+  "schedule": [
+    {
+      "cycle": 0,
+      "arm": "A1",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/mask-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "candidate",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/final-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "A2",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/mask-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "A2",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/mask-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "candidate",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/final-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "A1",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/mask-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "A1",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/mask-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "candidate",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/final-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "A2",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/mask-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 3,
+      "arm": "A2",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/mask-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 3,
+      "arm": "candidate",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/final-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 3,
+      "arm": "A1",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/mask-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 4,
+      "arm": "A1",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/mask-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 4,
+      "arm": "candidate",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/final-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 4,
+      "arm": "A2",
+      "group": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/mask-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_wide,random_sorted99,zipf13,sparse8",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera,block_lsd_r8",
+        "--rounds",
+        "7"
+      ]
+    }
+  ]
+}

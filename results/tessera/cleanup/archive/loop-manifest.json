@@ -1,0 +1,23 @@
+{
+  "args": [
+    "--types",
+    "u32,u64,u128",
+    "--patterns",
+    "random_wide,zipf13,random_sorted99",
+    "--sizes",
+    "1000000",
+    "--variants",
+    "tessera,block_lsd_r8",
+    "--rounds",
+    "3"
+  ],
+  "cycles": 5,
+  "order": "unrolled,simple on even; simple,unrolled on odd",
+  "seed": 1,
+  "cpu": 2,
+  "ratio": "median of cycle median(simple)/median(unrolled)",
+  "hashes": {
+    "unrolled": "0ef4c6d61144a8fb6a4b34c3dbcc4d7cc563d8460f3d6a854f62124a3cfeb95e",
+    "simple": "160283a554565b798a78b8654b754186bfb4d684d1b2766dcd3c894e7cb29d7a"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "initial_revision": "429f6f7",
+  "initial_source_sha256": "208d86481b985e9859167bef0b081c026e9eff4d9ee99a67367831da6e93dc6d",
+  "binary_sha256": "0ef4c6d61144a8fb6a4b34c3dbcc4d7cc563d8460f3d6a854f62124a3cfeb95e",
+  "current_core_sha256": "80a4d8e68384308ab658bf81498b4d7d0d8e60bb9c0a9eeb2a7cb7559d3f4d78",
+  "args": [
+    "--types",
+    "u32,u64,u128",
+    "--patterns",
+    "random_wide,zipf13,ascending",
+    "--sizes",
+    "100000,1000000",
+    "--variants",
+    "initial_block,block_lsd_r8",
+    "--rounds",
+    "7"
+  ],
+  "cycles": 3,
+  "rounds": 7,
+  "seed": 1,
+  "cpu": 2,
+  "order": "both variants rotate within each round",
+  "ratio": "median of cycle median(current)/median(initial)"
+}

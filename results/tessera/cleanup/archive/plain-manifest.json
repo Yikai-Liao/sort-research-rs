@@ -1,0 +1,23 @@
+{
+  "args": [
+    "--types",
+    "u32,u64,u128,record16,record128",
+    "--patterns",
+    "random_wide,zipf13,p95zero,two_values",
+    "--sizes",
+    "1000000",
+    "--variants",
+    "tessera,block_lsd_r8",
+    "--rounds",
+    "3"
+  ],
+  "cycles": 5,
+  "order": "visitor,plain on even; plain,visitor on odd",
+  "seed": 1,
+  "cpu": 2,
+  "ratio": "median of per-cycle median(plain)/median(visitor)",
+  "hashes": {
+    "visitor": "0ef4c6d61144a8fb6a4b34c3dbcc4d7cc563d8460f3d6a854f62124a3cfeb95e",
+    "plain": "1bb5cab803d71be5f8de0201511616d9b5ae8cdc66d38c61477a0d3ff8666efa"
+  }
+}

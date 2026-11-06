@@ -1,0 +1,14 @@
+
+/root/code/sort-research-rs/logs/tessera-cleanup/unchecked-probe-bench:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000089550 <_RINvYINtNtNtNtCsdLJKRdCaWyW_4core4iter8adapters5chain5ChainINtNtNtBa_7sources4once4OnceyEINtNtB8_3map3MapINtNtNtBc_5slice4iter4IteryENvYyNtNtNtCs7jsxoleoEt5_16sort_research_rs5other13radix_support3Key3keyEENtNtNtBa_6traits8iterator8Iterator12is_sorted_byNCINvNtNtB2f_18rust_tessera_radix6engine13confirm_orderyEs_0ECs59F9KgNujep_8radix_ab+0x50>:
+   89550:	mov    %rax,%rsi
+   89553:	mov    (%rcx),%rax
+   89556:	add    $0x8,%rcx
+   8955a:	cmp    %rax,%rsi
+   8955d:	jb     89564 <_RINvYINtNtNtNtCsdLJKRdCaWyW_4core4iter8adapters5chain5ChainINtNtNtBa_7sources4once4OnceyEINtNtB8_3map3MapINtNtNtBc_5slice4iter4IteryENvYyNtNtNtCs7jsxoleoEt5_16sort_research_rs5other13radix_support3Key3keyEENtNtNtBa_6traits8iterator8Iterator12is_sorted_byNCINvNtNtB2f_18rust_tessera_radix6engine13confirm_orderyEs_0ECs59F9KgNujep_8radix_ab+0x64>
+   8955f:	cmp    %rdx,%rcx
+   89562:	jne    89550 <_RINvYINtNtNtNtCsdLJKRdCaWyW_4core4iter8adapters5chain5ChainINtNtNtBa_7sources4once4OnceyEINtNtB8_3map3MapINtNtNtBc_5slice4iter4IteryENvYyNtNtNtCs7jsxoleoEt5_16sort_research_rs5other13radix_support3Key3keyEENtNtNtBa_6traits8iterator8Iterator12is_sorted_byNCINvNtNtB2f_18rust_tessera_radix6engine13confirm_orderyEs_0ECs59F9KgNujep_8radix_ab+0x50>

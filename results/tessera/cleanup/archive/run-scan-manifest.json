@@ -1,0 +1,2075 @@
+{
+  "cycles": 3,
+  "rounds_rule": "501 for n<=1000, 7 for record128, 31 otherwise",
+  "cpu": 2,
+  "seed": 1,
+  "cases": [
+    [
+      "u32",
+      "random_sorted99",
+      "100000",
+      "tessera"
+    ],
+    [
+      "u32",
+      "random_sorted99",
+      "1000000",
+      "tessera"
+    ],
+    [
+      "u64",
+      "random_sorted99",
+      "1000000",
+      "tessera"
+    ],
+    [
+      "u64",
+      "random_sorted99",
+      "10000000",
+      "tessera"
+    ],
+    [
+      "u64",
+      "random_sorted99",
+      "1000",
+      "tessera"
+    ],
+    [
+      "u64",
+      "random_wide",
+      "1000000",
+      "tessera"
+    ],
+    [
+      "u32",
+      "descending",
+      "1000000",
+      "tessera"
+    ],
+    [
+      "u32",
+      "two_values",
+      "1000000",
+      "tessera"
+    ],
+    [
+      "record16",
+      "random_sorted99",
+      "100000",
+      "tessera"
+    ],
+    [
+      "u128",
+      "random_wide",
+      "1000000",
+      "tessera"
+    ],
+    [
+      "record128",
+      "random_wide",
+      "1000000",
+      "tessera"
+    ]
+  ],
+  "source_sha256": {
+    "src/other/radix_support.rs": "e9e9196e1044aa182b8ab9c25f97516b370ebc01eb44fdb0ac951f680098fb27",
+    "src/other/rust_block_lsd.rs": "a074d324030ecce8a12a13063690f1787924994286c678b6dfa2ba39073ec931",
+    "src/other/rust_block_lsd/core.rs": "b2d673a55d1e3f28a03edcce18b7a009436f956fa15e155d4b870843d993eb94",
+    "src/other/rust_msd_radix/mod.rs": "f767f3e8a16743d92a7a8bc602898ffc43c109de9e5ab6b83e4a6e8fdb655fe5",
+    "src/other/rust_tessera_radix.rs": "172f2be55071381acaa67a6ccf6e26d1c51049349a880b883d5a0b55046d204b",
+    "src/other/rust_tessera_radix/engine.rs": "92b1a897ed9ab437a0802edf2915dabcb37bd4ba118f2382d2b5eaf3a6b49c8d",
+    "src/other/rust_tessera_radix/engine/tests.rs": "13ab60cff2ff9d6cfbc4d8222475fcf17b62163c7d6e2a5d89c367e4656268e3",
+    "benches/radix_ab.rs": "c49aec01d8d3c08591d11ea81e0ffce668ad085ad15b0f04be7ac97230467ea0",
+    "tests/radix_views.rs": "e9875aca56f775821dae24a034c857ee3582543c5adff4f73967daf9a4c238e9",
+    "tests/radix_owned.rs": "5747f81acf5e187be3c73f9bb98f6519c0a0a9ac69136092f4b611ead0d47d76",
+    "Cargo.toml": "d51be419dd219aa58ff4c5711eba7b86be4e54e136571bd9bb04f364688ff01a",
+    "Cargo.lock": "aa9e50c9d64a2e09645f6c9a142a27c8786eeb7233c35bf46bda1fc1b850b913"
+  },
+  "binary_sha256": {
+    "baseline": "de419dd83e2209d9b2456d5deede8322928f0f4aedd0ec50013ae252301ad8ac",
+    "scoped": "5d151a9ee304e9c0a7cc1a3bb44943d38f6dc58e8614966d6a4cfb03c5cd7daf",
+    "run_scan": "d4b019a1e5c38896788f7ea6222745fb00dee3f8b97b0b79afcb5e25b4fe1aa3"
+  },
+  "schedule": [
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "10000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "10000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "10000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "two_values",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "two_values",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "two_values",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 0,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "10000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "10000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "10000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "two_values",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "two_values",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "two_values",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 1,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "10000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "10000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "10000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "1000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "501"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u64",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "descending",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "two_values",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "two_values",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u32",
+        "--patterns",
+        "two_values",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "record16",
+        "--patterns",
+        "random_sorted99",
+        "--sizes",
+        "100000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "u128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "31"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "run_scan",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/run-scan-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "baseline",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/matched-final-baseline-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "7"
+      ]
+    },
+    {
+      "cycle": 2,
+      "arm": "scoped",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/root/code/sort-research-rs/logs/tessera-cleanup/scoped-bench",
+        "--types",
+        "record128",
+        "--patterns",
+        "random_wide",
+        "--sizes",
+        "1000000",
+        "--variants",
+        "tessera",
+        "--rounds",
+        "7"
+      ]
+    }
+  ]
+}

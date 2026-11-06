@@ -1,0 +1,23 @@
+{
+  "command_args": [
+    "--types",
+    "u32,u64,u128",
+    "--patterns",
+    "random_wide,random_local,small12,zipf13,window32_high,f64_normal",
+    "--sizes",
+    "1000000",
+    "--variants",
+    "tessera",
+    "--rounds",
+    "3"
+  ],
+  "cycles": 5,
+  "order": "raw,candidate on even cycles; candidate,raw on odd",
+  "seed": 1,
+  "cpu": 2,
+  "ratio": "median of per-cycle median(candidate)/median(raw)",
+  "hashes": {
+    "raw": "186cc5cc0192003e69edd5ec0814f5b4f21c4b8ee901c700ab5e449e80b9f805",
+    "candidate": "8fc426b5c6ab8512ea921a83a88c4e1d58be39af561093d3dfa9370aca12b200"
+  }
+}

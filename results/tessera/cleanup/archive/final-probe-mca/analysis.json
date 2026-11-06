@@ -1,0 +1,125 @@
+{
+  "status": "passed",
+  "analysis_cpu": 0,
+  "binary_sha256": {
+    "previous": "764f6b424e644914e79287ad94475ffb79c9b7de701caafb293af61964b1f535",
+    "final": "c4196d5168747f1995c10c501729044a1cc13873647366a4cdb7bd3676ab6e1e"
+  },
+  "source_manifest": "frozen-source.json",
+  "source_sha256": {
+    "src/other/radix_support.rs": "b5031b400fa90b596ce08ddf9dd82edcbd0bc5d9114be710887bd913d30749eb",
+    "src/other/rust_block_lsd.rs": "a074d324030ecce8a12a13063690f1787924994286c678b6dfa2ba39073ec931",
+    "src/other/rust_block_lsd/core.rs": "f2fafad8d1a7b0e859fa53c207e9068da8154c60e83f38c07df2ee0cfbd83b96",
+    "src/other/rust_msd_radix/mod.rs": "bf5c45cb0de11898412427b5919ead9c5ba1db66caad969c625539530ee86e17",
+    "src/other/rust_tessera_radix.rs": "172f2be55071381acaa67a6ccf6e26d1c51049349a880b883d5a0b55046d204b",
+    "src/other/rust_tessera_radix/engine.rs": "e81e08fba9c49830a2a56d84567bb57add328575bbcc5330619537045ef58de4",
+    "src/other/rust_tessera_radix/engine/tests.rs": "13ab60cff2ff9d6cfbc4d8222475fcf17b62163c7d6e2a5d89c367e4656268e3",
+    "benches/radix_ab.rs": "c49aec01d8d3c08591d11ea81e0ffce668ad085ad15b0f04be7ac97230467ea0",
+    "tests/radix_views.rs": "741effc97ebe52fbb07c1d7a6f8db0356a8cff942bcb3265bbe0607624e2c0ca",
+    "tests/radix_owned.rs": "5747f81acf5e187be3c73f9bb98f6519c0a0a9ac69136092f4b611ead0d47d76",
+    "Cargo.toml": "d51be419dd219aa58ff4c5711eba7b86be4e54e136571bd9bb04f364688ff01a",
+    "Cargo.lock": "aa9e50c9d64a2e09645f6c9a142a27c8786eeb7233c35bf46bda1fc1b850b913"
+  },
+  "text_section": {
+    "previous_start": "0x23680",
+    "final_start": "0x23680",
+    "previous_sha256": "24844b1ff79eeb448a3c2dce8e8163d2bcbe52c63a136e70eec6a3d2ae2825f6",
+    "final_sha256": "24844b1ff79eeb448a3c2dce8e8163d2bcbe52c63a136e70eec6a3d2ae2825f6",
+    "all_bytes_equal": true
+  },
+  "paths": [
+    {
+      "region": "probe",
+      "start": "0x56910",
+      "end_exclusive": "0x56941",
+      "machine_bytes_sha256": "e2ebce0a1c0fa152a6345fcc4df990c10dde92bea24b9ceb3ceaaba7634168b7",
+      "machine_bytes_equal_to_764": true,
+      "mca_input_sha256": "f54b4693e1dd939900630c8cdb0192a0b7c9997690e8690351a4da00fbefc314",
+      "mca_input_equal_to_764": true,
+      "prior_analysis": "../fold-probe-mca/analysis.json",
+      "prior_report": "../fold-probe-mca/probe-unchecked-fold.mca.txt",
+      "prior_report_sha256": "b11eafa9cb91b56fe9eaeadeeefb9994d5278d7f0ae0fc67c7e84379925536e5",
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "llvm-mca-19",
+        "-mcpu=skylake-avx512",
+        "-iterations=1000",
+        "-noalias=true",
+        "-bottleneck-analysis",
+        "-all-stats",
+        "-timeline",
+        "-timeline-max-iterations=2",
+        "-timeline-max-cycles=160"
+      ],
+      "metrics": {
+        "Instructions": 15000.0,
+        "Total Cycles": 4011.0,
+        "Total uOps": 17000.0,
+        "IPC": 3.74,
+        "Block RThroughput": 3.0,
+        "cycles_per_iteration": 4.011,
+        "uops_per_iteration": 17.0,
+        "static_instructions": 15
+      },
+      "units": "per sample pair"
+    },
+    {
+      "region": "confirm-descending",
+      "start": "0x56f15",
+      "end_exclusive": "0x56f2e",
+      "machine_bytes_sha256": "cbebd427b6ce1998cbc45ff13eed05ca68104d5483ceacbfb7a29f146f589ce6",
+      "machine_bytes_equal_to_764": true,
+      "mca_input_sha256": "8e83070d8e11cc2e43ef9a84252c46fc305b56d7a97fd776aa295dfca1c6ecd8",
+      "mca_input_equal_to_764": true,
+      "prior_analysis": "../fold-probe-mca/analysis.json",
+      "prior_report": "../fold-probe-mca/confirm-descending-unchecked-fold.mca.txt",
+      "prior_report_sha256": "5f18a56f9339a166709645f80020b8e3830fa8b7d93d8ab5c380da17d2122c72",
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "llvm-mca-19",
+        "-mcpu=skylake-avx512",
+        "-iterations=1000",
+        "-noalias=true",
+        "-bottleneck-analysis",
+        "-all-stats",
+        "-timeline",
+        "-timeline-max-iterations=2",
+        "-timeline-max-cycles=160"
+      ],
+      "metrics": {
+        "Instructions": 7000.0,
+        "Total Cycles": 2003.0,
+        "Total uOps": 7000.0,
+        "IPC": 3.49,
+        "Block RThroughput": 1.2,
+        "cycles_per_iteration": 2.003,
+        "uops_per_iteration": 7.0,
+        "static_instructions": 7
+      },
+      "units": "per next record"
+    }
+  ],
+  "model_reuse": "exact same addresses, instruction bytes, and MCA input as the verified fold-probe ELF; no new MCA execution is necessary",
+  "model_scope": "fixed descending instruction traces; branch directions, warm L1 and noalias are assumptions; no whole-sort performance inference",
+  "u64_root": {
+    "start": "0x56870",
+    "length": "0xc53",
+    "symbol": "0000000000056870 0000000000000c53 t sort_research_rs::other::rust_tessera_radix::engine::sort_with_tile_bytes::<u64>",
+    "previous_sha256": "8a9591c961b8611706df745a5625690c02a62d04f95475e1709bc01e5911a92e",
+    "final_sha256": "8a9591c961b8611706df745a5625690c02a62d04f95475e1709bc01e5911a92e",
+    "all_bytes_equal": true,
+    "chain_is_sorted_symbols_present": false
+  },
+  "artifact_sha256": {
+    "confirm-descending.asm": "2ec75c14db5b047f75c6158d49ba57c77675df029e6cc8c88c1755539946e316",
+    "probe.s": "f54b4693e1dd939900630c8cdb0192a0b7c9997690e8690351a4da00fbefc314",
+    "final-u64-root.asm": "1904c2b470aa34df1b46bbd5c7d31356d6dd881ca139c3a0e437a0a0f4929292",
+    "confirm-descending.s": "8e83070d8e11cc2e43ef9a84252c46fc305b56d7a97fd776aa295dfca1c6ecd8",
+    "probe.asm": "65fd5ea24675427968e38048eb66b66fd3d4f10a99b557dcafa71700eca8a211",
+    "verify.py": "3b421ba7e4bbd3e51d81534381e0bde905a3808902b90e3ee44e8934a9e8b3f4"
+  }
+}

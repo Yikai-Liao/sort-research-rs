@@ -1,0 +1,23 @@
+{
+  "args": [
+    "--types",
+    "u32,u64,u128",
+    "--patterns",
+    "random_wide,zipf13,random_sorted99,all_equal,ascending,sparse8",
+    "--sizes",
+    "1000000",
+    "--variants",
+    "tessera,block_lsd_r8",
+    "--rounds",
+    "3"
+  ],
+  "cycles": 5,
+  "order": "pair,mask on even; mask,pair on odd",
+  "seed": 1,
+  "cpu": 2,
+  "ratio": "median of per-cycle median(mask)/median(pair)",
+  "hashes": {
+    "pair": "4b8210fe312e8c59f27f76ca72219bcb455c9a94b131d644f85ea8fc41e61477",
+    "mask": "a6514deefd95c47796e535e1f0591b30a6644f809ce6b7d809215044f2ddabd5"
+  }
+}

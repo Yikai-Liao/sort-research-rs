@@ -1,0 +1,237 @@
+Iterations:        1000
+Instructions:      15000
+Total Cycles:      4011
+Total uOps:        17000
+
+Dispatch Width:    6
+uOps Per Cycle:    4.24
+IPC:               3.74
+Block RThroughput: 3.0
+
+
+Cycles with backend pressure increase [ 94.22% ]
+Throughput Bottlenecks: 
+  Resource Pressure       [ 94.02% ]
+  - SKXPort0  [ 94.02% ]
+  - SKXPort1  [ 49.44% ]
+  - SKXPort5  [ 49.44% ]
+  - SKXPort6  [ 94.02% ]
+  Data Dependencies:      [ 49.56% ]
+  - Register Dependencies [ 49.56% ]
+  - Memory Dependencies   [ 0.00% ]
+
+Critical sequence based on the simulation:
+
+              Instruction                                 Dependency Information
+ +----< 14.   jne	.L56a10
+ |
+ |    < loop carried > 
+ |
+ |      0.    addq	%rcx, %rdx
+ +----> 1.    incq	%rsi                              ## RESOURCE interference:  SKXPort6 [ probability: 59% ]
+ |      2.    je	.Lexit
+ |      3.    movl	%edi, %r8d
+ |      4.    movl	%eax, %r9d
+ |      5.    movq	-8(%r14,%rdx,8), %rax
+ +----> 6.    cmpq	(%r14,%rdx,8), %rax               ## RESOURCE interference:  SKXPort5 [ probability: 19% ]
+ +----> 7.    setbe	%al                               ## REGISTER dependency:  %flags
+ +----> 8.    setae	%dil                              ## RESOURCE interference:  SKXPort0 [ probability: 39% ]
+ |      9.    andb	%r9b, %al
+ |      10.   andb	%r8b, %dil
+ |      11.   testb	%al, %al
+ |      12.   jne	.L56a10
+ |      13.   testb	%dil, %dil
+ |      14.   jne	.L56a10
+ |
+ |    < loop carried > 
+ |
+ +----> 0.    addq	%rcx, %rdx                        ## RESOURCE interference:  SKXPort0 [ probability: 19% ]
+
+
+Instruction Info:
+[1]: #uOps
+[2]: Latency
+[3]: RThroughput
+[4]: MayLoad
+[5]: MayStore
+[6]: HasSideEffects (U)
+
+[1]    [2]    [3]    [4]    [5]    [6]    Instructions:
+ 1      1     0.25                        addq	%rcx, %rdx
+ 1      1     0.25                        incq	%rsi
+ 1      1     0.50                        je	.Lexit
+ 1      1     0.25                        movl	%edi, %r8d
+ 1      1     0.25                        movl	%eax, %r9d
+ 1      5     0.50    *                   movq	-8(%r14,%rdx,8), %rax
+ 2      6     0.50    *                   cmpq	(%r14,%rdx,8), %rax
+ 2      2     1.00                        setbe	%al
+ 1      1     0.50                        setae	%dil
+ 1      1     0.25                        andb	%r9b, %al
+ 1      1     0.25                        andb	%r8b, %dil
+ 1      1     0.25                        testb	%al, %al
+ 1      1     0.50                        jne	.L56a10
+ 1      1     0.25                        testb	%dil, %dil
+ 1      1     0.50                        jne	.L56a10
+
+
+Dynamic Dispatch Stall Cycles:
+RAT     - Register unavailable:                      0
+RCU     - Retire tokens unavailable:                 0
+SCHEDQ  - Scheduler full:                            3357  (83.7%)
+LQ      - Load queue full:                           0
+SQ      - Store queue full:                          0
+GROUP   - Static restrictions on the dispatch group: 0
+USH     - Uncategorised Structural Hazard:           0
+
+
+Dispatch Logic - number of cycles where we saw N micro opcodes dispatched:
+[# dispatched], [# cycles]
+ 0,              23  (0.6%)
+ 1,              1  (0.0%)
+ 2,              198  (4.9%)
+ 3,              591  (14.7%)
+ 4,              1384  (34.5%)
+ 5,              1590  (39.6%)
+ 6,              224  (5.6%)
+
+
+Schedulers - number of cycles where we saw N micro opcodes issued:
+[# issued], [# cycles]
+ 0,          3  (0.1%)
+ 1,          5  (0.1%)
+ 2,          206  (5.1%)
+ 3,          605  (15.1%)
+ 4,          1593  (39.7%)
+ 5,          1199  (29.9%)
+ 6,          399  (9.9%)
+ 7,          1  (0.0%)
+
+Scheduler's queue usage:
+[1] Resource name.
+[2] Average number of used buffer entries.
+[3] Maximum number of used buffer entries.
+[4] Total number of buffer entries.
+
+ [1]            [2]        [3]        [4]
+SKXPortAny       59         60         60
+
+
+Retire Control Unit - number of cycles where we saw N instructions retired:
+[# retired], [# cycles]
+ 0,           207  (5.2%)
+ 1,           406  (10.1%)
+ 2,           2398  (59.8%)
+ 3,           1  (0.0%)
+ 7,           1  (0.0%)
+ 8,           199  (5.0%)
+ 9,           396  (9.9%)
+ 10,          200  (5.0%)
+ 11,          3  (0.1%)
+ 12,          1  (0.0%)
+ 13,          199  (5.0%)
+
+Total ROB Entries:                224
+Max Used ROB Entries:             107  ( 47.8% )
+Average Used ROB Entries per cy:  98  ( 43.8% )
+
+
+Register File statistics:
+Total number of mappings created:    16000
+Max number of mappings used:         101
+
+
+Resources:
+[0]   - SKXDivider
+[1]   - SKXFPDivider
+[2]   - SKXPort0
+[3]   - SKXPort1
+[4]   - SKXPort2
+[5]   - SKXPort3
+[6]   - SKXPort4
+[7]   - SKXPort5
+[8]   - SKXPort6
+[9]   - SKXPort7
+
+
+Resource pressure per iteration:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    
+ -      -     4.00   3.40   1.00   1.00    -     3.60   4.00    -     
+
+Resource pressure by instruction:
+[0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    [8]    [9]    Instructions:
+ -      -      -     0.60    -      -      -     0.40    -      -     addq	%rcx, %rdx
+ -      -      -     0.40    -      -      -     0.60    -      -     incq	%rsi
+ -      -     0.20    -      -      -      -      -     0.80    -     je	.Lexit
+ -      -     0.20   0.40    -      -      -     0.40    -      -     movl	%edi, %r8d
+ -      -     0.20   0.40    -      -      -     0.21   0.20    -     movl	%eax, %r9d
+ -      -      -      -      -     1.00    -      -      -      -     movq	-8(%r14,%rdx,8), %rax
+ -      -      -     0.60   1.00    -      -     0.40    -      -     cmpq	(%r14,%rdx,8), %rax
+ -      -     1.20    -      -      -      -      -     0.80    -     setbe	%al
+ -      -     0.21    -      -      -      -      -     0.80    -     setae	%dil
+ -      -     0.59   0.01    -      -      -     0.40    -      -     andb	%r9b, %al
+ -      -     0.40   0.20    -      -      -     0.40    -      -     andb	%r8b, %dil
+ -      -      -     0.40    -      -      -     0.40   0.20    -     testb	%al, %al
+ -      -     0.40    -      -      -      -      -     0.60    -     jne	.L56a10
+ -      -     0.20   0.40    -      -      -     0.40    -      -     testb	%dil, %dil
+ -      -     0.40    -      -      -      -      -     0.60    -     jne	.L56a10
+
+
+Timeline view:
+                    012345678
+Index     0123456789         
+
+[0,0]     DeER .    .    .  .   addq	%rcx, %rdx
+[0,1]     DeER .    .    .  .   incq	%rsi
+[0,2]     D=eER.    .    .  .   je	.Lexit
+[0,3]     DeE-R.    .    .  .   movl	%edi, %r8d
+[0,4]     DeE-R.    .    .  .   movl	%eax, %r9d
+[0,5]     D=eeeeeER .    .  .   movq	-8(%r14,%rdx,8), %rax
+[0,6]     .DeeeeeeER.    .  .   cmpq	(%r14,%rdx,8), %rax
+[0,7]     .D======eeER   .  .   setbe	%al
+[0,8]     .D======eE-R   .  .   setae	%dil
+[0,9]     .D========eER  .  .   andb	%r9b, %al
+[0,10]    . D======eE-R  .  .   andb	%r8b, %dil
+[0,11]    . D========eER .  .   testb	%al, %al
+[0,12]    . D=========eER.  .   jne	.L56a10
+[0,13]    . D=======eE--R.  .   testb	%dil, %dil
+[0,14]    . D========eE-R.  .   jne	.L56a10
+[1,0]     . DeE---------R.  .   addq	%rcx, %rdx
+[1,1]     .  DeE--------R.  .   incq	%rsi
+[1,2]     .  D=eE-------R.  .   je	.Lexit
+[1,3]     .  D======eE--R.  .   movl	%edi, %r8d
+[1,4]     .  D=======eE-R.  .   movl	%eax, %r9d
+[1,5]     .  DeeeeeE----R.  .   movq	-8(%r14,%rdx,8), %rax
+[1,6]     .   DeeeeeeE--R.  .   cmpq	(%r14,%rdx,8), %rax
+[1,7]     .   D=======eeER  .   setbe	%al
+[1,8]     .   D========eER  .   setae	%dil
+[1,9]     .   D=========eER .   andb	%r9b, %al
+[1,10]    .    D========eER .   andb	%r8b, %dil
+[1,11]    .    D=========eER.   testb	%al, %al
+[1,12]    .    D==========eER   jne	.L56a10
+[1,13]    .    D=========eE-R   testb	%dil, %dil
+[1,14]    .    D==========eER   jne	.L56a10
+
+
+Average Wait times (based on the timeline view):
+[0]: Executions
+[1]: Average time spent waiting in a scheduler's queue
+[2]: Average time spent waiting in a scheduler's queue while ready
+[3]: Average time elapsed from WB until retire stage
+
+      [0]    [1]    [2]    [3]
+0.     2     1.0    1.0    4.5       addq	%rcx, %rdx
+1.     2     1.0    1.0    4.0       incq	%rsi
+2.     2     2.0    0.0    3.5       je	.Lexit
+3.     2     4.0    0.5    1.5       movl	%edi, %r8d
+4.     2     4.5    0.5    1.0       movl	%eax, %r9d
+5.     2     1.5    0.0    2.0       movq	-8(%r14,%rdx,8), %rax
+6.     2     1.0    0.5    1.0       cmpq	(%r14,%rdx,8), %rax
+7.     2     7.5    0.5    0.0       setbe	%al
+8.     2     8.0    1.0    0.5       setae	%dil
+9.     2     9.5    0.0    0.0       andb	%r9b, %al
+10.    2     8.0    0.0    0.5       andb	%r8b, %dil
+11.    2     9.5    0.0    0.0       testb	%al, %al
+12.    2     10.5   0.0    0.0       jne	.L56a10
+13.    2     9.0    0.0    1.5       testb	%dil, %dil
+14.    2     10.0   0.0    0.5       jne	.L56a10
+       2     5.8    0.3    1.4       <total>

@@ -1,0 +1,68 @@
+{
+  "case": [
+    "u64",
+    "descending",
+    1000000
+  ],
+  "rounds": 1001,
+  "cpu": 2,
+  "seed": 1,
+  "binaries": {
+    "checked": "fe3502f4f1a2c08281fc3cf6e1a10f68dba3e9d8f452cc57bb0c7f6b3d360fdc",
+    "unchecked": "dd92669b74f5c98ff3a3a20491ae3fe812f2c2dc9bac8ee29e270d4236e9a3b5"
+  },
+  "commands": [
+    [
+      "taskset",
+      "-c",
+      "2",
+      "perf",
+      "record",
+      "-q",
+      "-F",
+      "997",
+      "-e",
+      "cycles:u",
+      "-o",
+      "logs/tessera-cleanup/probe-mca/checked.data",
+      "--",
+      "/root/code/sort-research-rs/logs/tessera-cleanup/range-probe-bench",
+      "--types",
+      "u64",
+      "--patterns",
+      "descending",
+      "--sizes",
+      "1000000",
+      "--variants",
+      "tessera",
+      "--rounds",
+      "1001"
+    ],
+    [
+      "taskset",
+      "-c",
+      "2",
+      "perf",
+      "record",
+      "-q",
+      "-F",
+      "997",
+      "-e",
+      "cycles:u",
+      "-o",
+      "logs/tessera-cleanup/probe-mca/unchecked.data",
+      "--",
+      "/root/code/sort-research-rs/logs/tessera-cleanup/unchecked-probe-bench",
+      "--types",
+      "u64",
+      "--patterns",
+      "descending",
+      "--sizes",
+      "1000000",
+      "--variants",
+      "tessera",
+      "--rounds",
+      "1001"
+    ]
+  ]
+}
